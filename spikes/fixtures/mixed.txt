@@ -1,0 +1,1 @@
+עדכנתי את Visual Studio Code לגרסה החדשה, ועכשיו התוסף של GitHub Copilot עובד מהר יותר.
