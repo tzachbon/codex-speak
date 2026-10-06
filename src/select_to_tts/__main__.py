@@ -45,7 +45,7 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.withdraw()
-        self.events, self._seq, self.settings_win = queue.Queue(), 0, None
+        self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
         self.stt, self.stt_error = None, None
         self.chain = Chain([CodexEngine(), EdgeEngine(), SapiEngine()])
         first_run = not os.path.exists(settings.PATH)
@@ -92,7 +92,8 @@ class App:
             self.stt_error = "The server is off."
             if self.stt:
                 server, self.stt = self.stt, None
-                threading.Thread(target=lambda: (server.shutdown(), server.server_close()), daemon=True).start()
+                server.shutdown()  # up to 0.5 s; afterwards the port is free for a quick re-enable
+                server.server_close()
 
     def change(self, key, value, save=True):
         self.cfg[key] = value
@@ -117,7 +118,8 @@ class App:
         self.popup.set_playing(False)  # a popup read in progress is replaced by the test
         if self.popup.visible:
             self.popup.hide()
-        self.chain.speak(text, "en-US", self._logged(text, lambda err: err and self.events.put(("done", err))))
+        self._read_id += 1
+        self.chain.speak(text, "en-US", self._logged(text, lambda err: err and self.events.put(("done", err, None))))
 
     def _selected(self, x, y):  # mouse-hook thread: hand off, never block
         self._seq += 1
@@ -133,8 +135,10 @@ class App:
             self.events.put(("show", text, x, y))
 
     def play(self, text, lang_tag):
-        self.chain.speak(text, lang_tag, self._logged(text, lambda err: self.events.put(("done", err))),
-                         lambda: self.events.put(("audio",)))
+        self._read_id += 1
+        rid = self._read_id  # events from an older read are ignored when they arrive late
+        self.chain.speak(text, lang_tag, self._logged(text, lambda err: self.events.put(("done", err, rid))),
+                         lambda: self.events.put(("audio", rid)))
 
     def _logged(self, text, on_done):
         t0 = time.monotonic()
@@ -177,9 +181,11 @@ class App:
             elif p.visible and not p.playing:
                 p.hide()
         elif kind == "audio":
-            p.set_loading(False)
+            if args[0] == self._read_id:
+                p.set_loading(False)
         elif kind == "done":
-            p.set_playing(False)
+            if args[1] == self._read_id:
+                p.set_playing(False)
             if args[0]:
                 self.icon.notify(f"Could not read aloud: {args[0]}", "Select to TTS")
         elif kind == "settings":
@@ -231,9 +237,9 @@ def main():
     ctypes.windll.shcore.SetProcessDpiAwareness(2)  # tk and the mouse hook agree on pixels
     log.info("start, launch command %s", settings.launch_command())
     try:
-        settings.migrate_run_value()
+        settings.refresh_startup()
     except OSError:
-        log.exception("could not move sign-in startup to Task Scheduler")
+        log.exception("could not update the sign-in task")
     try:
         app = App()
         app.show_event = show_event

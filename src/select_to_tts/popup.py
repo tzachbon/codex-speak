@@ -88,7 +88,7 @@ class Popup:
         self.btn.pack(side="left", padx=("2p", 0), pady="2p")
         self.stop_btn = _FlatButton(w, self._stop, (STOP, (icons, 11), FG))  # packed while reading
         self.spinner = tk.Canvas(w, bg=BG, highlightthickness=0)  # shown until speech starts
-        self._spin_angle, self.loading = 0, False
+        self._spin_angle, self._spin_job, self.loading = 0, None, False
         self.divider = tk.Frame(w, bg=DIVIDER, width=1)
         self.divider.pack(side="left", fill="y", pady="5p", padx="2p")
         self.lang_btn = _FlatButton(w, lambda: self._post_menu(self.lang_btn, self.menu),
@@ -161,6 +161,9 @@ class Popup:
             b.pack_forget()
             self._spin()
         else:
+            if self._spin_job:
+                self.win.after_cancel(self._spin_job)
+                self._spin_job = None
             self.btn.pack(side="left", padx=("2p", 0), pady="2p", before=self.spinner)
             self.spinner.pack_forget()
 
@@ -173,7 +176,7 @@ class Popup:
         c.create_arc(x - r, y - r, x + r, y + r, start=self._spin_angle, extent=270, style="arc",
                      outline=ACCENT, width=max(2, round(size / 14)))
         self._spin_angle = (self._spin_angle - 24) % 360
-        self.win.after(40, self._spin)
+        self._spin_job = self.win.after(40, self._spin)
 
     def set_playing(self, playing, paused=False):
         self.playing, self.paused = playing, playing and paused

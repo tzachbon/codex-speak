@@ -114,11 +114,14 @@ def _drop_run_value():
         pass  # not there
 
 
-def migrate_run_value() -> None:
-    """Moves an older build's Run value to the logon task."""
+def refresh_startup() -> None:
+    """Points an enabled sign-in task at this install (it may have moved) and moves an older
+    build's Run value to the task. Source runs leave an installed copy's task alone."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
             winreg.QueryValueEx(k, RUN_VALUE)
+        legacy = True
     except OSError:
-        return
-    set_startup(True)
+        legacy = False
+    if legacy or (getattr(sys, "frozen", False) and startup_enabled()):
+        set_startup(True)
