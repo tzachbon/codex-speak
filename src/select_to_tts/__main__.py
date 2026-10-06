@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 import os
 import queue
+import sys
 import threading
 import time
 import tkinter as tk
@@ -187,6 +188,9 @@ class App:
 
 
 def main():
+    if sys.argv[1:2] == ["--startup"]:  # used by the installer: SelectToTTS.exe --startup on|off
+        settings.set_startup(sys.argv[2:3] == ["on"])
+        return
     mutex = k32.CreateMutexW(None, False, "select-to-tts-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
         for _ in range(50):  # the running copy may still be starting up
@@ -206,6 +210,10 @@ def main():
     log.setLevel(logging.INFO)
     ctypes.windll.shcore.SetProcessDpiAwareness(2)  # tk and the mouse hook agree on pixels
     log.info("start, launch command %s", settings.launch_command())
+    try:
+        settings.migrate_run_value()
+    except OSError:
+        log.exception("could not move sign-in startup to Task Scheduler")
     try:
         app = App()
         app.show_event = show_event

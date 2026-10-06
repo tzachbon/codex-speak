@@ -3,7 +3,7 @@
 #define AppExe "SelectToTTS.exe"
 #define AppId "FED44346-501C-414C-A557-8F7BDA1AC94A"
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
-; The app's settings page writes and removes this same value
+; Older builds started at sign-in through this Run value
 #define RunValue "select-to-tts"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -47,11 +47,14 @@ Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
-[Registry]
-Root: HKCU; Subkey: "{#RunKey}"; ValueType: string; ValueName: "{#RunValue}"; ValueData: """{app}\{#AppExe}"""; Tasks: startup
-
 [Run]
+; Start-at-sign-in is a Task Scheduler logon task, so it starts at once instead of queueing
+; behind every Run-key app. The app creates and removes it.
+Filename: "{app}\{#AppExe}"; Parameters: "--startup on"; Tasks: startup; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall
+
+[UninstallRun]
+Filename: "{app}\{#AppExe}"; Parameters: "--startup off"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveStartupTask"
 
 [Code]
 // Upgrades keep the user's sign-in choice from the Settings page instead of re-asking.
@@ -79,6 +82,6 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     StopApp;
-    RegDeleteValue(HKCU, '{#RunKey}', '{#RunValue}');
+    RegDeleteValue(HKCU, '{#RunKey}', '{#RunValue}');  // left by builds before the logon task
   end;
 end;

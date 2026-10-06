@@ -29,7 +29,7 @@ The app lives in the tray. Click the tray icon, or start the app again from the 
 
 ![Settings](docs/settings.png)
 
-- **Start when I sign in to Windows**: adds or removes the `select-to-tts` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- **Start when I sign in to Windows**: adds or removes a Task Scheduler logon task named "Select to TTS". It starts right after sign-in, unlike Run-key apps, which Windows starts one at a time.
 - **Speed**: 0.5× to 2×. Changes apply to the next read.
   - Edge and Windows voices support the full range.
   - Codex streams speech in real time, so it can only be slowed down. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace.
@@ -40,7 +40,7 @@ Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is ke
 
 ## Uninstall
 
-Use *Settings > Apps > Select to TTS*. This removes the app, its sign-in entry, and its caches in `%TEMP%`. Your settings and log in `%APPDATA%\select-to-tts` are kept.
+Use *Settings > Apps > Select to TTS*. This removes the app, its sign-in task, and its caches in `%TEMP%`. Your settings and log in `%APPDATA%\select-to-tts` are kept.
 
 ## Run from source
 
