@@ -36,12 +36,17 @@ class AppServer:
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   encoding="utf-8", bufsize=1,
                                   creationflags=subprocess.CREATE_NO_WINDOW)
-        self.events, self._pending, self._next, self._lock = queue.Queue(), {}, 0, threading.Lock()
-        threading.Thread(target=self._read, daemon=True).start()
-        self.call("initialize", {"clientInfo": {"name": "select-to-tts", "version": "0.1.0"},
-                                 "capabilities": {"experimentalApi": True}})
-        self._send({"method": "initialized"})
-        self.thread_id = self.call("thread/start", {"ephemeral": True})["thread"]["id"]
+        try:
+            self.events, self._pending, self._next, self._lock = queue.Queue(), {}, 0, threading.Lock()
+            self._reader = threading.Thread(target=self._read, daemon=True)
+            self._reader.start()
+            self.call("initialize", {"clientInfo": {"name": "select-to-tts", "version": "0.1.0"},
+                                     "capabilities": {"experimentalApi": True}})
+            self._send({"method": "initialized"})
+            self.thread_id = self.call("thread/start", {"ephemeral": True})["thread"]["id"]
+        except BaseException:
+            self.close()
+            raise
 
     @property
     def alive(self) -> bool:
@@ -78,7 +83,23 @@ class AppServer:
         return msg["result"]
 
     def close(self):
-        self.p.kill()
+        if self.alive:
+            # Codex helpers can inherit stdout. End our process tree so the reader reaches EOF.
+            try:
+                subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            if self.alive:
+                self.p.kill()
+        self.p.wait(timeout=5)
+        reader = getattr(self, "_reader", None)
+        if reader is not None and reader.ident is not None:
+            reader.join(timeout=5)
+        self.p.stdin.close()
+        if reader is None or not reader.is_alive():
+            self.p.stdout.close()
 
 
 class CodexEngine:
