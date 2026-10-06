@@ -51,6 +51,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 ; Start-at-sign-in is a Task Scheduler logon task, so it starts at once instead of queueing
 ; behind every Run-key app. The app creates and removes it.
 Filename: "{app}\{#AppExe}"; Parameters: "--startup on"; Tasks: startup; Flags: runhidden waituntilterminated
+; An existing sign-in task is re-pointed here, even if the app isn't launched after setup
+Filename: "{app}\{#AppExe}"; Parameters: "--startup refresh"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall
 
 [UninstallRun]

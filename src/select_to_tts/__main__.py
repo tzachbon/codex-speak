@@ -92,8 +92,10 @@ class App:
             self.stt_error = "The server is off."
             if self.stt:
                 server, self.stt = self.stt, None
-                server.shutdown()  # up to 0.5 s; afterwards the port is free for a quick re-enable
-                server.server_close()
+                server.shutdown()  # up to 0.5 s
+                server.socket.close()  # frees the port now for a quick re-enable
+                # server_close() waits for a transcription in flight, so not on the Tk thread
+                threading.Thread(target=server.server_close, daemon=True).start()
 
     def change(self, key, value, save=True):
         self.cfg[key] = value
@@ -214,8 +216,11 @@ class App:
 
 
 def main():
-    if sys.argv[1:2] == ["--startup"]:  # used by the installer: SelectToTTS.exe --startup on|off
-        settings.set_startup(sys.argv[2:3] == ["on"])
+    if sys.argv[1:2] == ["--startup"]:  # used by the installer: SelectToTTS.exe --startup on|off|refresh
+        if sys.argv[2:3] == ["refresh"]:
+            settings.refresh_startup()
+        else:
+            settings.set_startup(sys.argv[2:3] == ["on"])
         return
     mutex = k32.CreateMutexW(None, False, "select-to-tts-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
