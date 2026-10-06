@@ -16,13 +16,13 @@ ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebr
 
 
 class _Threaded:
-    """Runs `_run(text, tag, stop)` on a worker thread. Runs never overlap."""
+    """Runs `_run(text, tag, stop, on_audio)` on a worker thread. Runs never overlap."""
     speed = 1.0
 
     def __init__(self):
         self._stop, self._busy, self.paused = threading.Event(), threading.Lock(), threading.Event()
 
-    def speak(self, text, lang_tag, on_done):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         self.stop()
         self.paused.clear()
         self._stop = stop = threading.Event()
@@ -31,7 +31,7 @@ class _Threaded:
             with self._busy:
                 try:
                     if not stop.is_set():
-                        self._run(text, lang_tag or lang.detect(text), stop)
+                        self._run(text, lang_tag or lang.detect(text), stop, on_audio)
                 except Exception as e:
                     return on_done(e)
             on_done(None)
@@ -55,7 +55,7 @@ class _Threaded:
 class EdgeEngine(_Threaded):
     name = "Edge"
 
-    def _run(self, text, tag, stop):
+    def _run(self, text, tag, stop, on_audio):
         voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
         os.makedirs(settings.TEMP_DIR, exist_ok=True)
         fd, path = tempfile.mkstemp(suffix=".mp3", dir=settings.TEMP_DIR)
@@ -67,6 +67,7 @@ class EdgeEngine(_Threaded):
             except Exception as e:
                 raise NoAudioError(f"Edge: {e}") from e
             # ponytail: buffers the whole MP3 before playing, stream it if long selections lag
+            on_audio()
             play_mp3(path, stop, self.paused)
         finally:
             os.remove(path)
@@ -80,7 +81,7 @@ def sapi_rate(speed):
 class SapiEngine(_Threaded):
     name = "Windows"
 
-    def _run(self, text, tag, stop):
+    def _run(self, text, tag, stop, on_audio):
         prefix = lang.LANGS.get(tag, (None, None, None))[2]
         comtypes.CoInitialize()
         cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
@@ -94,6 +95,7 @@ class SapiEngine(_Threaded):
         voice.Voice = match[0]
         voice.Rate = sapi_rate(self.speed)
         voice.Speak(text, 1)  # SVSFlagsAsync
+        on_audio()
         held = False
         while not voice.WaitUntilDone(50):
             if stop.is_set():
@@ -124,7 +126,7 @@ class Chain:
         if hasattr(first, "prepare"):
             first.prepare(lang_tag)
 
-    def speak(self, text, lang_tag, on_done):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         self._gen += 1
         gen, order = self._gen, self.order()
         for e in self.engines:
@@ -142,7 +144,7 @@ class Chain:
                 self.last = engine.name
                 on_done(err)
 
-            engine.speak(text, lang_tag, done)
+            engine.speak(text, lang_tag, done, lambda: gen == self._gen and on_audio())
 
         attempt(0)
 

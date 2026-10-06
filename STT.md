@@ -4,7 +4,13 @@ The same module serves Python callers and other apps on this Windows PC.
 It uses the existing Codex ChatGPT login, with no OpenAI API key. Audio goes
 to Codex's remote realtime service. The HTTP listener itself is localhost only.
 
-## Run the server
+## Run the server from the tray app
+
+Turn on **Settings → Speech-to-text → Run the speech-to-text server**. The app then
+serves on port 18765 whenever it runs, and the URL stays the same after restarts, so
+OpenWhispr keeps working. The manual command below is for running without the tray app.
+
+## Run the server manually
 
 From this project's directory:
 

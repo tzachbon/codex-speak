@@ -86,6 +86,8 @@ class Popup:
         self.btn = _FlatButton(w, self._toggle, (PLAY, (icons, 11), ACCENT))
         self.btn.pack(side="left", padx=("2p", 0), pady="2p")
         self.stop_btn = _FlatButton(w, self._stop, (STOP, (icons, 11), FG))  # packed while reading
+        self.spinner = tk.Canvas(w, bg=BG, highlightthickness=0)  # shown until speech starts
+        self._spin_angle, self.loading = 0, False
         self.divider = tk.Frame(w, bg=DIVIDER, width=1)
         self.divider.pack(side="left", fill="y", pady="5p", padx="2p")
         self.lang_btn = _FlatButton(w, lambda: self._post_menu(self.lang_btn, self.menu),
@@ -140,8 +142,35 @@ class Popup:
         return (self.visible and w.winfo_rootx() <= x < w.winfo_rootx() + w.winfo_width()
                 and w.winfo_rooty() <= y < w.winfo_rooty() + w.winfo_height())
 
+    def set_loading(self, loading):
+        if loading == self.loading:
+            return
+        self.loading = loading
+        if loading:
+            b = self.btn
+            self.spinner.configure(width=b.winfo_width(), height=b.winfo_height())
+            self.spinner.pack(side="left", padx=("2p", 0), pady="2p", before=b)
+            b.pack_forget()
+            self._spin()
+        else:
+            self.btn.pack(side="left", padx=("2p", 0), pady="2p", before=self.spinner)
+            self.spinner.pack_forget()
+
+    def _spin(self):
+        if not self.loading:
+            return
+        c, size = self.spinner, min(self.btn.winfo_width(), self.btn.winfo_height())
+        x, y, r = int(c["width"]) / 2, int(c["height"]) / 2, size * 0.28
+        c.delete("all")
+        c.create_arc(x - r, y - r, x + r, y + r, start=self._spin_angle, extent=270, style="arc",
+                     outline=ACCENT, width=max(2, round(size / 14)))
+        self._spin_angle = (self._spin_angle - 24) % 360
+        self.win.after(40, self._spin)
+
     def set_playing(self, playing, paused=False):
         self.playing, self.paused = playing, playing and paused
+        if not playing:
+            self.set_loading(False)
         self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
         if playing:
             self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.divider)
@@ -153,6 +182,7 @@ class Popup:
         if not self.playing:
             self._cancel_hide()
             self.set_playing(True)
+            self.set_loading(True)
             self.on_play(self.text, self.lang.get() or None)
         elif self.paused:
             self.on_resume()

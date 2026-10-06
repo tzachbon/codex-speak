@@ -18,6 +18,7 @@ import threading
 from .stt import BusyError, MAX_BYTES, MODEL, transcribe
 
 MAX_BODY = MAX_BYTES + 65536
+CONNECTION = Path(os.environ["LOCALAPPDATA"]) / "select-to-tts" / "stt-connection.json"
 
 
 def parse_form(content_type, body):
@@ -58,8 +59,8 @@ class SttServer(ThreadingHTTPServer):
     block_on_close = True
     request_queue_size = 4
 
-    def __init__(self, port=18765):
-        self.token = secrets.token_urlsafe(24)
+    def __init__(self, port=18765, token=None):
+        self.token = token or secrets.token_urlsafe(24)
         self.slots, self.busy = threading.BoundedSemaphore(4), threading.Lock()
         super().__init__(("127.0.0.1", port), Handler)
 
@@ -199,6 +200,26 @@ class Handler(BaseHTTPRequestHandler):
             self.error(502, "Codex transcription failed. Check Codex login and retry.")
         finally:
             self.server.busy.release()
+
+
+def saved_token(path=CONNECTION):
+    """The access token from the last run, so a client's saved URL keeps working."""
+    try:
+        token = json.loads(path.read_text(encoding="utf-8"))["base_url"].split("/")[3]
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
+        return None
+    ok = len(token) >= 32 and all(c.isascii() and (c.isalnum() or c in "-_") for c in token)
+    return token if ok else None
+
+
+def start(port=18765, connection_file=CONNECTION):
+    """Serves on a daemon thread for the tray app. Stop with shutdown() then server_close()."""
+    server = SttServer(port, token=saved_token(connection_file))
+    connection_file.parent.mkdir(parents=True, exist_ok=True)
+    connection_file.write_text(json.dumps({"base_url": server.base_url, "model": MODEL}, indent=2),
+                               encoding="utf-8")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
 
 
 def main():

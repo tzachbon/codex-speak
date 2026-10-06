@@ -119,12 +119,12 @@ class CodexEngine:
         self._tag, self._text = lang_tag, concurrent.futures.Future()
         self._job = asyncio.run_coroutine_threadsafe(self._speak(self._text, lang_tag), self._loop)
 
-    def speak(self, text, lang_tag, on_done):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         waiting = self._job and not self._job.done() and not self._text.done()
         if not (waiting and self._tag == lang_tag):
             self.prepare(lang_tag)
         self.paused.clear()
-        self._text.set_result(text)
+        self._text.set_result((text, on_audio))
         self._job.add_done_callback(
             lambda f: on_done(None if f.cancelled() else f.exception()))
 
@@ -173,7 +173,7 @@ class CodexEngine:
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
         pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1, self.paused)
-        voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False}
+        voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False, "on_audio": None}
         pc.addTrack(AudioStreamTrack())  # silence: we never talk to the model
         pc.createDataChannel("oai-events")
         resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
@@ -192,6 +192,8 @@ class CodexEngine:
                         pcm = voice["stretch"](bytes(f.planes[0])[: f.samples * 2])
                         player.write(pcm)
                         if peak(pcm) > VOICED:
+                            if not voice["first"] and voice["on_audio"]:
+                                voice["on_audio"]()
                             voice["first"] = voice["first"] or time.monotonic()
                             voice["last"] = time.monotonic()
             asyncio.ensure_future(pump())
@@ -213,7 +215,7 @@ class CodexEngine:
                 await asyncio.sleep(0.1)
             else:
                 raise TimeoutError("WebRTC did not connect")
-            text = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
+            text, voice["on_audio"] = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
             voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
             await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
             for _ in range(50):

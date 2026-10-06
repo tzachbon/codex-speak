@@ -13,7 +13,7 @@ from ctypes import wintypes
 import pystray
 from PIL import Image, ImageDraw
 
-from . import selection, settings
+from . import selection, settings, stt_server
 from .codex_rt import CodexEngine
 from .engines import Chain, EdgeEngine, SapiEngine
 from .popup import Popup
@@ -46,6 +46,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()
         self.events, self._seq, self.settings_win = queue.Queue(), 0, None
+        self.stt, self.stt_error = None, None
         self.chain = Chain([CodexEngine(), EdgeEngine(), SapiEngine()])
         first_run = not os.path.exists(settings.PATH)
         self.cfg = settings.load()
@@ -77,6 +78,21 @@ class App:
         elif key == "speed":
             for e in self.chain.engines:
                 e.speed = value
+        elif key == "stt_server":
+            self._run_stt(value)
+
+    def _run_stt(self, on):
+        if on and not self.stt:
+            try:
+                self.stt, self.stt_error = stt_server.start(), None
+            except OSError as e:  # usually: another program already uses the port
+                self.stt_error = f"Could not start the server: {e.strerror or e}"
+                log.warning("speech-to-text server did not start: %s", e)
+        elif not on:
+            self.stt_error = "The server is off."
+            if self.stt:
+                server, self.stt = self.stt, None
+                threading.Thread(target=lambda: (server.shutdown(), server.server_close()), daemon=True).start()
 
     def change(self, key, value, save=True):
         self.cfg[key] = value
@@ -117,7 +133,8 @@ class App:
             self.events.put(("show", text, x, y))
 
     def play(self, text, lang_tag):
-        self.chain.speak(text, lang_tag, self._logged(text, lambda err: self.events.put(("done", err))))
+        self.chain.speak(text, lang_tag, self._logged(text, lambda err: self.events.put(("done", err))),
+                         lambda: self.events.put(("audio",)))
 
     def _logged(self, text, on_done):
         t0 = time.monotonic()
@@ -159,6 +176,8 @@ class App:
                 p._schedule_hide()
             elif p.visible and not p.playing:
                 p.hide()
+        elif kind == "audio":
+            p.set_loading(False)
         elif kind == "done":
             p.set_playing(False)
             if args[0]:
@@ -168,8 +187,9 @@ class App:
                 self.settings_win.focus()
             else:
                 self.settings_win = SettingsWindow(self.root, dict(self.cfg), icon_image(256), self.change,
-                                                   self.test_voice)
+                                                   self.test_voice, lambda: self.stt_error)
         elif kind == "quit":
+            self._run_stt(False)
             self.trigger.stop()
             self.chain.close()
             self.icon.stop()

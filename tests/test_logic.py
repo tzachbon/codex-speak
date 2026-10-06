@@ -39,8 +39,10 @@ class Fake:
     def __init__(self, name, err=None):
         self.name, self.err, self.calls = name, err, 0
 
-    def speak(self, text, tag, on_done):
+    def speak(self, text, tag, on_done, on_audio):
         self.calls += 1
+        if not self.err:
+            on_audio()
         on_done(self.err)
 
     def stop(self):
@@ -64,6 +66,19 @@ class ChainTest(unittest.TestCase):
         a, b = Fake("Codex", NoAudioError("x")), Fake("Edge")
         chain, result = self.run_chain(a, b)
         self.assertEqual((result, chain.last, b.calls), ([None], "Edge", 1))
+
+    def test_audio_start_is_reported_once_and_not_after_stop(self):
+        heard = []
+        chain = Chain([Fake("Edge")])
+        chain.speak("hi", None, lambda err: None, lambda: heard.append(1))
+        self.assertEqual(heard, [1])
+        late = Fake("Codex")
+        late.speak = lambda text, tag, on_done, on_audio: setattr(late, "start", on_audio)
+        chain = Chain([late])
+        chain.speak("hi", None, lambda err: None, lambda: heard.append(2))
+        chain.stop()
+        late.start()  # audio that arrives after Stop is ignored
+        self.assertEqual(heard, [1])
 
     def test_mid_playback_failure_is_reported_not_retried(self):
         a, b = Fake("Codex", RuntimeError("cut")), Fake("Edge")
@@ -135,7 +150,8 @@ class Settings(unittest.TestCase):
             path = os.path.join(d, "sub", "settings.json")
             self.assertEqual(settings.load(path), settings.DEFAULTS)
             settings.save({"engine": "Edge", "speed": 9, "clipboard_fallback": False}, path)
-            self.assertEqual(settings.load(path), {"engine": "Edge", "speed": 2.0, "clipboard_fallback": False})
+            self.assertEqual(settings.load(path), {**settings.DEFAULTS, "engine": "Edge", "speed": 2.0,
+                                                   "clipboard_fallback": False})
             for junk in ("{not json", "[1, 2]", "null", '{"engine": "Bogus", "speed": "fast"}',
                          '{"speed": NaN, "clipboard_fallback": "false"}', '{"speed": true, "engine": 3}', '{"speed": 1' + '0' * 400 + '}'):
                 with open(path, "w") as f:
@@ -152,6 +168,23 @@ class Settings(unittest.TestCase):
             settings.set_startup(False, name)  # already off: no error
         finally:
             settings.set_startup(False, name)
+
+
+class SttServerRestart(unittest.TestCase):
+    def test_restarted_server_keeps_its_url(self):
+        from pathlib import Path
+        from select_to_tts import stt_server
+        with tempfile.TemporaryDirectory() as d:
+            conn = Path(d) / "stt-connection.json"
+            urls = []
+            for _ in range(2):
+                server = stt_server.start(port=0, connection_file=conn)
+                urls.append(server.base_url.split("/")[3])
+                server.shutdown()
+                server.server_close()
+            self.assertEqual(urls[0], urls[1])
+            conn.write_text('{"base_url": "http://127.0.0.1:1/short/v1"}', encoding="utf-8")
+            self.assertIsNone(stt_server.saved_token(conn))
 
 
 class Speed(unittest.TestCase):

@@ -30,8 +30,9 @@ def stt_connection():
 
 
 class SettingsWindow:
-    def __init__(self, root, cfg, icon, on_change, on_test):
+    def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None):
         self.cfg, self.on_change, self.on_test, self._save_job = cfg, on_change, on_test, None
+        self.stt_state = stt_state  # None when running, else why not
         w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
         w.title("Select to TTS settings")
         w.resizable(False, False)
@@ -85,6 +86,10 @@ class SettingsWindow:
                   style="Sub.Card.TLabel").pack(anchor="w", pady=(4, 0))
 
         card = self._card("Speech-to-text · OpenAI-compatible")
+        self.stt_on = tk.BooleanVar(w, cfg.get("stt_server", False))
+        ttk.Checkbutton(card, text="Run the speech-to-text server for other apps, such as OpenWhispr",
+                        style="Card.TCheckbutton", variable=self.stt_on,
+                        command=self._stt_toggled).pack(anchor="w", pady=(0, 6))
         self.stt_values = {name: tk.StringVar(w) for name in ("Server URL", "Model")}
         self.stt_copy_buttons = []
         for name, value in self.stt_values.items():
@@ -95,8 +100,8 @@ class SettingsWindow:
             button = ttk.Button(row, text="Copy", command=lambda name=name: self._copy_stt(name))
             button.pack(side="right")
             self.stt_copy_buttons.append(button)
-        ttk.Label(card, text="Paste into OpenWhispr → Self-Hosted. No API key needed.\n"
-                  "Transcription only: JSON or text, up to 60 seconds.",
+        ttk.Label(card, text="Paste into OpenWhispr → Self-Hosted. No API key needed. The URL stays\n"
+                  "the same after restarts. Transcription only: JSON or text, up to 60 seconds.",
                   style="Sub.Card.TLabel").pack(anchor="w", pady=(6, 0))
         row = tk.Frame(card, bg=CARD)
         row.pack(fill="x", pady=(6, 0))
@@ -136,8 +141,13 @@ class SettingsWindow:
             variable.set(value)
         for button in self.stt_copy_buttons:
             button["state"] = "normal" if values[0] else "disabled"
-        self.stt_status["text"] = ("Saved details. Refresh after restarting the server." if values[0]
-                                   else "Start the local STT server, then Refresh.")
+        problem = self.stt_state()
+        self.stt_status["text"] = (problem if problem else "Running." if values[0]
+                                   else "Turn on the server above.")
+
+    def _stt_toggled(self):
+        self._set("stt_server", self.stt_on.get())
+        self.win.after(300, self._refresh_stt)
 
     def _copy_stt(self, name):
         self._refresh_stt()
