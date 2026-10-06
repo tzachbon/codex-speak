@@ -81,13 +81,18 @@ class App:
         elif key == "stt_server":
             self._run_stt(value)
 
-    def _run_stt(self, on):
+    def _run_stt(self, on, tries=60):
         if on and not self.stt:
             try:
                 self.stt, self.stt_error = stt_server.start(), None
-            except OSError as e:  # usually: another program already uses the port
+            except OSError as e:
+                # The port stays taken while an earlier server finishes a transcription, or another
+                # program uses it. Retry for 2 minutes, then show the error in Settings.
                 self.stt_error = f"Could not start the server: {e.strerror or e}"
-                log.warning("speech-to-text server did not start: %s", e)
+                if tries == 60:
+                    log.warning("speech-to-text server did not start: %s", e)
+                if tries:
+                    self.root.after(2000, lambda: self.cfg["stt_server"] and self._run_stt(True, tries - 1))
         elif not on:
             self.stt_error = "The server is off."
             if self.stt:
@@ -217,10 +222,13 @@ class App:
 
 def main():
     if sys.argv[1:2] == ["--startup"]:  # used by the installer: SelectToTTS.exe --startup on|off|refresh
-        if sys.argv[2:3] == ["refresh"]:
-            settings.refresh_startup()
-        else:
-            settings.set_startup(sys.argv[2:3] == ["on"])
+        try:
+            if sys.argv[2:3] == ["refresh"]:
+                settings.refresh_startup()
+            else:
+                settings.set_startup(sys.argv[2:3] == ["on"])
+        except Exception:
+            sys.exit(1)  # a windowed exe would show a dialog that blocks setup; the user can retry in Settings
         return
     mutex = k32.CreateMutexW(None, False, "select-to-tts-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
