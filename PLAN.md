@@ -401,7 +401,19 @@ Result: see "T1 spike results" in Context, and `spikes/RESULTS.md` on branch `sp
 - `thread/realtime/error` mentioning entitlement or plan: the subscription tier lacks realtime. Stop and report.
 - Audio sounds like noise: the format isn't int16. Check `samplesPerChannel` versus the byte length to infer the sample width.
 
-### T2. Codex engine (`codex_rt.py`, `audio.py`)
+### T2. Codex engine (`codex_rt.py`, `audio.py`): DONE
+
+Result (2026-10-06):
+- The Hebrew paragraph read to completion.
+- Stop silenced playback at the requested time.
+- Killing `codex.exe` mid-read raised `NoAudioError`, and the next read respawned the server.
+- Pressing Play during a read replaced it cleanly.
+- No new files appeared under `~/.codex/sessions`.
+
+Manual check command: `uv run python -m select_to_tts.codex_rt "text" [lang-tag] [stop_after_s]` (it replaces the planned `spikes/say.py`).
+
+Latency, measured from Play to first voiced audio: 3.2 s cold and 2.4 s warm, after disabling STUN (`RTCConfiguration(iceServers=[])`), which removed about 5 s of ICE gathering. This is above A3's 2.0 s. The WebRTC handshake costs about 1.3 s, so T6 should pre-start the realtime session when the popup appears and append on Play. That brings it to about 1.1 s, at the cost of one session per shown popup (closed if Play isn't pressed).
+
 
 **Purpose:** R2, R5, R9. **Depends on:** T1 pass (or the opt-in branch).
 
