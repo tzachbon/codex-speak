@@ -9,7 +9,8 @@ from pynput.mouse import Button
 
 from select_to_tts import clipboard, lang, settings
 from select_to_tts.audio import NoAudioError, PcmPlayer, Stretcher
-from select_to_tts.engines import Chain, sapi_rate
+from select_to_tts.codex_rt import CodexEngine
+from select_to_tts.engines import Chain, EdgeEngine, sapi_rate
 from select_to_tts.trigger import SelectionTrigger
 
 
@@ -117,6 +118,15 @@ class Player(unittest.TestCase):
         paused.clear()
         p._fill(out, 4, None, None)
         self.assertEqual((bytes(out), len(p._buf)), (b"\x01\x02" * 4, 8))
+
+
+class StopClearsPause(unittest.TestCase):
+    def test_a_stopped_paused_engine_starts_unpaused(self):
+        for engine in (CodexEngine(), EdgeEngine()):
+            engine.pause()
+            engine.stop()
+            self.assertFalse(engine.paused.is_set(), engine.name)
+            engine.close()
 
 
 class Settings(unittest.TestCase):

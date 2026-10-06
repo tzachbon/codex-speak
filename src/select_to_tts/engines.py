@@ -40,6 +40,7 @@ class _Threaded:
 
     def stop(self):
         self._stop.set()
+        self.paused.clear()
 
     def pause(self):
         self.paused.set()

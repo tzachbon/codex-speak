@@ -108,6 +108,7 @@ class CodexEngine:
             lambda f: on_done(None if f.cancelled() else f.exception()))
 
     def stop(self):
+        self.paused.clear()  # else the next prepared session queues its warm-up silence
         if self._job and not self._job.done():
             self._job.cancel()
 
