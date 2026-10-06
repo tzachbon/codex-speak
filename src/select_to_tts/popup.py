@@ -14,7 +14,8 @@ DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
 IDLE_HIDE_MS = 4000
 # Windows 11 light flyout colors
 BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1b1b", "#005fb8", "#e0e0e0"
-PLAY, PAUSE, STOP, CHEVRON = "\ue768", "\ue769", "\ue71a", "\ue70d"
+SUBTLE = "#5f5f5f"
+PLAY, PAUSE, STOP, CHEVRON, CLOSE = "\ue768", "\ue769", "\ue71a", "\ue70d", "\ue8bb"
 
 
 def fonts(root):
@@ -96,7 +97,9 @@ class Popup:
         self.lang_btn.pack(side="left", padx=0, pady="2p")
         self.speed_btn = _FlatButton(w, lambda: self._post_menu(self.speed_btn, self.speed_menu),
                                      (settings.speed_label(speed), (text, 10), FG), (CHEVRON, (icons, 7), FG))
-        self.speed_btn.pack(side="left", padx=(0, "2p"), pady="2p")
+        self.speed_btn.pack(side="left", padx=0, pady="2p")
+        self.close_btn = _FlatButton(w, self.close, (CLOSE, (icons, 7), SUBTLE))
+        self.close_btn.pack(side="left", padx=(0, "2p"), pady="2p")
         self.menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         for tag, label in [("", "Auto")] + [(t, v[0]) for t, v in lang.LANGS.items()]:
             self.menu.add_radiobutton(label=label, value=tag, variable=self.lang,
@@ -127,6 +130,11 @@ class Popup:
         w.geometry(f"+{min(x + 12, area.right - w.winfo_reqwidth())}+{min(top, area.bottom - h)}")
         w.deiconify()
         self._schedule_hide()
+
+    def close(self):
+        """The ✕ button: stop any read and hide."""
+        self.set_playing(False)
+        self.hide()
 
     def hide(self):
         self._cancel_hide()
