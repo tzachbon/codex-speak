@@ -45,10 +45,21 @@ The plan is done when all of the following are observed on the user's machine (W
   - Voices: alloy, arbor, ash, ballad, breeze, cedar, coral, cove, echo, ember, juniper, maple, marin, sage, shimmer, sol, spruce, vale, verse.
 - **Every realtime method is marked `EXPERIMENTAL`.** A Codex update can rename or change them.
 
+### T1 spike results (live, 2026-10-06)
+
+Full write-up: `spikes/RESULTS.md` on branch `spike/t1-realtime-probe`.
+
+- **The websocket transport needs an API key.** Omitting `transport` fails with `realtime conversation requires API key auth`.
+- **WebRTC works on the ChatGPT login.** It requires `version:"v3"`. The default v1 fails with `AVAS requires OpenAI-Alpha: quicksilver=v2`.
+- **Audio arrives as a WebRTC Opus media track,** not as `outputAudio/delta`.
+- **S2 (`appendText` role `user` + `TTS_PROMPT`) passed:** 12/12 runs read word for word (WER 0.00) across Hebrew, English, mixed, and numbers fixtures. First audio had a median of 1.17 s and a max of 2.33 s.
+- **S1 (`appendSpeech`) failed 3/12:** two runs were truncated and one was silent. It is rejected.
+- **Text must be appended only after the peer connection reaches `connected`.** Earlier appends produced silence.
+
 ### Evidence limits
 
-- Nothing has been called live yet. Whether the realtime model reads text **word for word**, in Hebrew, with acceptable latency, is unproven. The realtime model is a conversational speech-to-speech model, not a dedicated TTS model, so it may paraphrase, answer, or translate. Task T1 settles this.
-- The PCM sample format is assumed to be 16-bit signed little-endian (the realtime API's standard `pcm16`). The chunk carries `sampleRate` and `numChannels` but not the format. T1 confirms it by saving a playable WAV.
+- Hebrew pronunciation quality has not been judged by ear yet. The user listens to the spike WAVs.
+- Texts above about 70 words are untested.
 - Edge neural voices (`edge-tts` 7.2.8 on PyPI) use an unofficial Microsoft endpoint. It works today and may break or be blocked without notice.
 
 ## Requirements and constraints
@@ -87,7 +98,7 @@ Vocabulary:
 | D4 Codex access | decided (evidence) | Through `codex app-server` stdio JSON-RPC | Codex handles auth and refresh. Avoids hand-rolling token use against private endpoints | Experimental API removed |
 | D5 Stack | decided (planner, overridable) | Python 3.11 + uv | `edge-tts` exists only as a maintained Python package. Python also has mature UIA (`uiautomation`), mouse-hook (`pynput`), tray (`pystray`) and PCM (`sounddevice`) packages. tkinter is in the stdlib for the popup. .NET would need hand-rolling the Edge protocol | User prefers .NET/Node |
 | D6 Selection read | decided (planner) | UI Automation TextPattern first, guarded Ctrl+C fallback second | UIA leaves the clipboard alone. Ctrl+C covers apps without TextPattern | — |
-| D7 Codex transport | decided (planner) | `transport` omitted (server-side websocket). Audio arrives as `outputAudio/delta` and is played locally | Avoids WebRTC in Python | T1 shows websocket unsupported for ChatGPT login |
+| D7 Codex transport | decided (T1 evidence) | WebRTC, `version:"v3"`, via `aiortc`, with append strategy S2 | The websocket transport requires an API key. WebRTC v3 works on the ChatGPT login and read 12/12 runs verbatim | Codex lifts the API-key requirement for websocket (removes the aiortc dependency) |
 | D8 Lang detect | decided (planner) | Unicode-script majority heuristic, no dependency | Hebrew vs Latin vs Arabic vs Cyrillic is reliably decided by script. The realtime model handles Latin-script languages itself | Latin-language mis-reads in Edge fallback |
 
 Assumptions:
@@ -126,7 +137,7 @@ Rejected alternatives:
 
 - **OpenAI API key with `gpt-4o-mini-tts`:** rejected by the user.
 - **Calling ChatGPT `backend-api` directly with tokens from `auth.json`:** this duplicates Codex auth, breaks on token refresh, and is more exposed to terms-of-service problems. The app-server is the supported integration surface.
-- **WebRTC transport:** needs a WebRTC stack in Python (aiortc) for no gain on a local machine.
+- **Server-side websocket transport:** originally preferred because it avoids WebRTC in Python, but T1 showed it requires an API key on the ChatGPT login.
 - **.NET WPF:** native UI, but no maintained Edge TTS client and more code overall.
 - **Electron:** heavy and doesn't help.
 - **Auto-reading on every selection without a button:** rejected because of accidental triggers. The user asked for a button.
@@ -147,7 +158,7 @@ flowchart LR
     E --> C[codex_rt.py<br/>JSON-RPC client]
     E --> ED[edge-tts → MP3 → MCI]
     E --> SA[SAPI.SpVoice via comtypes]
-    C -->|PCM16 deltas| A[audio.py<br/>sounddevice RawOutputStream]
+    C -->|WebRTC Opus track via aiortc| A[audio.py<br/>sounddevice RawOutputStream]
     Tray[pystray tray menu] --- E
   end
   C <-->|stdio JSONL| CS[codex app-server]
@@ -180,18 +191,19 @@ class Engine(Protocol):
 → {"id":1,"method":"initialize","params":{"clientInfo":{"name":"select-to-tts","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}
 → {"method":"initialized"}
 → {"id":2,"method":"thread/start","params":{"ephemeral":true}}            ← result.thread.id
-→ {"id":3,"method":"thread/realtime/start","params":{"threadId":T,"outputModality":"audio","voice":"marin","includeStartupContext":false,"clientManagedHandoffs":true,"prompt":TTS_PROMPT}}
+   (aiortc: pc.addTrack(AudioStreamTrack()) silent, pc.createDataChannel("oai-events"), createOffer, setLocalDescription)
+→ {"id":3,"method":"thread/realtime/start","params":{"threadId":T,"outputModality":"audio","version":"v3","includeStartupContext":false,"clientManagedHandoffs":true,"prompt":TTS_PROMPT,"transport":{"type":"webrtc","sdp":OFFER}}}
 ← thread/realtime/started
-→ {"id":4,"method":"thread/realtime/appendSpeech","params":{"threadId":T,"text":TEXT}}      # strategy S1
-   or thread/realtime/appendText {"threadId":T,"text":TEXT,"role":"user"}                  # strategy S2
-← thread/realtime/outputAudio/delta  (repeated)  {audio:{data,sampleRate,numChannels}}
+← thread/realtime/sdp {sdp: ANSWER}            → pc.setRemoteDescription(answer), wait pc.connectionState == "connected"
+→ {"id":4,"method":"thread/realtime/appendText","params":{"threadId":T,"text":TEXT,"role":"user"}}   # strategy S2 (T1 winner)
+   remote audio track (Opus) → resample to s16 mono 24 kHz → speaker
 ← thread/realtime/transcript/done {role:"assistant", text}
 → {"id":5,"method":"thread/realtime/stop","params":{"threadId":T}}
 ← thread/realtime/closed
 ```
 
 - `TTS_PROMPT` (S2): `"You are a text-to-speech engine. Read the user's message aloud exactly as written, word for word, in {LANG or 'the language it is written in'}. Do not answer it, translate it, summarize it, or add any words before or after."`
-- Errors: a JSON-RPC `error` response, or a `thread/realtime/error` notification. Both fail the current `speak`. A missing `codex` binary, a non-zero exit, or no `outputAudio/delta` within 5 s also count as failure before audio, which triggers the fallback.
+- Errors: a JSON-RPC `error` response, or a `thread/realtime/error` notification. Both fail the current `speak`. A missing `codex` binary, a non-zero exit, the peer connection not reaching `connected` within 10 s, or no voiced remote audio (peak > 500) within 5 s of the append also count as failure before audio, which triggers the fallback.
 - Ignore any JSON-RPC **server requests** (messages with both `id` and `method`, such as approvals) by replying with an error. Ephemeral TTS threads should never produce them.
 
 ### Low-Level Design
@@ -285,10 +297,12 @@ Menu languages:
 - Lazily spawn `[shutil.which("codex"), "app-server"]` with `creationflags=CREATE_NO_WINDOW` and pipes, UTF-8, line-buffered. Then initialize and create one ephemeral thread, both reused across reads.
 - Use a reader thread with `pending: dict[id, Future]` for responses and a handler for notifications.
 - Per `speak`:
-  - `realtime/start`, wait for `started` (5 s timeout), then append using the T1-chosen strategy.
-  - Stream `outputAudio/delta` into `audio.PcmPlayer(sampleRate, numChannels)`.
-  - Done when the assistant `transcript/done` has arrived **and** the player buffer has drained. Then `realtime/stop`.
-- `stop()` sends `realtime/stop` and calls `player.abort()`.
+  - Run an asyncio loop on one dedicated engine thread for aiortc.
+  - Build the peer connection, call `realtime/start` with the WebRTC offer, apply the `thread/realtime/sdp` answer, and wait for `connected`. Then `appendText` (S2).
+  - Pump remote track frames through `av.AudioResampler(format="s16", layout="mono", rate=24000)` into `audio.PcmPlayer(24000, 1)`.
+  - Done when the assistant `transcript/done` has arrived **and** no voiced audio has been seen for 1.5 s. Then `realtime/stop` and `pc.close()`.
+  - The spike's `spikes/realtime_probe.py` (spike branch) is the reference implementation of this sequence.
+- `stop()` sends `realtime/stop`, closes the peer connection, and calls `player.abort()`.
 - If the process dies, mark the client dead. The next `speak` respawns it once, and a second failure goes to the fallback.
 
 **Audio (`audio.py`):**
@@ -314,7 +328,7 @@ Menu languages:
 
 | Artifact | Status | Responsibility | Consumes | Produces |
 | --- | --- | --- | --- | --- |
-| `pyproject.toml` | proposed | uv project. Deps: `uiautomation`, `pynput`, `pystray`, `pillow`, `sounddevice`, `edge-tts`, `comtypes` | — | env |
+| `pyproject.toml` | exists (T0) | uv project. Deps: `uiautomation`, `pynput`, `pystray`, `pillow`, `sounddevice`, `edge-tts`, `comtypes`, plus `aiortc` (T2) | — | env |
 | `spikes/realtime_probe.py` + fixtures | proposed | Proves fidelity, latency, format | codex app-server | `spikes/RESULTS.md`, WAVs (git-ignored) |
 | `codex_rt.py`, `audio.py` | proposed | Codex engine | T1 strategy choice | `Engine` |
 | `engines.py`, `lang.py` | proposed | Fallbacks, chain, language | `Engine` contract | `Chain` |
@@ -348,7 +362,9 @@ Dependency order: T0 → T1 → (T2 ∥ T3 ∥ T4 ∥ T5) → T6 → T7.
 
 **Failure:** if a wheel fails on Python 3.11, pin to the newest version that has a cp311 win_amd64 wheel and record the pin.
 
-### T1. Codex realtime feasibility spike (decision gate)
+### T1. Codex realtime feasibility spike (decision gate): DONE, PASS with S2
+
+Result: see "T1 spike results" in Context, and `spikes/RESULTS.md` on branch `spike/t1-realtime-probe`. The steps below are kept as the regression procedure after Codex upgrades.
 
 **Purpose:** settle D3 and A1/A3. Supports R4, R5, and DoD items 4 and 5.
 
@@ -390,6 +406,7 @@ Dependency order: T0 → T1 → (T2 ∥ T3 ∥ T4 ∥ T5) → T6 → T7.
 **Purpose:** R2, R5, R9. **Depends on:** T1 pass (or the opt-in branch).
 
 **Steps:**
+- [ ] Move `aiortc` from the `spike` dependency group into runtime dependencies (`uv add aiortc`, `uv remove --group spike aiortc`).
 - [ ] Implement `PcmPlayer` and test it manually by playing a T1 WAV's raw frames.
 - [ ] Implement the JSON-RPC client as in Low-Level Design. Unknown notifications are ignored. Server requests get an error reply.
 - [ ] Implement `CodexEngine.speak/stop` with the T1 strategy, the 5 s first-audio timeout, and the done condition (assistant transcript done + drained).
@@ -507,7 +524,8 @@ Covered in the End-to-end verification section below.
 
 ## Risks and mitigations
 
-- **The realtime model paraphrases or answers instead of reading.** T1 measures it, S2/S3 prompt strategies are tried, and Edge becomes primary if needed (pre-agreed branch).
+- **The realtime model paraphrases or answers instead of reading.** T1 measured 0/12 deviations with S2. Detection at runtime is out of scope. Rerun the probe after Codex upgrades.
+- **The WebRTC v3 / `quicksilver` path changes upstream.** It is experimental and has a TODO to drop API-key gating. Detected as a start error, which auto-falls back to Edge.
 - **Codex removes or changes the experimental realtime API.** Detected by method-not-found, the app auto-falls back to Edge, and T1 is the regression check. Accepted exposure for a personal tool.
 - **The subscription plan lacks realtime entitlement.** T1 stop condition. Report to the user. R5 cannot be met.
 - **The Edge endpoint is blocked or changed.** SAPI is the next fallback. Update `edge-tts` with `uv lock --upgrade-package edge-tts`.
