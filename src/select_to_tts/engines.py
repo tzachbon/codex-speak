@@ -1,5 +1,6 @@
 """Fallback engines (Edge neural, offline Windows) and the chain that tries engines in order."""
 import asyncio
+import math
 import os
 import tempfile
 import threading
@@ -16,6 +17,7 @@ ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebr
 
 class _Threaded:
     """Runs `_run(text, tag, stop)` on a worker thread. Runs never overlap."""
+    speed = 1.0
 
     def __init__(self):
         self._stop, self._busy = threading.Event(), threading.Lock()
@@ -51,13 +53,19 @@ class EdgeEngine(_Threaded):
         os.close(fd)
         try:
             try:
-                asyncio.run(edge_tts.Communicate(text, voice).save(path))
+                rate = f"{round((self.speed - 1) * 100):+d}%"
+                asyncio.run(edge_tts.Communicate(text, voice, rate=rate).save(path))
             except Exception as e:
                 raise NoAudioError(f"Edge: {e}") from e
             # ponytail: buffers the whole MP3 before playing, stream it if long selections lag
             play_mp3(path, stop)
         finally:
             os.remove(path)
+
+
+def sapi_rate(speed):
+    """SAPI rate runs -10..10, where +10 is about 3x and -10 about 1/3x."""
+    return max(-10, min(10, round(10 * math.log(speed, 3))))
 
 
 class SapiEngine(_Threaded):
@@ -75,6 +83,7 @@ class SapiEngine(_Threaded):
             raise NoAudioError(f"Windows: no installed voice for {tag}")
         voice = comtypes.client.CreateObject("SAPI.SpVoice")
         voice.Voice = match[0]
+        voice.Rate = sapi_rate(self.speed)
         voice.Speak(text, 1)  # SVSFlagsAsync
         while not voice.WaitUntilDone(50):
             if stop.is_set():
@@ -90,7 +99,10 @@ class Chain:
         self._active, self._gen = None, 0
 
     def order(self):
-        return [e for e in self.engines if e.name == self.only] or self.engines
+        if self.only:
+            return [e for e in self.engines if e.name == self.only] or self.engines
+        # Auto skips engines that cannot reach the chosen speed (Codex cannot read faster)
+        return [e for e in self.engines if e.speed <= getattr(e, "max_speed", e.speed)] or self.engines
 
     def prepare(self, lang_tag):
         first = self.order()[0]

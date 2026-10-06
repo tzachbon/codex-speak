@@ -29,6 +29,46 @@ Changes made during implementation:
 - Codex pre-warm (`prepare`) runs on popup show. First audio after ▶ is 0.9 to 1.2 s.
 - Esc-to-hide was dropped. The popup never has keyboard focus, so outside-click and the 4 s idle timer cover it.
 
+## Phase 2 (2026-10-06): native light UI, settings, speed, installer, GitHub page
+
+User request: a Windows-native light UI, an easy Windows installer, a settings page with "start at sign-in", a reading-speed control, and a GitHub page.
+
+| ID | Change | Done when |
+| --- | --- | --- |
+| P1 | Popup restyled light: white surface, Windows 11 rounded corners (`DWMWA_WINDOW_CORNER_PREFERENCE`), Segoe Fluent Icons glyphs, Segoe UI Variable text, hover states, accent `#005fb8`. Still no-activate. | Screenshot shows the light rounded popup. The e2e popup checks still pass. |
+| P2 | `settings.py`: JSON at `%APPDATA%\select-to-tts\settings.json` (`engine`, `speed`, `clipboard_fallback`). Start-at-sign-in is the `HKCU\...\CurrentVersion\Run` value `select-to-tts`, and the registry is the source of truth. Frozen builds register `"<exe>"`. Source runs register `"<venv pythonw>" -m select_to_tts`. | Unit tests cover the load defaults, corrupt-file recovery, and the registry round-trip (using a test value name). |
+| P3 | Settings window (ttk `vista` theme, native controls), opened from the tray's default item (double-click). Changes apply immediately: start at sign-in, speed slider 0.5 to 2.0×, engine (Auto, Codex only, Edge only, Windows only), clipboard fallback, and a "Test voice" button. The tray menu shrinks to Settings, Last engine, and Quit. | Opening, changing, and reopening keeps the values. The Run value appears and disappears. |
+| P4 | Speed. Edge uses `rate=±N%`. Windows uses `SpVoice.Rate = round(10·log3(speed))`, clamped to ±10. Codex uses a client-side ffmpeg `atempo` (PyAV, already a dependency) on the received PCM, which keeps the pitch. | Unit test: 1 s of PCM through the Codex stretcher at 1.5× gives about 0.667 s. Manual listen at 1.5× on each engine. |
+| P5 | Installer: PyInstaller onedir (dev dependency only) plus Inno Setup 6. Per-user install (`PrivilegesRequired=lowest`) to `%LOCALAPPDATA%\Programs\Select to TTS`, Start menu shortcut, optional "Start at sign-in" task, `AppMutex` reuses the app's single-instance mutex so setup asks to close a running copy. Uninstall removes the Run value. Built by `packaging\build.ps1`. Output `dist\SelectToTTS-Setup.exe`. | Silent install, launch, selection popup, Codex/Edge/Windows playback, and uninstall all work on this machine. Nothing is left in the install dir or the Run key. |
+| P6 | GitHub: `.github/workflows/release.yml` builds the installer on `v*` tags and attaches it to the release. A tests job runs on push. A `docs/index.html` landing page for GitHub Pages links to `releases/latest/download/SelectToTTS-Setup.exe`. Repo description and homepage are set. | The workflow is green, the release has the asset, and the Pages URL serves the page. Pages and anonymous downloads need a public repo (or a paid plan for Pages), so making the repo public needs the user's explicit OK. |
+
+Out of scope: code signing (SmartScreen will warn on first run, documented), auto-update, and a dark theme.
+
+### Phase 2 results
+
+| Row | Result |
+| --- | --- |
+| P1 | Light popup with DWM rounded corners and a shadow, verified by screenshot (`docs/popup.png`). Still no-activate. |
+| P2 | 11 unit tests pass. They cover null, list, NaN, string-boolean, and unknown-engine settings, plus the Run-key round trip. Saves are atomic (`os.replace`). |
+| P3 | The Settings window opens from the tray and on first run. A second launch also opens it (named event `select-to-tts-show-settings`). The startup checkbox in the installed app wrote `"<install dir>\SelectToTTS.exe"` to the Run key. |
+| P4 | Windows voice: 11.4 s at 1×, 7.2 s at 1.5×. Edge MP3: 9.1 s at 1× vs 6.1 s at 1.5×. Codex: 0.75× read verified, and Stop during slowed playback is immediate. |
+| P5 | `packaging\build.ps1` produces `dist\SelectToTTS-Setup.exe` (about 41 MB). Verified: silent install, cold start with no COM cache, an e2e read through the installed exe, upgrade over a running copy (killed, replaced, relaunched, Run value kept), and uninstall (directory, Run value, and Start menu entry removed). |
+| P6 | `.github/workflows/build.yml` and `docs/index.html` (Pages from `/docs`). |
+
+Changes from the plan, with evidence:
+- **Codex cannot read faster.** WebRTC delivers speech in real time, so client-side `atempo` above 1× starves the player. The run finished in 15.0 s at 1.5× vs 13.3 s at 1×.
+  - The v3 data channel rejects `session.audio.output.speed` (`unknown_parameter`).
+  - Prompting for pace was inconsistent (1.5× prompt: 3.8 s, then 6.0 s). At 2× it dropped the opening words twice.
+  - Decision: Codex uses `max_speed = 1.0`. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace. Slower speeds use client-side `atempo`.
+- Plan-review fixes (r1, REVISE):
+  - Playback waits for queued audio with a cancellable loop instead of a blocking 5 s drain.
+  - Trailing WebRTC silence is no longer queued behind slowed speech.
+  - Uninstall deletes the Run value unconditionally in `[Code]`.
+  - The startup task appears only on a fresh install, so upgrades keep the Settings choice.
+  - The app is killed before upgrade and uninstall.
+  - The app-owned COM cache and the UIA log in `%TEMP%` are deleted on uninstall. Settings and the log in `%APPDATA%` are kept, as documented.
+- The app log records the engine, duration, speed, and errors only. Library INFO output (which includes IP addresses) is filtered out.
+
 ## Definition of Done
 
 The plan is done when all of the following are observed on the user's machine (Windows 11 Pro 10.0.26200):

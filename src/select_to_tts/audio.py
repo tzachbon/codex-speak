@@ -3,7 +3,9 @@ import array
 import ctypes
 import threading
 import time
+from fractions import Fraction
 
+import av
 import sounddevice as sd
 
 
@@ -14,6 +16,37 @@ class NoAudioError(RuntimeError):
 def peak(pcm: bytes) -> int:
     a = array.array("h", pcm)
     return max(max(a), -min(a)) if a else 0
+
+
+class Stretcher:
+    """Plays mono 16-bit PCM faster or slower at the same pitch (ffmpeg atempo via PyAV)."""
+
+    def __init__(self, speed: float, rate: int = 24000):
+        self._rate, self._pts, self._graph = rate, 0, None
+        if speed != 1:
+            g = self._graph = av.filter.Graph()
+            src = g.add_abuffer(format="s16", sample_rate=rate, layout="mono",
+                                time_base=Fraction(1, rate))
+            tempo, sink = g.add("atempo", str(speed)), g.add("abuffersink")
+            src.link_to(tempo)
+            tempo.link_to(sink)
+            g.configure()
+
+    def __call__(self, pcm: bytes) -> bytes:
+        if not self._graph or not pcm:
+            return pcm
+        frame = av.AudioFrame(format="s16", layout="mono", samples=len(pcm) // 2)
+        frame.sample_rate, frame.time_base, frame.pts = self._rate, Fraction(1, self._rate), self._pts
+        frame.planes[0].update(pcm[: frame.samples * 2])
+        self._pts += frame.samples
+        self._graph.push(frame)
+        out = bytearray()
+        while True:
+            try:
+                f = self._graph.pull()
+            except (BlockingIOError, EOFError):
+                return bytes(out)
+            out += bytes(f.planes[0])[: f.samples * 2]
 
 
 class PcmPlayer:
@@ -35,10 +68,11 @@ class PcmPlayer:
         with self._lock:
             self._buf += pcm
 
-    def close(self, drain: bool = True) -> None:
-        deadline = time.monotonic() + 5
-        while drain and self._buf and time.monotonic() < deadline:
-            time.sleep(0.05)
+    @property
+    def pending(self) -> bool:
+        return bool(self._buf)
+
+    def close(self) -> None:
         with self._lock:
             self._buf.clear()
         self._stream.abort()

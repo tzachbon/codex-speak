@@ -1,32 +1,61 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="docs/icon.png" width="64" height="64" alt="">
 
-# select-to-tts
+# Select to TTS
 
-Select text in any Windows app and a small **▶ Auto ▾** button appears next to it. Press ▶ to hear the text read aloud. Press ■ to stop.
+Select text in any Windows app and a small **▶ Auto ⌄** button appears next to it. Press ▶ to hear the text read aloud. Press ■ to stop.
 
 Voices come from your existing **Codex / ChatGPT subscription** (Codex realtime voice, no OpenAI API key). If Codex is unavailable, the app falls back to Edge neural voices, then to the offline Windows voices.
 
-## Requirements
+![The popup above selected text](docs/popup.png)
 
-- Windows 11, Python 3.11, [uv](https://docs.astral.sh/uv/)
-- [Codex CLI](https://github.com/openai/codex) installed with npm and signed in with ChatGPT (`codex login`)
+## Install
 
-## Run
+Download **[SelectToTTS-Setup.exe](https://github.com/tzachbon/select-to-tts/releases/latest/download/SelectToTTS-Setup.exe)** and run it.
+- It installs for your user only (`%LOCALAPPDATA%\Programs\Select to TTS`) and needs no admin rights.
+- The installer isn't code-signed, so SmartScreen may warn you. Choose *More info*, then *Run anyway*.
+
+For the ChatGPT voice, install the [Codex CLI](https://github.com/openai/codex) with npm and sign in once with `codex login`. Without it, the app uses the Edge and Windows voices.
+
+Requirements: Windows 11, 64-bit.
+
+## Use
+
+1. Select text with the mouse (drag or double-click).
+2. Press ▶ on the button that appears. The language menu defaults to Auto.
+
+The app lives in the tray. Click the tray icon, or start the app again from the Start menu, to open **Settings**:
+
+![Settings](docs/settings.png)
+
+- **Start when I sign in to Windows**: adds or removes the `select-to-tts` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- **Speed**: 0.5× to 2×. Changes apply to the next read.
+  - Edge and Windows voices support the full range.
+  - Codex streams speech in real time, so it can only be slowed down. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace.
+- **Voice**: Auto (Codex, then Edge, then Windows), or one engine only. "Windows only" never sends text off the PC.
+- **Clipboard fallback**: for apps that hide their selection, such as VS Code, the app borrows Ctrl+C and then restores every clipboard format.
+
+Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is kept next to them in `select-to-tts.log`. It records the engine, timing, and errors, but never the text itself.
+
+## Uninstall
+
+Use *Settings > Apps > Select to TTS*. This removes the app, its sign-in entry, and its caches in `%TEMP%`. Your settings and log in `%APPDATA%\select-to-tts` are kept.
+
+## Run from source
 
 ```powershell
 uv sync
 uv run select-to-tts            # or start .venv\Scripts\select-to-tts.exe (no console window)
 ```
 
-A tray icon appears. Its menu has these options:
+## Build the installer
 
-- **Auto (Codex, then Edge, then Windows)**: the default.
-- **Codex only**, **Edge only**, or **Windows only (offline)**: "only" really means only. Windows only never sends text off the machine.
-- **Clipboard fallback**: lets the app borrow Ctrl+C for apps that hide their selection from UI Automation, such as VS Code. Every clipboard format is restored afterwards.
-- **Last engine**: shows which engine spoke most recently.
-- **Quit**
+Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
 
-To start the app at login, put a shortcut to `.venv\Scripts\select-to-tts.exe` in `shell:startup`.
+```powershell
+.\packaging\build.ps1           # PyInstaller app folder, then dist\SelectToTTS-Setup.exe
+```
+
+CI (`.github/workflows/build.yml`) runs the tests and builds the installer on every push. Pushing a `v*` tag publishes a release with the installer attached.
 
 ## How it works
 
@@ -35,8 +64,10 @@ To start the app at login, put a shortcut to `.venv\Scripts\select-to-tts.exe` i
 | Mouse hook. A drag or double-click means text may be selected | `trigger.py` |
 | Selected text via UI Automation, else a borrowed Ctrl+C with full clipboard restore. Password fields are never read | `selection.py`, `clipboard.py` |
 | Floating button that never steals focus, with the language menu | `popup.py` |
+| Settings window and stored settings | `settings_ui.py`, `settings.py` |
 | Codex realtime over `codex app-server`, using WebRTC v3 (the only transport that works without an API key) | `codex_rt.py` |
 | Edge and Windows fallbacks, plus the ordered chain | `engines.py` |
+| Speaker output and the slow-down time stretch (ffmpeg `atempo`) | `audio.py` |
 | Tray icon and wiring | `__main__.py` |
 
 Details, evidence, and the T1 feasibility results are in [PLAN.md](PLAN.md).

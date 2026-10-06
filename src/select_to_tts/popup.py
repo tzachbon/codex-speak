@@ -4,13 +4,31 @@ One cohesive widget, so it stays in one file even though it passes 80 lines.
 """
 import ctypes
 import tkinter as tk
+import tkinter.font as tkfont
 from ctypes import wintypes
 
 from . import lang
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
+DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
 IDLE_HIDE_MS = 4000
-BG, FG, ACCENT, BORDER = "#202124", "#e8eaed", "#4f8ef7", "#5f6368"
+# Windows 11 light flyout colors
+BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1b1b", "#005fb8", "#e0e0e0"
+PLAY, STOP, CHEVRON = "", "", ""
+
+
+def fonts(root):
+    """Windows 11 fonts, with the Windows 10 equivalents as fallback."""
+    have = set(tkfont.families(root))
+    icons = "Segoe Fluent Icons" if "Segoe Fluent Icons" in have else "Segoe MDL2 Assets"
+    text = "Segoe UI Variable Text" if "Segoe UI Variable Text" in have else "Segoe UI"
+    return icons, text
+
+
+def round_corners(hwnd):
+    corner = ctypes.c_int(DWMWCP_ROUND)
+    ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                                               ctypes.byref(corner), ctypes.sizeof(corner))
 
 
 class _MonitorInfo(ctypes.Structure):
@@ -28,24 +46,51 @@ def work_area(x, y) -> wintypes.RECT:
     return info.work
 
 
+class _FlatButton(tk.Frame):
+    """A borderless button made of labels, with Windows 11 hover and pressed fills."""
+
+    def __init__(self, master, command, *labels):
+        super().__init__(master, bg=BG, cursor="hand2")
+        self.command, self.parts = command, [self]
+        for text, font, fg in labels:
+            lbl = tk.Label(self, text=text, font=font, fg=fg, bg=BG, padx=0, pady=0)
+            lbl.pack(side="left", padx=("3p" if len(self.parts) == 1 else 0, "3p"), pady="3p")
+            self.parts.append(lbl)
+        for w in self.parts:
+            w.bind("<Enter>", lambda _e: self._fill(HOVER))
+            w.bind("<Leave>", lambda _e: self._fill(BG))
+            w.bind("<ButtonPress-1>", lambda _e: self._fill(PRESSED))
+            w.bind("<ButtonRelease-1>", self._release)
+
+    def _fill(self, color):
+        for w in self.parts:
+            w["bg"] = color
+
+    def _release(self, e):
+        self._fill(HOVER)
+        if self.winfo_containing(e.x_root, e.y_root) in self.parts:
+            self.command()
+
+
 class Popup:
     def __init__(self, root, on_play, on_stop, on_lang):
         self.on_play, self.on_stop, self.on_lang = on_play, on_stop, on_lang
         self.text, self.playing, self.menu_open, self._hide_job = "", False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
-        w = self.win = tk.Toplevel(root, bg=BG, highlightthickness=1, highlightbackground=BORDER)
+        icons, text = fonts(root)
+        w = self.win = tk.Toplevel(root, bg=BG)
         w.overrideredirect(True)
         w.attributes("-topmost", True)
-        style = dict(bg=BG, fg=FG, activebackground="#3c4043", activeforeground=FG, bd=0,
-                     font=("Segoe UI", 11), cursor="hand2")
-        self.btn = tk.Button(w, text="▶", width=2, command=self._toggle, **{**style, "fg": ACCENT})
-        self.btn.pack(side="left", padx=(4, 0), pady=2)
-        self.menu_btn = tk.Menubutton(w, text="Auto ▾", direction="above", **style)
-        menu = tk.Menu(self.menu_btn, tearoff=0, postcommand=self._menu_posted)
+        self.btn = _FlatButton(w, self._toggle, (PLAY, (icons, 11), ACCENT))
+        self.btn.pack(side="left", padx=("2p", 0), pady="2p")
+        tk.Frame(w, bg=DIVIDER, width=1).pack(side="left", fill="y", pady="5p", padx="2p")
+        self.lang_btn = _FlatButton(w, self._post_menu, ("Auto", (text, 10), FG),
+                                    (CHEVRON, (icons, 7), FG))
+        self.lang_btn.pack(side="left", padx=(0, "2p"), pady="2p")
+        self.menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         for tag, label in [("", "Auto")] + [(t, v[0]) for t, v in lang.LANGS.items()]:
-            menu.add_radiobutton(label=label, value=tag, variable=self.lang, command=self._lang_changed)
-        self.menu_btn["menu"] = menu
-        self.menu_btn.pack(side="left", padx=(0, 6), pady=2)
+            self.menu.add_radiobutton(label=label, value=tag, variable=self.lang,
+                                      command=self._lang_changed)
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self._schedule_hide())
         w.withdraw()
@@ -54,11 +99,12 @@ class Popup:
         ex = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE,
                                             ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST)
+        round_corners(hwnd)
 
     def show(self, text, x, y):
         self.text, self.playing = text, False
         self.lang.set("")
-        self.menu_btn["text"], self.btn["text"] = "Auto ▾", "▶"
+        self.lang_btn.parts[1]["text"], self.btn.parts[1]["text"] = "Auto", PLAY
         w = self.win
         w.update_idletasks()
         area, h = work_area(x, y), w.winfo_reqheight()
@@ -83,7 +129,7 @@ class Popup:
 
     def set_playing(self, playing):
         self.playing = playing
-        self.btn["text"] = "■" if playing else "▶"
+        self.btn.parts[1]["text"] = STOP if playing else PLAY
         if not playing:
             self._schedule_hide()
 
@@ -96,9 +142,14 @@ class Popup:
             self.set_playing(True)
             self.on_play(self.text, self.lang.get() or None)
 
+    def _post_menu(self):
+        b = self.lang_btn
+        self.menu.update_idletasks()
+        self.menu.post(b.winfo_rootx(), b.winfo_rooty() - self.menu.winfo_reqheight())  # upward
+
     def _lang_changed(self):
         tag = self.lang.get()
-        self.menu_btn["text"] = f"{lang.name(tag) or 'Auto'} ▾"
+        self.lang_btn.parts[1]["text"] = lang.name(tag) or "Auto"
         self.on_lang(tag or None)
 
     def _menu_posted(self):

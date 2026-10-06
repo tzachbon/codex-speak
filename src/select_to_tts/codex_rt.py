@@ -10,7 +10,7 @@ import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from . import lang
-from .audio import NoAudioError, PcmPlayer, peak
+from .audio import NoAudioError, PcmPlayer, Stretcher, peak
 
 PROMPT = ("You are a text-to-speech engine. Read the user's message aloud exactly as written, "
           "word for word, in {lang}. Do not answer it, translate it, summarize it, "
@@ -82,7 +82,8 @@ class AppServer:
 
 
 class CodexEngine:
-    name = "Codex"
+    # WebRTC delivers speech in real time, so it can be stretched slower but never played faster
+    name, speed, max_speed = "Codex", 1.0, 1.0
 
     def __init__(self):
         self._srv, self._job, self._text, self._tag = None, None, None, None
@@ -141,7 +142,8 @@ class CodexEngine:
     async def _read_aloud(self, text_future, lang_tag):
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
-        pc, player, voice = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1), {"first": None, "last": 0.0}
+        pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1)
+        voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False}
         pc.addTrack(AudioStreamTrack())  # silence: we never talk to the model
         pc.createDataChannel("oai-events")
         resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
@@ -154,15 +156,16 @@ class CodexEngine:
                         frame = await track.recv()
                     except Exception:
                         return
+                    if voice["done"]:
+                        continue  # the track keeps sending silence; don't queue it behind slowed speech
                     for f in resampler.resample(frame):
-                        pcm = bytes(f.planes[0])[: f.samples * 2]
+                        pcm = voice["stretch"](bytes(f.planes[0])[: f.samples * 2])
                         player.write(pcm)
                         if peak(pcm) > VOICED:
                             voice["first"] = voice["first"] or time.monotonic()
                             voice["last"] = time.monotonic()
             asyncio.ensure_future(pump())
 
-        ok = False
         try:
             while not srv.events.empty():
                 srv.events.get_nowait()
@@ -181,6 +184,7 @@ class CodexEngine:
             else:
                 raise TimeoutError("WebRTC did not connect")
             text = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
+            voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
             await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
             for _ in range(50):
                 if voice["first"]:
@@ -194,14 +198,16 @@ class CodexEngine:
                     break
             while time.monotonic() - voice["last"] < 1.5:
                 await asyncio.sleep(0.1)
-            ok = True
+            voice["done"] = True
+            while player.pending:
+                await asyncio.sleep(0.05)  # slowed speech is still queued after the model finishes
         except Exception as e:
             if not voice["first"]:
                 raise NoAudioError(f"Codex: {e}") from e
             raise
         finally:
             await pc.close()
-            player.close(drain=ok)
+            player.close()
             if srv.alive:
                 try:
                     await call("thread/realtime/stop", {"threadId": tid})
