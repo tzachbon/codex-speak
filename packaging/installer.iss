@@ -41,7 +41,7 @@ Type: filesandordirs; Name: "{app}\_internal"
 [UninstallDelete]
 ; App-owned caches outside {app}. Settings and the log in %APPDATA%\select-to-tts are kept.
 Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
-Type: files; Name: "{%TEMP}\select-to-tts-uia.log"
+Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

@@ -2,7 +2,7 @@
 
 # Select to TTS
 
-Select text in any Windows app and a small **▶ Auto ⌄** button appears next to it. Press ▶ to hear the text read aloud. Press ■ to stop.
+Select text in any Windows app and a small **▶ Auto ⌄ 1× ⌄** bar appears next to it. Press ▶ to hear the text read aloud. While it reads, ⏸ pauses, ▶ continues, and ■ stops.
 
 Voices come from your existing **Codex / ChatGPT subscription** (Codex realtime voice, no OpenAI API key). If Codex is unavailable, the app falls back to Edge neural voices, then to the offline Windows voices.
 
@@ -21,7 +21,9 @@ Requirements: Windows 11, 64-bit.
 ## Use
 
 1. Select text with the mouse (drag or double-click).
-2. Press ▶ on the button that appears. The language menu defaults to Auto.
+2. Press ▶ on the bar that appears. The language menu defaults to Auto.
+3. Pick a reading speed from the speed menu on the bar. It is saved and shared with Settings.
+4. ⏸ pauses and ▶ continues from the same spot. ■ stops. Selecting new text while paused replaces the paused read.
 
 The app lives in the tray. Click the tray icon, or start the app again from the Start menu, to open **Settings**:
 
@@ -86,3 +88,8 @@ uv run python -m select_to_tts.codex_rt "שלום עולם" he-IL     # hear the
 - Each popup shown pre-starts a short Codex voice session so ▶ answers in about 1 s.
 - Choosing a language from the menu moves keyboard focus away from the source app. The text is already captured.
 - Only mouse selections trigger the button. Keyboard selections (Shift+arrows) don't.
+- Pausing the Windows voice takes effect after about a second, because SAPI keeps playing audio it has already buffered. Codex and Edge pause at once.
+
+## License
+
+[MIT](LICENSE)

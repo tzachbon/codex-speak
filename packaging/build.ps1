@@ -1,5 +1,6 @@
 # Builds dist\SelectToTTS-Setup.exe: PyInstaller app folder, then the Inno Setup 6 installer.
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true  # a failing uv/pyinstaller/iscc stops the build
 Set-Location (Split-Path $PSScriptRoot)
 uv sync --locked
 $version = uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"

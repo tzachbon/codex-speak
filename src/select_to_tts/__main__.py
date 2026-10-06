@@ -56,7 +56,9 @@ class App:
             self.events.put(("settings",))  # show new users where the app lives
         for key, value in self.cfg.items():
             self.apply(key, value)
-        self.popup = Popup(self.root, self.play, self.chain.stop, self.chain.prepare)
+        self.popup = Popup(self.root, self.cfg["speed"], on_play=self.play, on_stop=self.chain.stop,
+                           on_pause=self.chain.pause, on_resume=self.chain.resume,
+                           on_lang=self.chain.prepare, on_speed=self._popup_speed)
         self.trigger = SelectionTrigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
         self.icon = pystray.Icon("select-to-tts", icon_image(), "Select to TTS", self._menu())
 
@@ -75,16 +77,29 @@ class App:
             for e in self.chain.engines:
                 e.speed = value
 
-    def change(self, key, value):
+    def change(self, key, value, save=True):
         self.cfg[key] = value
         self.apply(key, value)
+        if key == "speed":  # keep the popup and an open Settings window showing the same speed
+            self.popup.set_speed(value)
+            if self.settings_win and self.settings_win.alive:
+                self.settings_win.set_speed(value)
+        if not save:
+            return
         try:
             settings.save(self.cfg)
         except OSError as e:
             self.icon.notify(f"Could not save settings: {e}", "Select to TTS")
 
+    def _popup_speed(self, speed):
+        self.change("speed", speed)
+        if not self.popup.playing:
+            self.chain.prepare(self.popup.lang.get() or None)  # the first engine may differ now
+
     def test_voice(self, text):
         self.popup.set_playing(False)  # a popup read in progress is replaced by the test
+        if self.popup.visible:
+            self.popup.hide()
         self.chain.speak(text, "en-US", self._logged(text, lambda err: err and self.events.put(("done", err))))
 
     def _selected(self, x, y):  # mouse-hook thread: hand off, never block
@@ -106,9 +121,10 @@ class App:
     def _logged(self, text, on_done):
         t0 = time.monotonic()
 
-        def done(err):  # the text itself is never logged
-            log.info("read %d chars with %s in %.1fs at %sx, error: %r", len(text), self.chain.last,
-                     time.monotonic() - t0, self.cfg["speed"], err)
+        def done(err):  # the text itself is never logged, even inside an error message
+            error = f"{type(err).__name__}: {str(err).replace(text, '<text>')}"[:300] if err else None
+            log.info("read %d chars with %s in %.1fs at %sx, error: %s", len(text), self.chain.last,
+                     time.monotonic() - t0, self.cfg["speed"], error)
             on_done(err)
         return done
 
@@ -128,7 +144,10 @@ class App:
         p = self.popup
         if kind == "show":
             text, x, y = args
-            if not (p.contains(x, y) or p.playing):  # double-clicking ▶ is not a new selection
+            # double-clicking the popup is not a new selection, and a running read isn't interrupted
+            if not (p.contains(x, y) or (p.playing and not p.paused)):
+                if p.paused:
+                    self.chain.stop()  # a new selection replaces the paused read
                 p.show(text, x, y)
                 self.chain.prepare(None)  # warm up Codex while the mouse travels to ▶
         elif kind == "press":
@@ -156,8 +175,7 @@ class App:
             self.root.destroy()
 
     def _wait_show_settings(self):
-        ev = k32.CreateEventW(None, False, False, SHOW_SETTINGS)
-        while k32.WaitForSingleObject(ev, 0xFFFFFFFF) == 0:
+        while k32.WaitForSingleObject(self.show_event, 0xFFFFFFFF) == 0:
             self.events.put(("settings",))
 
     def run(self):
@@ -171,11 +189,15 @@ class App:
 def main():
     mutex = k32.CreateMutexW(None, False, "select-to-tts-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
-        ev = k32.OpenEventW(0x0002, False, SHOW_SETTINGS)  # EVENT_MODIFY_STATE
-        if ev:
-            k32.SetEvent(ev)
-            k32.CloseHandle(ev)
+        for _ in range(50):  # the running copy may still be starting up
+            ev = k32.OpenEventW(0x0002, False, SHOW_SETTINGS)  # EVENT_MODIFY_STATE
+            if ev:
+                k32.SetEvent(ev)
+                k32.CloseHandle(ev)
+                break
+            time.sleep(0.1)
         return
+    show_event = k32.CreateEventW(None, False, False, SHOW_SETTINGS)  # before the slow start-up
     os.makedirs(settings.DIR, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "select-to-tts.log"),
                                                    maxBytes=256_000, backupCount=1, encoding="utf-8")
@@ -185,7 +207,9 @@ def main():
     ctypes.windll.shcore.SetProcessDpiAwareness(2)  # tk and the mouse hook agree on pixels
     log.info("start, launch command %s", settings.launch_command())
     try:
-        App().run()
+        app = App()
+        app.show_event = show_event
+        app.run()
     except Exception:
         log.exception("crashed")
         raise

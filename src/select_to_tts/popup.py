@@ -7,14 +7,14 @@ import tkinter as tk
 import tkinter.font as tkfont
 from ctypes import wintypes
 
-from . import lang
+from . import lang, settings
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
 DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
 IDLE_HIDE_MS = 4000
 # Windows 11 light flyout colors
 BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1b1b", "#005fb8", "#e0e0e0"
-PLAY, STOP, CHEVRON = "", "", ""
+PLAY, PAUSE, STOP, CHEVRON = "\ue768", "\ue769", "\ue71a", "\ue70d"
 
 
 def fonts(root):
@@ -73,24 +73,36 @@ class _FlatButton(tk.Frame):
 
 
 class Popup:
-    def __init__(self, root, on_play, on_stop, on_lang):
-        self.on_play, self.on_stop, self.on_lang = on_play, on_stop, on_lang
-        self.text, self.playing, self.menu_open, self._hide_job = "", False, False, None
+    def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed):
+        self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
+        self.on_lang, self.on_speed = on_lang, on_speed
+        self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
+        self.speed = tk.DoubleVar(master=root, value=speed)
         icons, text = fonts(root)
         w = self.win = tk.Toplevel(root, bg=BG)
         w.overrideredirect(True)
         w.attributes("-topmost", True)
         self.btn = _FlatButton(w, self._toggle, (PLAY, (icons, 11), ACCENT))
         self.btn.pack(side="left", padx=("2p", 0), pady="2p")
-        tk.Frame(w, bg=DIVIDER, width=1).pack(side="left", fill="y", pady="5p", padx="2p")
-        self.lang_btn = _FlatButton(w, self._post_menu, ("Auto", (text, 10), FG),
+        self.stop_btn = _FlatButton(w, self._stop, (STOP, (icons, 11), FG))  # packed while reading
+        self.divider = tk.Frame(w, bg=DIVIDER, width=1)
+        self.divider.pack(side="left", fill="y", pady="5p", padx="2p")
+        self.lang_btn = _FlatButton(w, lambda: self._post_menu(self.lang_btn, self.menu),
+                                    ("Auto", (text, 10), FG),
                                     (CHEVRON, (icons, 7), FG))
-        self.lang_btn.pack(side="left", padx=(0, "2p"), pady="2p")
+        self.lang_btn.pack(side="left", padx=0, pady="2p")
+        self.speed_btn = _FlatButton(w, lambda: self._post_menu(self.speed_btn, self.speed_menu),
+                                     (settings.speed_label(speed), (text, 10), FG), (CHEVRON, (icons, 7), FG))
+        self.speed_btn.pack(side="left", padx=(0, "2p"), pady="2p")
         self.menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         for tag, label in [("", "Auto")] + [(t, v[0]) for t, v in lang.LANGS.items()]:
             self.menu.add_radiobutton(label=label, value=tag, variable=self.lang,
                                       command=self._lang_changed)
+        self.speed_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
+        for preset in settings.SPEED_PRESETS:
+            self.speed_menu.add_radiobutton(label=settings.speed_label(preset), value=preset,
+                                            variable=self.speed, command=self._speed_changed)
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self._schedule_hide())
         w.withdraw()
@@ -102,9 +114,10 @@ class Popup:
         round_corners(hwnd)
 
     def show(self, text, x, y):
-        self.text, self.playing = text, False
+        self.text = text
+        self.set_playing(False)
         self.lang.set("")
-        self.lang_btn.parts[1]["text"], self.btn.parts[1]["text"] = "Auto", PLAY
+        self.lang_btn.parts[1]["text"] = "Auto"
         w = self.win
         w.update_idletasks()
         area, h = work_area(x, y), w.winfo_reqheight()
@@ -127,25 +140,42 @@ class Popup:
         return (self.visible and w.winfo_rootx() <= x < w.winfo_rootx() + w.winfo_width()
                 and w.winfo_rooty() <= y < w.winfo_rooty() + w.winfo_height())
 
-    def set_playing(self, playing):
-        self.playing = playing
-        self.btn.parts[1]["text"] = STOP if playing else PLAY
-        if not playing:
+    def set_playing(self, playing, paused=False):
+        self.playing, self.paused = playing, playing and paused
+        self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
+        if playing:
+            self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.divider)
+        else:
+            self.stop_btn.pack_forget()
             self._schedule_hide()
 
     def _toggle(self):
-        if self.playing:
-            self.on_stop()
-            self.set_playing(False)
-        else:
+        if not self.playing:
             self._cancel_hide()
             self.set_playing(True)
             self.on_play(self.text, self.lang.get() or None)
+        elif self.paused:
+            self.on_resume()
+            self.set_playing(True)
+        else:
+            self.on_pause()
+            self.set_playing(True, paused=True)
 
-    def _post_menu(self):
-        b = self.lang_btn
-        self.menu.update_idletasks()
-        self.menu.post(b.winfo_rootx(), b.winfo_rooty() - self.menu.winfo_reqheight())  # upward
+    def _stop(self):
+        self.on_stop()
+        self.set_playing(False)
+
+    def _post_menu(self, button, menu):
+        menu.update_idletasks()
+        menu.post(button.winfo_rootx(), button.winfo_rooty() - menu.winfo_reqheight())  # upward
+
+    def set_speed(self, speed):
+        self.speed.set(speed)
+        self.speed_btn.parts[1]["text"] = settings.speed_label(speed)
+
+    def _speed_changed(self):
+        self.set_speed(self.speed.get())
+        self.on_speed(self.speed.get())
 
     def _lang_changed(self):
         tag = self.lang.get()
@@ -158,7 +188,7 @@ class Popup:
 
     def _schedule_hide(self):
         self._cancel_hide()
-        if not (self.playing or self.menu_open):
+        if not (self.playing or self.menu_open) and self.visible:  # a hidden popup must not stop reads
             self._hide_job = self.win.after(IDLE_HIDE_MS, self.hide)
 
     def _cancel_hide(self):

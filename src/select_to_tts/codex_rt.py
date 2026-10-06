@@ -87,6 +87,7 @@ class CodexEngine:
 
     def __init__(self):
         self._srv, self._job, self._text, self._tag = None, None, None, None
+        self.paused = threading.Event()
         self._busy = asyncio.Lock()  # a cancelled read must finish cleanup before the next starts
         self._loop = asyncio.new_event_loop()
         threading.Thread(target=self._loop.run_forever, daemon=True).start()
@@ -101,6 +102,7 @@ class CodexEngine:
         waiting = self._job and not self._job.done() and not self._text.done()
         if not (waiting and self._tag == lang_tag):
             self.prepare(lang_tag)
+        self.paused.clear()
         self._text.set_result(text)
         self._job.add_done_callback(
             lambda f: on_done(None if f.cancelled() else f.exception()))
@@ -108,6 +110,12 @@ class CodexEngine:
     def stop(self):
         if self._job and not self._job.done():
             self._job.cancel()
+
+    def pause(self):
+        self.paused.set()  # the model keeps streaming into the queue, which plays on resume
+
+    def resume(self):
+        self.paused.clear()
 
     def close(self):
         self.stop()
@@ -142,7 +150,7 @@ class CodexEngine:
     async def _read_aloud(self, text_future, lang_tag):
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
-        pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1)
+        pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1, self.paused)
         voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False}
         pc.addTrack(AudioStreamTrack())  # silence: we never talk to the model
         pc.createDataChannel("oai-events")
@@ -199,15 +207,16 @@ class CodexEngine:
             while time.monotonic() - voice["last"] < 1.5:
                 await asyncio.sleep(0.1)
             voice["done"] = True
-            while player.pending:
+            while player.pending and player.active:
                 await asyncio.sleep(0.05)  # slowed speech is still queued after the model finishes
         except Exception as e:
             if not voice["first"]:
                 raise NoAudioError(f"Codex: {e}") from e
             raise
         finally:
+            voice["done"] = True
+            player.close()  # silence first: the WebRTC teardown below can be slow
             await pc.close()
-            player.close()
             if srv.alive:
                 try:
                     await call("thread/realtime/stop", {"threadId": tid})

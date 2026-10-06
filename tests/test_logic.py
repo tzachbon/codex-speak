@@ -2,12 +2,13 @@ import array
 import math
 import os
 import tempfile
+import threading
 import unittest
 
 from pynput.mouse import Button
 
 from select_to_tts import clipboard, lang, settings
-from select_to_tts.audio import NoAudioError, Stretcher
+from select_to_tts.audio import NoAudioError, PcmPlayer, Stretcher
 from select_to_tts.engines import Chain, sapi_rate
 from select_to_tts.trigger import SelectionTrigger
 
@@ -44,6 +45,12 @@ class Fake:
     def stop(self):
         pass
 
+    def pause(self):
+        self.calls += 100
+
+    def resume(self):
+        self.calls += 1000
+
 
 class ChainTest(unittest.TestCase):
     def run_chain(self, *engines, only=None):
@@ -72,6 +79,13 @@ class ChainTest(unittest.TestCase):
         chain, result = self.run_chain(codex, edge, only="Codex")  # explicit choice still wins
         self.assertEqual(codex.calls, 1)
 
+    def test_pause_and_resume_reach_the_engine_that_spoke(self):
+        a, b = Fake("Codex", NoAudioError("x")), Fake("Edge")
+        chain, _ = self.run_chain(a, b)
+        chain.pause()
+        chain.resume()
+        self.assertEqual((a.calls, b.calls), (1, 1101))
+
     def test_only_never_touches_other_engines(self):
         a, b = Fake("Codex"), Fake("Windows", NoAudioError("x"))
         chain, result = self.run_chain(a, b, only="Windows")
@@ -91,6 +105,20 @@ class Trigger(unittest.TestCase):
         self.assertEqual(hits, [(100, 0), (500, 500)])
 
 
+class Player(unittest.TestCase):
+    def test_paused_player_plays_silence_and_keeps_the_queue(self):
+        paused = threading.Event()
+        p = PcmPlayer.__new__(PcmPlayer)  # no sound device: drive the callback directly
+        p._buf, p._lock, p._width, p._paused = bytearray(b"\x01\x02" * 8), threading.Lock(), 2, paused
+        out = bytearray(8)
+        paused.set()
+        p._fill(out, 4, None, None)
+        self.assertEqual((bytes(out), len(p._buf)), (bytes(8), 16))
+        paused.clear()
+        p._fill(out, 4, None, None)
+        self.assertEqual((bytes(out), len(p._buf)), (b"\x01\x02" * 4, 8))
+
+
 class Settings(unittest.TestCase):
     def test_load_defaults_clamps_and_survives_corruption(self):
         with tempfile.TemporaryDirectory() as d:
@@ -99,7 +127,7 @@ class Settings(unittest.TestCase):
             settings.save({"engine": "Edge", "speed": 9, "clipboard_fallback": False}, path)
             self.assertEqual(settings.load(path), {"engine": "Edge", "speed": 2.0, "clipboard_fallback": False})
             for junk in ("{not json", "[1, 2]", "null", '{"engine": "Bogus", "speed": "fast"}',
-                         '{"speed": NaN, "clipboard_fallback": "false"}', '{"speed": true, "engine": 3}'):
+                         '{"speed": NaN, "clipboard_fallback": "false"}', '{"speed": true, "engine": 3}', '{"speed": 1' + '0' * 400 + '}'):
                 with open(path, "w") as f:
                     f.write(junk)
                 self.assertEqual(settings.load(path), settings.DEFAULTS)

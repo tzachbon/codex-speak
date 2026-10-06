@@ -3,12 +3,15 @@ import json
 import math
 import os
 import sys
+import tempfile
 import winreg
 
 DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "select-to-tts")
 PATH = os.path.join(DIR, "settings.json")
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "select-to-tts")  # uninstall deletes it
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True}
 SPEEDS = (0.5, 2.0)
+SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "select-to-tts"  # the installer's uninstall step deletes this same value
 
@@ -23,7 +26,10 @@ def load(path=PATH) -> dict:
     if s["engine"] not in (None, "Codex", "Edge", "Windows"):
         s["engine"] = None
     speed = s["speed"]
-    ok = isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed)
+    try:
+        ok = isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed)
+    except OverflowError:  # an integer too large for a float
+        ok = False
     s["speed"] = min(max(float(speed), SPEEDS[0]), SPEEDS[1]) if ok else DEFAULTS["speed"]
     if not isinstance(s["clipboard_fallback"], bool):
         s["clipboard_fallback"] = DEFAULTS["clipboard_fallback"]
@@ -36,6 +42,10 @@ def save(s: dict, path=PATH) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(s, f, indent=2)
     os.replace(tmp, path)  # never leaves a half-written file behind
+
+
+def speed_label(speed: float) -> str:
+    return f"{speed:g}×"
 
 
 def launch_command() -> str:

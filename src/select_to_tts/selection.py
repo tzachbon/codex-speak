@@ -1,18 +1,18 @@
 """Reads the user's current text selection in whatever app has focus."""
 import ctypes
 import os
-import tempfile
 import time
 
 import uiautomation as uia
 from pynput.keyboard import Controller, Key
 
-from . import clipboard
+from . import clipboard, settings
 
 MAX_CHARS = 4000
 TERMINALS = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS"}  # Ctrl+C means "interrupt" there
 PASSWORD = object()
-uia.Logger.SetLogFile(os.path.join(tempfile.gettempdir(), "select-to-tts-uia.log"))  # default: cwd
+os.makedirs(settings.TEMP_DIR, exist_ok=True)
+uia.Logger.SetLogFile(os.path.join(settings.TEMP_DIR, "uia.log"))  # default: cwd
 
 
 def _via_uia():

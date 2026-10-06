@@ -5,6 +5,7 @@ description = "Select text anywhere on Windows and hear it read aloud"
 authors = [
     { name = "tzachbon", email = "tzachbonfil@gmail.com" }
 ]
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "aiortc>=1.15.0",

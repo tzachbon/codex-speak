@@ -50,14 +50,18 @@ class Stretcher:
 
 
 class PcmPlayer:
-    def __init__(self, rate: int = 24000, channels: int = 1):
+    def __init__(self, rate: int = 24000, channels: int = 1, paused: threading.Event | None = None):
         self._buf, self._lock, self._width = bytearray(), threading.Lock(), 2 * channels
+        self._paused = paused or threading.Event()  # set: play silence and keep the queue
         self._stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
                                           callback=self._fill)
         self._stream.start()
 
     def _fill(self, out, frames, _time, _status):
         n = frames * self._width
+        if self._paused.is_set():
+            out[:] = bytes(n)
+            return
         with self._lock:
             chunk = bytes(self._buf[:n])
             del self._buf[:n]
@@ -71,6 +75,10 @@ class PcmPlayer:
     @property
     def pending(self) -> bool:
         return bool(self._buf)
+
+    @property
+    def active(self) -> bool:
+        return self._stream.active
 
     def close(self) -> None:
         with self._lock:
@@ -87,13 +95,19 @@ def _mci(cmd: str) -> str:
     return out.value
 
 
-def play_mp3(path: str, stop: threading.Event) -> None:
+def play_mp3(path: str, stop: threading.Event, paused: threading.Event) -> None:
     """Blocks until the file finishes or `stop` is set. All MCI calls stay on this thread."""
     alias = f"tts{threading.get_ident()}"
     _mci(f'open "{path}" type mpegvideo alias {alias}')
     try:
         _mci(f"play {alias}")
-        while not stop.wait(0.05) and _mci(f"status {alias} mode") == "playing":
-            pass
+        while not stop.wait(0.05):
+            mode = _mci(f"status {alias} mode")
+            if paused.is_set() and mode == "playing":
+                _mci(f"pause {alias}")
+            elif not paused.is_set() and mode == "paused":
+                _mci(f"play {alias}")  # continues from the paused position
+            elif mode not in ("playing", "paused"):
+                break
     finally:
         _mci(f"close {alias}")

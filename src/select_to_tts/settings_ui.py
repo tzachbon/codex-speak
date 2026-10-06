@@ -165,12 +165,19 @@ class SettingsWindow:
             messagebox.showerror("Select to TTS", f"Could not change sign-in startup: {e}", parent=self.win)
 
     def _show_speed(self):
-        self.speed_lbl["text"] = f"{self.speed.get():.2f}×".replace(".00×", "×")
+        self.speed_lbl["text"] = settings.speed_label(self.speed.get())
+
+    def set_speed(self, speed):
+        """Mirrors a speed picked in the popup, without saving it again."""
+        self.speed.set(speed)
+        self.cfg["speed"] = speed
+        self._show_speed()
 
     def _speed_changed(self, _value):
         self.speed.set(round(self.speed.get() * 20) / 20)  # 0.05 steps
         self._show_speed()
         self.cfg["speed"] = self.speed.get()
+        self.on_change("speed", self.cfg["speed"], False)  # the next read uses it at once
         if self._save_job:
             self.win.after_cancel(self._save_job)
         self._save_job = self.win.after(400, self._save_speed)  # don't save on every pixel of a drag

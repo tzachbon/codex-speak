@@ -9,7 +9,7 @@ import comtypes
 import comtypes.client
 import edge_tts
 
-from . import lang
+from . import lang, settings
 from .audio import NoAudioError, play_mp3
 
 ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebrew Asaf lives only here
@@ -20,10 +20,11 @@ class _Threaded:
     speed = 1.0
 
     def __init__(self):
-        self._stop, self._busy = threading.Event(), threading.Lock()
+        self._stop, self._busy, self.paused = threading.Event(), threading.Lock(), threading.Event()
 
     def speak(self, text, lang_tag, on_done):
         self.stop()
+        self.paused.clear()
         self._stop = stop = threading.Event()
 
         def work():
@@ -40,6 +41,12 @@ class _Threaded:
     def stop(self):
         self._stop.set()
 
+    def pause(self):
+        self.paused.set()
+
+    def resume(self):
+        self.paused.clear()
+
     def close(self):
         self.stop()
 
@@ -49,7 +56,8 @@ class EdgeEngine(_Threaded):
 
     def _run(self, text, tag, stop):
         voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
-        fd, path = tempfile.mkstemp(suffix=".mp3")
+        os.makedirs(settings.TEMP_DIR, exist_ok=True)
+        fd, path = tempfile.mkstemp(suffix=".mp3", dir=settings.TEMP_DIR)
         os.close(fd)
         try:
             try:
@@ -58,7 +66,7 @@ class EdgeEngine(_Threaded):
             except Exception as e:
                 raise NoAudioError(f"Edge: {e}") from e
             # ponytail: buffers the whole MP3 before playing, stream it if long selections lag
-            play_mp3(path, stop)
+            play_mp3(path, stop, self.paused)
         finally:
             os.remove(path)
 
@@ -85,10 +93,16 @@ class SapiEngine(_Threaded):
         voice.Voice = match[0]
         voice.Rate = sapi_rate(self.speed)
         voice.Speak(text, 1)  # SVSFlagsAsync
+        held = False
         while not voice.WaitUntilDone(50):
             if stop.is_set():
+                if held:
+                    voice.Resume()  # a paused voice would not purge
                 voice.Speak("", 3)  # async | purge: silence now
                 return
+            if self.paused.is_set() != held:  # COM calls stay on this thread
+                held = self.paused.is_set()
+                voice.Pause() if held else voice.Resume()
 
 
 class Chain:
@@ -135,6 +149,14 @@ class Chain:
         self._gen += 1
         for e in self.engines:
             e.stop()
+
+    def pause(self):
+        if self._active:
+            self._active.pause()
+
+    def resume(self):
+        if self._active:
+            self._active.resume()
 
     def close(self):
         for e in self.engines:
