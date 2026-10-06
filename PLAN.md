@@ -8,6 +8,27 @@ Audio comes from the user's existing Codex (ChatGPT) subscription through the Co
 
 Why it matters: the user wants high-quality, multi-language read-aloud everywhere on Windows, paid for by a subscription they already have, without a hotkey.
 
+## Status (2026-10-06): implemented, T0 to T7 done
+
+| DoD item | Result |
+| --- | --- |
+| 1 Trigger | Popup 0.09 to 0.16 s after a drag in Notepad or a double-click in Edge. VS Code is read through the clipboard fallback (47 ms). Password field returns nothing. |
+| 2 Play/Stop | Stop silences in 0.05 to 0.06 s. Play during a read replaces it. |
+| 3 Language | Auto detects he/en. Picking Hebrew from the menu passes `he-IL` to the engine. |
+| 4 Engine | Codex on the ChatGPT login. Fallbacks verified: Codex missing goes to Edge, and Edge offline goes to Windows. |
+| 5 Fidelity | T1: 12/12 verbatim. Auto mode: 3 of 4 runs verbatim, 1 truncated (known limitation). |
+| 6 Clipboard | Byte-identical restore verified with an HTML clipboard and with an image clipboard. |
+| 7 Tests | `uv run python -m unittest discover -s tests` passes (6 tests). |
+
+Changes made during implementation:
+- The popup sits above the cursor, because Windows 11's own text-action bar appears below selections.
+- The language menu opens upward for the same reason.
+- `Engine only` replaces `Prefer engine`, so `Windows only` is truly offline.
+- The clipboard guard became a full snapshot and restore of all byte-copyable formats. Browsers add an HTML format, so a text-only guard would rarely allow the fallback.
+- An empty UIA selection also tries the fallback, because VS Code reports "" while text is selected.
+- Codex pre-warm (`prepare`) runs on popup show. First audio after ▶ is 0.9 to 1.2 s.
+- Esc-to-hide was dropped. The popup never has keyboard focus, so outside-click and the 4 s idle timer cover it.
+
 ## Definition of Done
 
 The plan is done when all of the following are observed on the user's machine (Windows 11 Pro 10.0.26200):

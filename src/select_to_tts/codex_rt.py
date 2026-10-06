@@ -4,7 +4,7 @@ Drives `codex app-server` (experimental thread/realtime API) over stdio JSON-RPC
 over WebRTC v3 because the websocket transport requires an API key (see PLAN.md, T1).
 Over 80 lines on purpose: the JSON-RPC client and the call sequence share one process handle.
 """
-import asyncio, glob, json, os, queue, shutil, subprocess, threading, time
+import asyncio, concurrent.futures, glob, json, os, queue, shutil, subprocess, threading, time
 
 import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -85,14 +85,22 @@ class CodexEngine:
     name = "Codex"
 
     def __init__(self):
-        self._srv, self._job = None, None
+        self._srv, self._job, self._text, self._tag = None, None, None, None
         self._busy = asyncio.Lock()  # a cancelled read must finish cleanup before the next starts
         self._loop = asyncio.new_event_loop()
         threading.Thread(target=self._loop.run_forever, daemon=True).start()
 
-    def speak(self, text, lang_tag, on_done):
+    def prepare(self, lang_tag):
+        """Connect ahead of Play (when the popup appears) so Play only sends text, saving ~1.3 s."""
         self.stop()
-        self._job = asyncio.run_coroutine_threadsafe(self._speak(text, lang_tag), self._loop)
+        self._tag, self._text = lang_tag, concurrent.futures.Future()
+        self._job = asyncio.run_coroutine_threadsafe(self._speak(self._text, lang_tag), self._loop)
+
+    def speak(self, text, lang_tag, on_done):
+        waiting = self._job and not self._job.done() and not self._text.done()
+        if not (waiting and self._tag == lang_tag):
+            self.prepare(lang_tag)
+        self._text.set_result(text)
         self._job.add_done_callback(
             lambda f: on_done(None if f.cancelled() else f.exception()))
 
@@ -121,13 +129,16 @@ class CodexEngine:
                 return p
         raise TimeoutError(want)
 
-    async def _speak(self, text, lang_tag):
+    async def _speak(self, text_future, lang_tag):
         async with self._busy:
-            await self._read_aloud(text, lang_tag)
+            try:
+                if not (self._srv and self._srv.alive):
+                    self._srv = await asyncio.to_thread(AppServer)
+            except Exception as e:
+                raise NoAudioError(f"Codex: {e}") from e
+            await self._read_aloud(text_future, lang_tag)
 
-    async def _read_aloud(self, text, lang_tag):
-        if not (self._srv and self._srv.alive):
-            self._srv = await asyncio.to_thread(AppServer)
+    async def _read_aloud(self, text_future, lang_tag):
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
         pc, player, voice = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1), {"first": None, "last": 0.0}
@@ -169,6 +180,7 @@ class CodexEngine:
                 await asyncio.sleep(0.1)
             else:
                 raise TimeoutError("WebRTC did not connect")
+            text = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
             await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
             for _ in range(50):
                 if voice["first"]:

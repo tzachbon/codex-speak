@@ -13,3 +13,14 @@ LANGS = {
 
 def name(tag: str | None) -> str | None:
     return LANGS[tag][0] if tag in LANGS else None
+
+
+SCRIPTS = [("he-IL", 0x0590, 0x05FF), ("ar-SA", 0x0600, 0x06FF), ("ru-RU", 0x0400, 0x04FF)]
+
+
+def detect(text: str) -> str:
+    """Majority script wins. Latin and anything unknown fall back to English."""
+    counts = {tag: sum(lo <= ord(c) <= hi for c in text) for tag, lo, hi in SCRIPTS}
+    latin = sum(c.isascii() and c.isalpha() for c in text)
+    tag, n = max(counts.items(), key=lambda kv: kv[1])
+    return tag if n > latin else "en-US"

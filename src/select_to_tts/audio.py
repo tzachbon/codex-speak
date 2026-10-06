@@ -1,5 +1,6 @@
-"""Speaker output for 16-bit PCM pushed from any thread."""
+"""Speaker output: streamed 16-bit PCM (Codex) and MP3 files (Edge)."""
 import array
+import ctypes
 import threading
 import time
 
@@ -42,3 +43,23 @@ class PcmPlayer:
             self._buf.clear()
         self._stream.abort()
         self._stream.close()
+
+
+def _mci(cmd: str) -> str:
+    out = ctypes.create_unicode_buffer(128)
+    err = ctypes.windll.winmm.mciSendStringW(cmd, out, 128, None)
+    if err:
+        raise RuntimeError(f"MCI error {err}: {cmd}")
+    return out.value
+
+
+def play_mp3(path: str, stop: threading.Event) -> None:
+    """Blocks until the file finishes or `stop` is set. All MCI calls stay on this thread."""
+    alias = f"tts{threading.get_ident()}"
+    _mci(f'open "{path}" type mpegvideo alias {alias}')
+    try:
+        _mci(f"play {alias}")
+        while not stop.wait(0.05) and _mci(f"status {alias} mode") == "playing":
+            pass
+    finally:
+        _mci(f"close {alias}")
