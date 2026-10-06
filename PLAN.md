@@ -67,7 +67,22 @@ Changes from the plan, with evidence:
   - The startup task appears only on a fresh install, so upgrades keep the Settings choice.
   - The app is killed before upgrade and uninstall.
   - The app-owned COM cache and the UIA log in `%TEMP%` are deleted on uninstall. Settings and the log in `%APPDATA%` are kept, as documented.
-- The app log records the engine, duration, speed, and errors only. Library INFO output (which includes IP addresses) is filtered out.
+- The app log records the engine, duration, speed, and error type names only. Library INFO output (which includes IP addresses) is filtered out.
+
+Follow-up requests (same day), all shipped in this phase:
+- **Speed on the bar:** a preset menu, synced with Settings.
+- **Pause/resume:**
+  - Codex holds its PCM queue. Edge uses MCI pause/play. SAPI uses Pause/Resume, which lags about 1.4 s because of buffered audio.
+  - A ✕ close button closes the bar.
+- **Loader:** a spinner replaces ▶ until the engine reports that speech has started.
+- **Sign-in start moved to a per-user Task Scheduler logon task.**
+  - The Shell-Core event log showed Windows running the 13 Run-key entries one at a time, with up to 30 s each. That started the app about 5 minutes after sign-in.
+  - The installer runs `--startup on|off|refresh`. The app migrates the old Run value.
+- **STT server:** the STT work from `master` (79df9df) is merged. The tray app runs its server when the Settings switch is on, and reuses the access token so OpenWhispr's URL survives restarts. Verified with a real transcription.
+- **Post-implementation reviews:**
+  - Rounds r1 to r6 returned REVISE. Every finding was fixed and re-reviewed.
+  - r7 returned APPROVE. Its remaining MINOR note is redundant STT retry chains after rapid toggles. They are harmless, because `self.stt` prevents a second server.
+- 31 unit tests pass.
 
 ## Definition of Done
 
