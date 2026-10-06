@@ -51,7 +51,7 @@ uv run select-to-tts            # or start .venv\Scripts\select-to-tts.exe (no c
 
 ## Build the installer
 
-Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
+Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
 
 ```powershell
 .\packaging\build.ps1           # PyInstaller app folder, then dist\SelectToTTS-Setup.exe

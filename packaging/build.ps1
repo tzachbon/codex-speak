@@ -1,3 +1,4 @@
+#Requires -Version 7.4
 # Builds dist\SelectToTTS-Setup.exe: PyInstaller app folder, then the Inno Setup 6 installer.
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true  # a failing uv/pyinstaller/iscc stops the build

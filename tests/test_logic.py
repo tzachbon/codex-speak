@@ -102,6 +102,15 @@ class ChainTest(unittest.TestCase):
         chain.resume()
         self.assertEqual((a.calls, b.calls), (1, 1101))
 
+    def test_pause_before_a_fallback_carries_over(self):
+        a, b = Fake("Codex", NoAudioError("x")), Fake("Edge")
+        a.speak = lambda text, tag, on_done, on_audio: setattr(a, "fail", lambda: on_done(NoAudioError("x")))
+        chain = Chain([a, b])
+        chain.speak("hi", None, lambda err: None)
+        chain.pause()  # while Codex is still connecting
+        a.fail()  # Codex gives up, Edge takes over
+        self.assertEqual(b.calls, 1 + 100)  # Edge spoke, then was paused
+
     def test_only_never_touches_other_engines(self):
         a, b = Fake("Codex"), Fake("Windows", NoAudioError("x"))
         chain, result = self.run_chain(a, b, only="Windows")

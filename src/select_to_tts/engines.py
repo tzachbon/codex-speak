@@ -113,7 +113,7 @@ class Chain:
 
     def __init__(self, engines):
         self.engines, self.only, self.last = engines, None, None
-        self._active, self._gen = None, 0
+        self._active, self._gen, self._paused = None, 0, False
 
     def order(self):
         if self.only:
@@ -128,6 +128,7 @@ class Chain:
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         self._gen += 1
+        self._paused = False
         gen, order = self._gen, self.order()
         for e in self.engines:
             if e is not order[0]:
@@ -145,6 +146,8 @@ class Chain:
                 on_done(err)
 
             engine.speak(text, lang_tag, done, lambda: gen == self._gen and on_audio())
+            if self._paused:
+                engine.pause()  # a pause made before a fallback carries over to the next engine
 
         attempt(0)
 
@@ -154,10 +157,12 @@ class Chain:
             e.stop()
 
     def pause(self):
+        self._paused = True
         if self._active:
             self._active.pause()
 
     def resume(self):
+        self._paused = False
         if self._active:
             self._active.resume()
 

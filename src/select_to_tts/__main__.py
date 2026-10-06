@@ -139,8 +139,8 @@ class App:
     def _logged(self, text, on_done):
         t0 = time.monotonic()
 
-        def done(err):  # the text itself is never logged, even inside an error message
-            error = f"{type(err).__name__}: {str(err).replace(text, '<text>')}"[:300] if err else None
+        def done(err):  # never the text, nor an error message, which could echo the text
+            error = f"{type(err).__name__} from {type(err.__cause__).__name__}" if err else None
             log.info("read %d chars with %s in %.1fs at %sx, error: %s", len(text), self.chain.last,
                      time.monotonic() - t0, self.cfg["speed"], error)
             on_done(err)
