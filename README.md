@@ -35,8 +35,9 @@ The app lives in the tray. Click the tray icon, or start the app again from the 
   - Codex streams speech in real time, so it can only be slowed down. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace.
 - **Voice**: Auto (Codex, then Edge, then Windows), or one engine only. "Windows only" never sends text off the PC.
 - **Clipboard fallback**: for apps that hide their selection, such as VS Code, the app borrows Ctrl+C and then restores every clipboard format.
+- **Prepare speech as soon as I select text**: off by default. When Edge reads (Edge only, or Auto above 1×), the app asks Microsoft's speech service for the audio as soon as the bar appears, so speech starts almost at once when you press play. This sends the selected text before you press play, even if you never do. Password fields are never read.
 
-Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is kept next to them in `select-to-tts.log`. It records the engine, timing, and errors, but never the text itself.
+Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is kept next to them in `select-to-tts.log`. It records the engine, timing (including the time to first audio), and errors, but never the text itself.
 
 ## Uninstall
 

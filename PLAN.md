@@ -84,6 +84,33 @@ Follow-up requests (same day), all shipped in this phase:
   - r7 returned APPROVE. Its remaining MINOR note is redundant STT retry chains after rapid toggles. They are harmless, because `self.stt` prevents a second server.
 - 31 unit tests pass.
 
+## Phase 3 (2026-10-07): shorten the "getting the voice" wait
+
+User report: after pressing ▶ the spinner ran far too long. At 1.25× Auto skips Codex, so Edge reads, and it downloaded the whole MP3 before playing. Edge sometimes stalls mid-download (15.8 s and 39 s full downloads in 2 of 5 runs with `en-US-AvaMultilingualNeural`), and the user waited through the stall. A logged read took 62.6 s for about 40 s of speech.
+
+| ID | Change | Result |
+| --- | --- | --- |
+| Q1 | The read log line includes the time to first audio, and `edge stream stalled` lines mark a starved player. | `read 730 chars with Edge in 41.3s (first audio 0.8s) at 1.25x, error: None`. Covered by `tests/test_edge.py` `ReadLog`. |
+| Q2 | `EdgeStream` (`edge_stream.py`) decodes Edge's MP3 chunks with PyAV while they download. `EdgeEngine` feeds them to `PcmPlayer` and calls `on_audio` at the first PCM. The temp-file path, `play_mp3` and `_mci` are gone. | Chunked decode yields the same sample count as decoding the whole file. |
+| Q3 | Failure contract: no audio yet gives `NoAudioError` (falls through to the Windows voice). After audio started the error is plain, so a read is never restarted on another engine. | Unit tests with fake streams and players. |
+| Q4 | Settings switch `prefetch`, off by default. `Chain.prepare(lang, text)` starts the Edge request when the bar appears, only when Edge is the first engine. Play joins it. A different text, voice or speed, a hide, or a new selection drops it. | Unit tests for claim and discard rules. |
+
+Measured with `spikes/edge_latency.py` (730 characters, 1.25×, 10 runs each, silent):
+
+| Mode | Median | Max | At most 1.5 s | At most 3 s | At most 0.3 s |
+| --- | --- | --- | --- | --- | --- |
+| Old wait (whole download) | 1.17 s | 1.62 s | 9/10 | 10/10 | 0/10 |
+| Streamed | 0.66 s | 0.72 s | 10/10 | 10/10 | 0/10 |
+| Streamed, prefetch on (1.5 s after selecting) | 0.00 s | 0.00 s | 10/10 | 10/10 | 10/10 |
+
+No download stall happened inside these batches, so the old-wait row understates the old worst case.
+
+Findings worth keeping:
+- Edge's first audio chunk takes about 0.6 to 0.8 s at `rate=+25%` but 1.5 to 2 s at `rate=+0%` (checked with the engine, 1.0× is where Edge only is slowest). Auto uses Codex at 1× and below.
+- Closing the Edge request on a stopped read needs `contextlib.aclosing` on the inner stream, else aiohttp logs "Unclosed client session" at garbage collection.
+
+Deferred: a deadline or reconnect for a stall before the first chunk (Edge's own timeouts are 10 s connect and 60 s receive), and a prebuffer for mid-read gaps. Decide from the new log lines.
+
 ## Definition of Done
 
 The plan is done when all of the following are observed on the user's machine (Windows 11 Pro 10.0.26200):

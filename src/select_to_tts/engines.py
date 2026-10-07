@@ -1,4 +1,5 @@
 """Fallback engines (Edge neural, offline Windows) and the chain that tries engines in order."""
+import contextlib
 import logging
 import math
 import threading
@@ -64,9 +65,11 @@ class EdgeEngine(_Threaded):
         self._claimed = None  # the stream the next _run plays
 
     async def _source(self, text, voice, rate):
-        async for chunk in edge_tts.Communicate(text, voice, rate=rate).stream():
-            if chunk["type"] == "audio":
-                yield chunk["data"]
+        stream = edge_tts.Communicate(text, voice, rate=rate).stream()
+        async with contextlib.aclosing(stream):  # a stopped read closes the connection, not the garbage collector
+            async for chunk in stream:
+                if chunk["type"] == "audio":
+                    yield chunk["data"]
 
     def _request(self, text, tag):
         voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]

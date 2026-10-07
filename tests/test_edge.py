@@ -5,6 +5,7 @@ import unittest
 
 import av
 
+from select_to_tts.__main__ import App
 from select_to_tts.audio import NoAudioError
 from select_to_tts.edge_stream import EdgeStream
 from select_to_tts.engines import Chain, EdgeEngine
@@ -274,6 +275,26 @@ class ChainPrefetch(unittest.TestCase):
         chain.prefetch = True
         chain.prepare("he-IL", "shalom")
         self.assertEqual(a.prepared, [("he-IL", None), ("he-IL", "shalom")])
+
+
+class ReadLog(unittest.TestCase):
+    def logged(self, hear):
+        app = App.__new__(App)  # no window: only the log line is under test
+        app.chain, app.cfg = Chain([]), {"speed": 1.25}
+        app.chain.last = "Edge"
+        done, heard = app._logged("secret words", lambda err: None)
+        with self.assertLogs("select_to_tts", "INFO") as logs:
+            hear and heard()
+            done(None)
+        return logs.output[0]
+
+    def test_the_read_line_has_the_first_audio_time_and_never_the_text(self):
+        line = self.logged(hear=True)
+        self.assertRegex(line, r"read 12 chars with Edge in [\d.]+s \(first audio [\d.]+s\) at 1.25x, error: None")
+        self.assertNotIn("secret", line)
+
+    def test_a_read_that_never_made_a_sound_logs_a_dash(self):
+        self.assertIn("(first audio -)", self.logged(hear=False))
 
 
 if __name__ == "__main__":

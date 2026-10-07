@@ -26,12 +26,15 @@ class EdgeStream:
     async def _pump(self, chunks):
         dec = av.CodecContext.create("mp3", "r")
         rs = av.AudioResampler(format="s16", layout="mono", rate=24000)
-        async for data in chunks:
-            if self._cancelled.is_set():
-                return
-            self._decode(dec, rs, dec.parse(data))
-        self._decode(dec, rs, [*dec.parse(None), None])  # None drains the decoder
-        self._add(rs.resample(None))
+        try:
+            async for data in chunks:
+                if self._cancelled.is_set():
+                    return
+                self._decode(dec, rs, dec.parse(data))
+            self._decode(dec, rs, [*dec.parse(None), None])  # None drains the decoder
+            self._add(rs.resample(None))
+        finally:
+            await chunks.aclose()  # closes the Edge connection now, not at garbage collection
 
     def _decode(self, dec, rs, packets):
         for packet in packets:
