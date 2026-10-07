@@ -19,9 +19,10 @@ class EdgeStream:
             asyncio.run(self._pump(chunks))
         except Exception as e:
             self.error = e
-        with self._cond:
-            self.done = True
-            self._cond.notify_all()
+        finally:
+            with self._cond:
+                self.done = True
+                self._cond.notify_all()
 
     async def _pump(self, chunks):
         dec = av.CodecContext.create("mp3", "r")

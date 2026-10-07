@@ -78,6 +78,8 @@ if __name__ == "__main__":
         print(f"run {i + 1}: {'no audio' if t is None else f'{t:.2f}s'}")
         times.append(t)
     ok = [t for t in times if t is not None]
+    if not ok:
+        raise SystemExit("no run produced audio")
     print(f"\n{mode}: {len(ok)}/{a.n} runs with audio, median {statistics.median(ok):.2f}s, max {max(ok):.2f}s")
     for limit in (0.3, 1.5, 3.0):
         print(f"  <= {limit}s: {sum(t <= limit for t in ok)}/{a.n}")

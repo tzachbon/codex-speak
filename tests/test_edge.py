@@ -257,6 +257,69 @@ class EdgePrefetch(unittest.TestCase):
         self.assertEqual(len(e.requests), 2)
 
 
+def blocking(closed):
+    """A request that never finishes; `closed` is set when something closes it."""
+    async def source():
+        try:
+            while True:
+                await __import__("asyncio").sleep(0.02)
+                yield b""
+        finally:
+            closed.set()
+    return source
+
+
+class EdgeCleanup(unittest.TestCase):
+    def test_a_read_replaced_before_it_started_does_not_leave_its_request_running(self):
+        closed = {"A": threading.Event(), "B": threading.Event()}
+
+        class Two(EdgeEngine):
+            Player = FakePlayer
+
+            def _source(self, text, voice, rate):
+                return blocking(closed[text])()
+        e = Two()
+        e._busy.acquire()  # an earlier read is still shutting down, so neither worker has started
+        e.speak("A", "en-US", lambda err: None)
+        e.speak("B", "en-US", lambda err: None)
+        e._busy.release()
+        self.assertTrue(closed["A"].wait(3))
+        e.stop()
+        self.assertTrue(closed["B"].wait(3))
+
+    def test_a_failed_prefetch_is_retried_when_play_is_pressed(self):
+        calls = []
+
+        def source():
+            calls.append(1)
+            return agen([], then=RuntimeError("offline")) if len(calls) == 1 else agen(list(pieces(tone_mp3())))
+        e = engine(source)
+        e.prepare("en-US", "hello")
+        time.sleep(0.5)
+        done, result, _ = speak(e)
+        self.assertTrue(done.wait(5))
+        self.assertEqual((result, len(calls)), ([None], 2))
+
+    def test_a_speed_change_that_hands_the_read_to_another_engine_drops_the_edge_prefetch(self):
+        closed = threading.Event()
+
+        class Codexish:
+            name, speed, max_speed = "Codex", 1.25, 1.0
+
+            def prepare(self, lang_tag, text=None):
+                pass
+        edge = engine(blocking(closed))
+        edge.speed = 1.25
+        chain = Chain([Codexish(), edge])
+        chain.prefetch = True
+        chain.prepare("en-US", "hello")  # speed 1.25: Edge is first and prefetches
+        time.sleep(0.2)
+        self.assertFalse(closed.is_set())
+        chain.engines[0].speed = edge.speed = 1.0  # speed 1.0: Codex is first
+        chain.prepare("en-US", "hello")
+        self.assertTrue(closed.wait(3))
+
+
 class Prep:
     speed, name = 1.0, "Prep"
 

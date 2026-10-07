@@ -26,6 +26,9 @@ class _Threaded:
         self._stop, self._busy, self.paused = threading.Event(), threading.Lock(), threading.Event()
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+        self._start(lambda stop: self._run(text, lang_tag or lang.detect(text), stop, on_audio), on_done)
+
+    def _start(self, run, on_done, cleanup=lambda: None):
         self.stop()
         self.paused.clear()
         self._stop = stop = threading.Event()
@@ -34,9 +37,11 @@ class _Threaded:
             with self._busy:
                 try:
                     if not stop.is_set():
-                        self._run(text, lang_tag or lang.detect(text), stop, on_audio)
+                        run(stop)
                 except Exception as e:
                     return on_done(e)
+                finally:
+                    cleanup()  # also when a newer read replaced this one before it started
             on_done(None)
 
         threading.Thread(target=work, daemon=True).start()
@@ -62,7 +67,6 @@ class EdgeEngine(_Threaded):
     def __init__(self):
         super().__init__()
         self._pre = None  # (request, stream) started before Play
-        self._claimed = None  # the stream the next _run plays
 
     async def _source(self, text, voice, rate):
         stream = edge_tts.Communicate(text, voice, rate=rate).stream()
@@ -75,14 +79,15 @@ class EdgeEngine(_Threaded):
         voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
         return text, voice, f"{round((self.speed - 1) * 100):+d}%"
 
-    def _drop(self):
+    def discard(self):
+        """Drop a prefetch. Never stops a read in progress."""
         pre, self._pre = self._pre, None
         if pre:
             pre[1].cancel()
 
     def prepare(self, lang_tag, text=None):
         """Start the request before Play, so Play joins it. No text: just drop what was prepared."""
-        self._drop()
+        self.discard()
         if text:
             request = self._request(text, lang_tag or lang.detect(text))
             self._pre = request, EdgeStream(self._source(*request))
@@ -90,19 +95,18 @@ class EdgeEngine(_Threaded):
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         tag = lang_tag or lang.detect(text)
         request, pre = self._request(text, tag), self._pre
-        if pre and pre[0] == request:
-            self._pre, self._claimed = None, pre[1]  # claimed first: stop() below drops only a stale one
+        if pre and pre[0] == request and not pre[1].error:  # a prefetch that failed is not worth joining
+            self._pre, stream = None, pre[1]  # claimed first: stop() in _start drops only a stale one
         else:
-            self._drop()
-            self._claimed = EdgeStream(self._source(*request))  # starts now, not when the worker gets the lock
-        super().speak(text, tag, on_done, on_audio)
+            self.discard()
+            stream = EdgeStream(self._source(*request))  # starts now, not when the worker gets the lock
+        self._start(lambda stop: self._play(stream, stop, on_audio), on_done, stream.cancel)
 
     def stop(self):
-        self._drop()
+        self.discard()
         super().stop()
 
-    def _run(self, text, tag, stop, on_audio):
-        stream, self._claimed = self._claimed, None
+    def _play(self, stream, stop, on_audio):
         player = None
         try:
             chunks = stream.read(stop)
@@ -129,8 +133,8 @@ class EdgeEngine(_Threaded):
                 return
             if player is None:
                 raise NoAudioError("Edge: no audio")
-            while player.pending and player.active and not stop.is_set():
-                time.sleep(0.05)  # the queue still holds speech after the download ends
+            while player.pending and player.active and not stop.wait(0.05):
+                pass  # the queue still holds speech after the download ends
         finally:
             stream.cancel()
             if player:
@@ -187,6 +191,9 @@ class Chain:
 
     def prepare(self, lang_tag, text=None):
         first = self.order()[0]
+        for e in self.engines:
+            if e is not first and hasattr(e, "discard"):
+                e.discard()  # a speed or engine change can hand the read to another engine
         if hasattr(first, "prepare"):
             first.prepare(lang_tag, text if self.prefetch else None)
 
