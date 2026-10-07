@@ -167,6 +167,15 @@ class Settings(unittest.TestCase):
                     f.write(junk)
                 self.assertEqual(settings.load(path), settings.DEFAULTS)
 
+    def test_prefetch_is_off_unless_saved_as_a_boolean(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            self.assertFalse(settings.load(path)["prefetch"])
+            for saved, expected in (("true", True), ('"yes"', False), ("1", False)):
+                with open(path, "w") as f:
+                    f.write('{"prefetch": %s}' % saved)
+                self.assertEqual(settings.load(path)["prefetch"], expected, saved)
+
     def test_startup_round_trip(self):
         name = "select-to-tts-unittest"
         try:

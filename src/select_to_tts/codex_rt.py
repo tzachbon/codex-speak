@@ -113,7 +113,7 @@ class CodexEngine:
         self._loop = asyncio.new_event_loop()
         threading.Thread(target=self._loop.run_forever, daemon=True).start()
 
-    def prepare(self, lang_tag):
+    def prepare(self, lang_tag, text=None):  # the text stays on this machine until Play
         """Connect ahead of Play (when the popup appears) so Play only sends text, saving ~1.3 s."""
         self.stop()
         self._tag, self._text = lang_tag, concurrent.futures.Future()

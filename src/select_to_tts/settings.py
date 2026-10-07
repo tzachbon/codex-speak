@@ -9,7 +9,8 @@ import winreg
 DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "select-to-tts")
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "select-to-tts")  # uninstall deletes it
-DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False}
+DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
+            "prefetch": False}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Select to TTS"  # the installer creates and removes it with `--startup on|off`
@@ -34,7 +35,7 @@ def load(path=PATH) -> dict:
     except OverflowError:  # an integer too large for a float
         ok = False
     s["speed"] = min(max(float(speed), SPEEDS[0]), SPEEDS[1]) if ok else DEFAULTS["speed"]
-    for key in ("clipboard_fallback", "stt_server"):
+    for key in ("clipboard_fallback", "stt_server", "prefetch"):
         if not isinstance(s[key], bool):
             s[key] = DEFAULTS[key]
     return s

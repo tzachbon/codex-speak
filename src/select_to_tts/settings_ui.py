@@ -84,6 +84,13 @@ class SettingsWindow:
                         command=lambda: self._set("clipboard_fallback", self.clip.get())).pack(anchor="w")
         ttk.Label(card, text="Copies the selection with Ctrl+C, then restores your clipboard.",
                   style="Sub.Card.TLabel").pack(anchor="w", pady=(4, 0))
+        self.prefetch = tk.BooleanVar(w, cfg["prefetch"])
+        ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
+                        variable=self.prefetch,
+                        command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
+        ttk.Label(card, text="Sends the selected text to Microsoft's speech service before you press play. "
+                  "Applies when Edge reads: Edge only, or Auto above 1×.", style="Sub.Card.TLabel",
+                  wraplength=420).pack(anchor="w", pady=(4, 0))
 
         card = self._card("Speech-to-text · OpenAI-compatible")
         self.stt_on = tk.BooleanVar(w, cfg.get("stt_server", False))

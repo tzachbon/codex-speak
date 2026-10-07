@@ -60,21 +60,43 @@ class EdgeEngine(_Threaded):
 
     def __init__(self):
         super().__init__()
-        self._claimed = None  # the request the next _run plays
+        self._pre = None  # (request, stream) started before Play
+        self._claimed = None  # the stream the next _run plays
 
     async def _source(self, text, voice, rate):
         async for chunk in edge_tts.Communicate(text, voice, rate=rate).stream():
             if chunk["type"] == "audio":
                 yield chunk["data"]
 
-    def _open(self, text, tag):
+    def _request(self, text, tag):
         voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
-        return EdgeStream(self._source(text, voice, f"{round((self.speed - 1) * 100):+d}%"))
+        return text, voice, f"{round((self.speed - 1) * 100):+d}%"
+
+    def _drop(self):
+        pre, self._pre = self._pre, None
+        if pre:
+            pre[1].cancel()
+
+    def prepare(self, lang_tag, text=None):
+        """Start the request before Play, so Play joins it. No text: just drop what was prepared."""
+        self._drop()
+        if text:
+            request = self._request(text, lang_tag or lang.detect(text))
+            self._pre = request, EdgeStream(self._source(*request))
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         tag = lang_tag or lang.detect(text)
-        self._claimed = self._open(text, tag)  # the request starts now, not when the worker gets the lock
+        request, pre = self._request(text, tag), self._pre
+        if pre and pre[0] == request:
+            self._pre, self._claimed = None, pre[1]  # claimed first: stop() below drops only a stale one
+        else:
+            self._drop()
+            self._claimed = EdgeStream(self._source(*request))  # starts now, not when the worker gets the lock
         super().speak(text, tag, on_done, on_audio)
+
+    def stop(self):
+        self._drop()
+        super().stop()
 
     def _run(self, text, tag, stop, on_audio):
         stream, self._claimed = self._claimed, None
@@ -151,7 +173,7 @@ class Chain:
     """Tries engines in order, moving on only when one fails before producing any speech."""
 
     def __init__(self, engines):
-        self.engines, self.only, self.last = engines, None, None
+        self.engines, self.only, self.last, self.prefetch = engines, None, None, False
         self._active, self._gen, self._paused = None, 0, False
 
     def order(self):
@@ -160,10 +182,10 @@ class Chain:
         # Auto skips engines that cannot reach the chosen speed (Codex cannot read faster)
         return [e for e in self.engines if e.speed <= getattr(e, "max_speed", e.speed)] or self.engines
 
-    def prepare(self, lang_tag):
+    def prepare(self, lang_tag, text=None):
         first = self.order()[0]
         if hasattr(first, "prepare"):
-            first.prepare(lang_tag)
+            first.prepare(lang_tag, text if self.prefetch else None)
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
         self._gen += 1

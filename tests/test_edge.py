@@ -7,7 +7,7 @@ import av
 
 from select_to_tts.audio import NoAudioError
 from select_to_tts.edge_stream import EdgeStream
-from select_to_tts.engines import EdgeEngine
+from select_to_tts.engines import Chain, EdgeEngine
 
 
 def tone_mp3(seconds=1.0, rate=24000):
@@ -122,9 +122,12 @@ class FakePlayer:
 def engine(source, player=FakePlayer):
     class Fake(EdgeEngine):
         Player = player
+        requests = []
 
         def _source(self, text, voice, rate):
+            self.requests.append((text, voice, rate))
             return source()
+    Fake.requests = []
     FakePlayer.opened = []
     return Fake()
 
@@ -200,6 +203,77 @@ class EdgeEngineReads(unittest.TestCase):
         done, _, _ = speak(e)
         self.assertTrue(done.wait(5))
         self.assertIs(FakePlayer.opened[0].paused, e.paused)
+
+
+class EdgePrefetch(unittest.TestCase):
+    def read(self, e, text="hello", tag="en-US"):
+        done = threading.Event()
+        e.speak(text, tag, lambda err: done.set())
+        self.assertTrue(done.wait(5))
+
+    def test_a_matching_prefetch_is_joined_with_no_second_request(self):
+        e = engine(lambda: agen(list(pieces(tone_mp3()))))
+        e.prepare("en-US", "hello")
+        time.sleep(0.3)
+        self.assertEqual(FakePlayer.opened, [])  # nothing plays before ▶
+        self.read(e)
+        self.assertEqual(len(e.requests), 1)
+        self.assertTrue(FakePlayer.opened[0].writes)
+
+    def test_a_different_text_voice_or_speed_starts_a_new_request(self):
+        for change in ("text", "voice", "speed"):
+            e = engine(lambda: agen(list(pieces(tone_mp3()))))
+            e.prepare("en-US", "hello")
+            if change == "speed":
+                e.speed = 1.25
+            self.read(e, "other" if change == "text" else "hello", "he-IL" if change == "voice" else "en-US")
+            self.assertEqual(len(e.requests), 2, change)
+
+    def test_stop_drops_a_prefetch(self):
+        e = engine(lambda: agen(list(pieces(tone_mp3()))))
+        e.prepare("en-US", "hello")
+        e.stop()
+        self.read(e)
+        self.assertEqual(len(e.requests), 2)
+
+    def test_a_new_prefetch_replaces_the_old_one(self):
+        e = engine(lambda: agen(list(pieces(tone_mp3()))))
+        e.prepare("en-US", "first")
+        e.prepare("en-US", "second")
+        self.read(e, "second")
+        self.assertEqual([r[0] for r in e.requests], ["first", "second"])
+
+    def test_speaking_without_a_prefetch_makes_one_request(self):
+        e = engine(lambda: agen(list(pieces(tone_mp3()))))
+        self.read(e)
+        self.assertEqual(len(e.requests), 1)
+
+    def test_prepare_without_text_only_drops(self):
+        e = engine(lambda: agen(list(pieces(tone_mp3()))))
+        e.prepare("en-US", "hello")
+        e.prepare("en-US")
+        self.read(e)
+        self.assertEqual(len(e.requests), 2)
+
+
+class Prep:
+    speed, name = 1.0, "Prep"
+
+    def __init__(self):
+        self.prepared = []
+
+    def prepare(self, lang_tag, text=None):
+        self.prepared.append((lang_tag, text))
+
+
+class ChainPrefetch(unittest.TestCase):
+    def test_text_reaches_the_first_engine_only_when_prefetch_is_on(self):
+        a = Prep()
+        chain = Chain([a])
+        chain.prepare("he-IL", "shalom")
+        chain.prefetch = True
+        chain.prepare("he-IL", "shalom")
+        self.assertEqual(a.prepared, [("he-IL", None), ("he-IL", "shalom")])
 
 
 if __name__ == "__main__":
