@@ -1,16 +1,18 @@
 """Fallback engines (Edge neural, offline Windows) and the chain that tries engines in order."""
-import asyncio
+import logging
 import math
-import os
-import tempfile
 import threading
+import time
 
 import comtypes
 import comtypes.client
 import edge_tts
 
-from . import lang, settings
-from .audio import NoAudioError, play_mp3
+from . import lang
+from .audio import NoAudioError, PcmPlayer
+from .edge_stream import EdgeStream
+
+log = logging.getLogger(__name__)
 
 ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebrew Asaf lives only here
 
@@ -54,23 +56,60 @@ class _Threaded:
 
 class EdgeEngine(_Threaded):
     name = "Edge"
+    Player = PcmPlayer  # tests swap in one without a sound device
+
+    def __init__(self):
+        super().__init__()
+        self._claimed = None  # the request the next _run plays
+
+    async def _source(self, text, voice, rate):
+        async for chunk in edge_tts.Communicate(text, voice, rate=rate).stream():
+            if chunk["type"] == "audio":
+                yield chunk["data"]
+
+    def _open(self, text, tag):
+        voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
+        return EdgeStream(self._source(text, voice, f"{round((self.speed - 1) * 100):+d}%"))
+
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+        tag = lang_tag or lang.detect(text)
+        self._claimed = self._open(text, tag)  # the request starts now, not when the worker gets the lock
+        super().speak(text, tag, on_done, on_audio)
 
     def _run(self, text, tag, stop, on_audio):
-        voice = lang.LANGS.get(tag, lang.LANGS["en-US"])[1]
-        os.makedirs(settings.TEMP_DIR, exist_ok=True)
-        fd, path = tempfile.mkstemp(suffix=".mp3", dir=settings.TEMP_DIR)
-        os.close(fd)
+        stream, self._claimed = self._claimed, None
+        player = None
         try:
-            try:
-                rate = f"{round((self.speed - 1) * 100):+d}%"
-                asyncio.run(edge_tts.Communicate(text, voice, rate=rate).save(path))
-            except Exception as e:
-                raise NoAudioError(f"Edge: {e}") from e
-            # ponytail: buffers the whole MP3 before playing, stream it if long selections lag
-            on_audio()
-            play_mp3(path, stop, self.paused)
+            chunks = stream.read(stop)
+            while True:
+                starved, t = player is not None and not player.pending, time.monotonic()
+                try:
+                    pcm = next(chunks, None)
+                except Exception as e:
+                    if player is None:
+                        raise NoAudioError(f"Edge: {e}") from e
+                    raise  # speech already started: the chain must not restart it on another engine
+                if pcm is None:
+                    break
+                if starved and time.monotonic() - t > 0.3:
+                    log.info("edge stream stalled %.1fs after first audio", time.monotonic() - t)
+                if player is None:
+                    try:
+                        player = self.Player(24000, 1, self.paused)
+                    except Exception as e:
+                        raise NoAudioError(f"Edge: {e}") from e
+                    on_audio()
+                player.write(pcm)
+            if stop.is_set():
+                return
+            if player is None:
+                raise NoAudioError("Edge: no audio")
+            while player.pending and player.active and not stop.is_set():
+                time.sleep(0.05)  # the queue still holds speech after the download ends
         finally:
-            os.remove(path)
+            stream.cancel()
+            if player:
+                player.close()
 
 
 def sapi_rate(speed):
