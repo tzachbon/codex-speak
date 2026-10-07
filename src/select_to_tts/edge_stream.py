@@ -55,9 +55,11 @@ class EdgeStream:
             with self._cond:
                 while not self._pcm and not self.done and not stop.is_set():
                     self._cond.wait(0.05)
+                if stop.is_set():
+                    return
                 if self._pcm:
                     pcm = self._pcm.popleft()
-                elif self.done and self.error and not stop.is_set():
+                elif self.done and self.error:
                     raise self.error
                 else:
                     return

@@ -19,7 +19,7 @@ ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebr
 
 
 class _Threaded:
-    """Runs `_run(text, tag, stop, on_audio)` on a worker thread. Runs never overlap."""
+    """Runs a read on a worker thread: `_run(text, tag, stop, on_audio)`, or whatever `_start` is given. Runs never overlap."""
     speed = 1.0
 
     def __init__(self):

@@ -86,6 +86,13 @@ class EdgeStreamTests(unittest.TestCase):
         reader.join(2)
         self.assertFalse(reader.is_alive())
 
+    def test_a_read_that_was_stopped_hands_out_nothing_more(self):
+        stream = EdgeStream(agen(list(pieces(tone_mp3()))))
+        time.sleep(0.3)  # everything is buffered
+        stop = threading.Event()
+        stop.set()
+        self.assertEqual(list(stream.read(stop)), [])
+
     def test_cancel_stops_consuming_the_request(self):
         pulled = []
 
@@ -221,6 +228,19 @@ class EdgePrefetch(unittest.TestCase):
         self.assertEqual(len(e.requests), 1)
         self.assertTrue(FakePlayer.opened[0].writes)
 
+    def test_pressing_play_right_after_prepare_joins_the_download_in_progress(self):
+        data = list(pieces(tone_mp3(2.0)))
+
+        async def slow():
+            for chunk in data:
+                yield chunk
+                await __import__("asyncio").sleep(0.01)
+        e = engine(slow)
+        e.prepare("en-US", "hello")
+        self.read(e)  # no wait: the request has barely started
+        written = sum(len(w) for p in FakePlayer.opened for w in p.writes) // 2
+        self.assertEqual((len(e.requests), written), (1, decode_whole(b"".join(data))))
+
     def test_a_different_text_voice_or_speed_starts_a_new_request(self):
         for change in ("text", "voice", "speed"):
             e = engine(lambda: agen(list(pieces(tone_mp3()))))
@@ -295,7 +315,9 @@ class EdgeCleanup(unittest.TestCase):
             return agen([], then=RuntimeError("offline")) if len(calls) == 1 else agen(list(pieces(tone_mp3())))
         e = engine(source)
         e.prepare("en-US", "hello")
-        time.sleep(0.5)
+        deadline = time.monotonic() + 5
+        while not e._pre[1].done and time.monotonic() < deadline:
+            time.sleep(0.01)
         done, result, _ = speak(e)
         self.assertTrue(done.wait(5))
         self.assertEqual((result, len(calls)), ([None], 2))
