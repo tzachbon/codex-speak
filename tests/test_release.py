@@ -1,4 +1,5 @@
 """Release history uses real Git. Publication tests isolate GitHub command boundaries."""
+import hashlib
 import json
 import os
 import subprocess
@@ -6,7 +7,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+from select_to_tts import updates
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging"))
 import publish_release
@@ -124,7 +127,9 @@ class Publication(unittest.TestCase):
 
     def asset(self, state="uploaded"):
         return {"name": self.artifact.name, "state": state,
-                "size": self.artifact.stat().st_size if state == "uploaded" else 0}
+                "size": self.artifact.stat().st_size if state == "uploaded" else 0,
+                "digest": "sha256:" + hashlib.sha256(self.artifact.read_bytes()).hexdigest(),
+                "browser_download_url": f"https://github.com/tzachbon/select-to-tts/releases/download/v0.2.0/{self.artifact.name}"}
 
     def run_command(self, args, **kwargs):
         args = tuple(args)
@@ -163,6 +168,18 @@ class Publication(unittest.TestCase):
         self.assertEqual(self.tags["v0.2.0"], self.commit)
         self.assertFalse(self.release["isDraft"])
         self.assertTrue(any("--latest=true" in call for call in self.calls))
+
+    def test_published_installer_metadata_is_accepted_by_updater(self):
+        self.publish()
+        metadata = {"tag_name": "v0.2.0", "draft": self.release["isDraft"],
+                    "prerelease": False, "assets": self.release["assets"]}
+        reply = MagicMock()
+        reply.__enter__.return_value = reply
+        reply.geturl.return_value = updates.API
+        reply.read.return_value = json.dumps(metadata).encode()
+        with patch.object(updates, "urlopen", return_value=reply), \
+                patch.object(updates, "version", return_value="0.1.1"):
+            self.assertEqual(updates.check()["version"], "0.2.0")
 
     def test_annotated_tag_is_peeled_and_completed_release_is_a_noop(self):
         self.tags = {"v0.2.0": "b" * 40, "v0.2.0^{}": self.commit}

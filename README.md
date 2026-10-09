@@ -36,6 +36,8 @@ The app also lives in the tray. Click the tray icon, or start the app again from
 ![Settings](docs/settings.png)
 
 - **Start when I sign in to Windows**: adds or removes a Task Scheduler logon task named "Select to TTS". It starts right after sign-in, unlike Run-key apps, which Windows starts one at a time.
+- **Check and install update**: checks the latest stable GitHub release, verifies the installer's size and SHA-256 digest, then installs it into the current app folder and relaunches. If you already have that version or a newer one, it reports that you are up to date. It waits for speech, including paused speech, and active transcriptions to finish. Stop or finish a paused read to allow installation.
+- **Install updates automatically**: off by default. When enabled, checks shortly after startup and every 24 hours while the app is running, and installs when idle. Turning it off cancels a pending automatic installation. The manual button works with this option off. Settings and your sign-in startup choice are preserved.
 - **Speed**: 0.5× to 2×. Changes apply to the next read.
   - Edge and Windows voices support the full range.
   - Codex streams speech in real time, so it can only be slowed down. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace.
@@ -45,6 +47,8 @@ The app also lives in the tray. Click the tray icon, or start the app again from
 - **Prepare speech as soon as I select text**: off by default. When Edge reads (Edge only, or Auto above 1×), the app asks Microsoft's speech service for the first sentence's audio as soon as the bar appears. This sends that sentence before you press play, even if you never do. Password fields are never read. Later sentences are submitted only as the read advances.
 
 Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is kept next to them in `select-to-tts.log`. It records the engine, timing (including the time to first audio), and errors, but never the text itself.
+
+If an update check or download fails, the app stays running and Settings shows the error. Use the update button to retry. Installation errors are shown by the installer. Downloaded installers and `setup.log` are kept under `%LOCALAPPDATA%\select-to-tts\updates` for diagnosis and removed on uninstall. If setup fails, run the latest trusted installer manually. The digest checks that the download matches GitHub's release metadata. The installer remains unsigned and the updater trusts this repository's release account.
 
 ## Uninstall
 
@@ -56,6 +60,8 @@ Use *Settings > Apps > Select to TTS*. This removes the app, its sign-in task, a
 uv sync
 uv run select-to-tts            # or start .venv\Scripts\select-to-tts.exe (no console window)
 ```
+
+Update installation controls are disabled when running from source. Update the checkout and run `uv sync` yourself.
 
 ## Build the installer
 
@@ -69,7 +75,7 @@ CI (`.github/workflows/build.yml`) tests and builds pull requests. Every success
 
 Versions follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `feat:` adds a minor version, a `!` header or `BREAKING CHANGE:` footer adds a major version, and everything else adds a patch. Scoped headers such as `feat(captions):` work too. Each commit on master's first-parent history advances the version once, so delayed builds cannot claim the same version for different commits. A normal merge includes its new branch commits when choosing the bump. A rebase merge can skip unused version numbers.
 
-The release tag is the published version. CI stamps that version into `pyproject.toml`, the lockfile, and the installer in its build checkout. Source archives and source checkouts retain the development version. Manual stable `vMAJOR.MINOR.PATCH` tag pushes still build and publish that exact version. Releases wait for tests and the installer build, and delayed older releases do not replace a newer release as Latest.
+The release tag is the published version. CI stamps that version into `pyproject.toml`, the lockfile, the bundled app metadata used by update checks, and the installer in its build checkout. Source archives and source checkouts retain the development version. Manual stable `vMAJOR.MINOR.PATCH` tag pushes still build and publish that exact version. Releases wait for tests and the installer build, and delayed older releases do not replace a newer release as Latest.
 
 Rerunning a failed release reuses its tag and completes an unfinished draft without replacing uploaded assets. An empty or incomplete installer asset fails closed and needs recovery before rerunning.
 

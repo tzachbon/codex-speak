@@ -10,7 +10,7 @@ DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "select-t
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "select-to-tts")  # uninstall deletes it
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
-            "prefetch": False, "caption_font_size": 10, "caption_background": False,
+            "prefetch": False, "auto_update": False, "caption_font_size": 10, "caption_background": False,
             "caption_background_opacity": 0.6}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
@@ -47,7 +47,7 @@ def load(path=PATH) -> dict:
         ok = False
     s["caption_background_opacity"] = (min(max(float(opacity), 0.0), 1.0)
                                         if ok else DEFAULTS["caption_background_opacity"])
-    for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background"):
+    for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background", "auto_update"):
         if not isinstance(s[key], bool):
             s[key] = DEFAULTS[key]
     return s

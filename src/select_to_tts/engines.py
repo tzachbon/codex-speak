@@ -189,6 +189,12 @@ class Chain:
     def __init__(self, engines):
         self.engines, self.only, self.last, self.prefetch = engines, None, None, False
         self._active, self._gen, self._paused = None, 0, False
+        self._idle = threading.Event()
+        self._idle.set()
+
+    @property
+    def busy(self):
+        return not self._idle.is_set()
 
     def order(self):
         if self.only:
@@ -207,6 +213,7 @@ class Chain:
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None):
         self._gen += 1
+        self._idle = idle = threading.Event()
         self._paused = False
         gen, order = self._gen, self.order()
         for e in self.engines:
@@ -224,6 +231,7 @@ class Chain:
                 if isinstance(err, NoAudioError) and i + 1 < len(order):
                     return attempt(i + 1)
                 self.last = engine.name
+                idle.set()  # a late completion cannot mark a newer read idle
                 on_done(err)
 
             tag = lang_tag if engine.name == "Codex" else lang_tag or fallback_tag
@@ -235,6 +243,7 @@ class Chain:
 
     def stop(self):
         self._gen += 1
+        self._idle.set()
         for e in self.engines:
             e.stop()
 

@@ -42,6 +42,7 @@ Type: filesandordirs; Name: "{app}\_internal"
 ; App-owned caches outside {app}. Settings and the log in %APPDATA%\select-to-tts are kept.
 Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
 Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
+Type: filesandordirs; Name: "{localappdata}\select-to-tts\updates"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
