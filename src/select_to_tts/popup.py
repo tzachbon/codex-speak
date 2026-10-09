@@ -8,6 +8,7 @@ import tkinter.font as tkfont
 from ctypes import wintypes
 
 from . import lang, settings
+from .captions import CaptionSurface, _get_parent, _get_style, _set_style
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
 DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
@@ -28,8 +29,10 @@ def fonts(root):
 
 def round_corners(hwnd):
     corner = ctypes.c_int(DWMWCP_ROUND)
-    ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
-                                               ctypes.byref(corner), ctypes.sizeof(corner))
+    attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+    attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+    attribute.restype = wintypes.LONG
+    attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(corner), ctypes.sizeof(corner))
 
 
 class _MonitorInfo(ctypes.Structure):
@@ -42,6 +45,8 @@ def work_area(x, y) -> wintypes.RECT:
     u32 = ctypes.windll.user32
     u32.MonitorFromPoint.restype = wintypes.HMONITOR
     u32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+    u32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(_MonitorInfo)]
+    u32.GetMonitorInfoW.restype = wintypes.BOOL
     info = _MonitorInfo(cb=ctypes.sizeof(_MonitorInfo))
     u32.GetMonitorInfoW(u32.MonitorFromPoint(wintypes.POINT(x, y), 2), ctypes.byref(info))
     return info.work
@@ -112,11 +117,11 @@ class Popup:
         w.bind("<Leave>", lambda _e: self._schedule_hide())
         w.withdraw()
         w.update_idletasks()
-        hwnd = ctypes.windll.user32.GetParent(w.winfo_id())
-        ex = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE,
-                                            ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST)
+        hwnd = _get_parent(w.winfo_id())
+        ex = _get_style(hwnd, GWL_EXSTYLE)
+        _set_style(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST)
         round_corners(hwnd)
+        self.caption = CaptionSurface(w, text, self._caption_placement)
 
     def show(self, text, x, y):
         self.text = text
@@ -127,7 +132,8 @@ class Popup:
         w.update_idletasks()
         area, h = work_area(x, y), w.winfo_reqheight()
         top = y - h - 14 if y - h - 14 >= area.top else y + 16  # above: Windows' own text bar sits below
-        w.geometry(f"+{min(x + 12, area.right - w.winfo_reqwidth())}+{min(top, area.bottom - h)}")
+        w.geometry(f"+{max(area.left, min(x + 12, area.right - w.winfo_reqwidth()))}"
+                   f"+{max(area.top, min(top, area.bottom - h))}")
         w.deiconify()
         self._schedule_hide()
 
@@ -138,6 +144,7 @@ class Popup:
 
     def hide(self):
         self._cancel_hide()
+        self.caption.hide()
         self.win.withdraw()
         self.on_stop()  # drops the Codex session warmed up for this popup
 
@@ -181,13 +188,33 @@ class Popup:
     def set_playing(self, playing, paused=False):
         self.playing, self.paused = playing, playing and paused
         if not playing:
+            self.caption.hide()
             self.set_loading(False)
+        self.caption.set_paused(self.paused)
         self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
         if playing:
             self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.divider)
         else:
             self.stop_btn.pack_forget()
             self._schedule_hide()
+
+    def set_caption(self, text):
+        if self.playing:
+            self.caption.show_text(text)
+
+    def set_caption_paused(self, paused):
+        self.caption.set_paused(paused)
+
+    def configure_captions(self, font_size, background, background_opacity):
+        self.caption.configure(font_size, background, background_opacity)
+
+    def _caption_placement(self):
+        w = self.win
+        w.update_idletasks()
+        x, y = w.winfo_rootx(), w.winfo_rooty()
+        area = work_area(x, y)
+        return ((x, y, w.winfo_width(), w.winfo_height()),
+                (area.left, area.top, area.right, area.bottom))
 
     def _toggle(self):
         if not self.playing:

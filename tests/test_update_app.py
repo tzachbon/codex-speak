@@ -19,10 +19,13 @@ class UpdateApp(unittest.TestCase):
         self.app = App.__new__(App)
         a = self.app
         a.root, a.chain, a.trigger, a.icon = Mock(), Mock(busy=False), Mock(), Mock()
+        a.chain.engines = []
         a.popup = Mock()
         a.cfg = {**settings.DEFAULTS, "auto_update": True}
         a.events, a.settings_win, a.stt = queue.Queue(), None, None
         a._draining_stt = []
+        a._read_options = None
+        a._read_id = 0
         a._closing, a._update_busy, a._update_manual = False, False, False
         a._pending_update, a._update_text = None, "Ready to check."
         self.frozen = patch.object(sys, "frozen", True, create=True)
@@ -49,6 +52,18 @@ class UpdateApp(unittest.TestCase):
             install.assert_called_once_with(self.path)
             a.root.destroy.assert_called_once()
             self.assertTrue(a._closing)
+
+    def test_update_waits_between_sentences_even_when_engine_is_idle(self):
+        a = self.app
+        a._read_options = (None, None, 1.0, "en-US")
+        a._pending_next = True  # paused at a sentence boundary
+        a.chain.busy = False
+        with patch.object(updates, "install") as install, patch.object(settings, "save"):
+            self.result()
+            install.assert_not_called()
+            a._read_options = None  # selection finished or was explicitly stopped
+            a._try_update()
+            install.assert_called_once()
 
     def test_busy_and_draining_servers_prevent_install_and_failed_launch_releases_admission(self):
         a = self.app

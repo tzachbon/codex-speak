@@ -10,7 +10,8 @@ DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "select-t
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "select-to-tts")  # uninstall deletes it
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
-            "prefetch": False, "auto_update": False}
+            "prefetch": False, "auto_update": False, "caption_font_size": 10, "caption_background": False,
+            "caption_background_opacity": 0.6}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Select to TTS"  # the installer creates and removes it with `--startup on|off`
@@ -35,7 +36,18 @@ def load(path=PATH) -> dict:
     except OverflowError:  # an integer too large for a float
         ok = False
     s["speed"] = min(max(float(speed), SPEEDS[0]), SPEEDS[1]) if ok else DEFAULTS["speed"]
-    for key in ("clipboard_fallback", "stt_server", "prefetch", "auto_update"):
+    font_size = s["caption_font_size"]
+    s["caption_font_size"] = (min(max(font_size, 8), 24)
+                               if isinstance(font_size, int) and not isinstance(font_size, bool)
+                               else DEFAULTS["caption_font_size"])
+    opacity = s["caption_background_opacity"]
+    try:
+        ok = isinstance(opacity, (int, float)) and not isinstance(opacity, bool) and math.isfinite(opacity)
+    except OverflowError:  # an integer too large for a float
+        ok = False
+    s["caption_background_opacity"] = (min(max(float(opacity), 0.0), 1.0)
+                                        if ok else DEFAULTS["caption_background_opacity"])
+    for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background", "auto_update"):
         if not isinstance(s[key], bool):
             s[key] = DEFAULTS[key]
     return s

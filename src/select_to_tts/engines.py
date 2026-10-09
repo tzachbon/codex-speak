@@ -29,8 +29,10 @@ class _Threaded:
         self._start(lambda stop: self._run(text, lang_tag or lang.detect(text), stop, on_audio), on_done)
 
     def _start(self, run, on_done, cleanup=lambda: None):
+        paused = self.paused.is_set()
         self.stop()
-        self.paused.clear()
+        if paused:
+            self.paused.set()
         self._stop = stop = threading.Event()
 
         def work():
@@ -127,7 +129,7 @@ class EdgeEngine(_Threaded):
                         player = self.Player(24000, 1, self.paused)
                     except Exception as e:
                         raise NoAudioError(f"Edge: {e}") from e
-                    on_audio()
+                    player.arm(on_audio)
                 player.write(pcm)
             if stop.is_set():
                 return
@@ -162,6 +164,11 @@ class SapiEngine(_Threaded):
         voice = comtypes.client.CreateObject("SAPI.SpVoice")
         voice.Voice = match[0]
         voice.Rate = sapi_rate(self.speed)
+        while self.paused.is_set():
+            if stop.wait(0.05):
+                return
+        if stop.is_set():
+            return
         voice.Speak(text, 1)  # SVSFlagsAsync
         on_audio()
         held = False
@@ -195,15 +202,16 @@ class Chain:
         # Auto skips engines that cannot reach the chosen speed (Codex cannot read faster)
         return [e for e in self.engines if e.speed <= getattr(e, "max_speed", e.speed)] or self.engines
 
-    def prepare(self, lang_tag, text=None):
+    def prepare(self, lang_tag, text=None, *, fallback_tag=None):
         first = self.order()[0]
         for e in self.engines:
             if e is not first and hasattr(e, "discard"):
                 e.discard()  # a speed or engine change can hand the read to another engine
         if hasattr(first, "prepare"):
-            first.prepare(lang_tag, text if self.prefetch else None)
+            tag = lang_tag if first.name == "Codex" else lang_tag or fallback_tag
+            first.prepare(tag, text if self.prefetch else None)
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None):
         self._gen += 1
         self._idle = idle = threading.Event()
         self._paused = False
@@ -214,6 +222,8 @@ class Chain:
 
         def attempt(i):
             engine = self._active = order[i]
+            if hasattr(engine, "paused"):
+                engine.paused.set() if self._paused else engine.paused.clear()
 
             def done(err):
                 if gen != self._gen:
@@ -224,8 +234,9 @@ class Chain:
                 idle.set()  # a late completion cannot mark a newer read idle
                 on_done(err)
 
-            engine.speak(text, lang_tag, done, lambda: gen == self._gen and on_audio())
-            if self._paused:
+            tag = lang_tag if engine.name == "Codex" else lang_tag or fallback_tag
+            engine.speak(text, tag, done, lambda: gen == self._gen and on_audio())
+            if gen == self._gen and self._paused:
                 engine.pause()  # a pause made before a fallback carries over to the next engine
 
         attempt(0)
