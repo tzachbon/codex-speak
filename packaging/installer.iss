@@ -83,10 +83,25 @@ begin
   Sleep(500);
 end;
 
+var
+  OldDir: String;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopApp;
+  // Where Select to TTS was installed, possibly not the default folder
+  if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                             'InstallLocation', OldDir) then
+    OldDir := '';
   Result := '';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // Only a folder that still holds the old app is removed, never the new one
+  if (CurStep = ssPostInstall) and (OldDir <> '') and FileExists(AddBackslash(OldDir) + '{#OldExe}')
+     and (CompareText(RemoveBackslash(OldDir), RemoveBackslash(ExpandConstant('{app}'))) <> 0) then
+    DelTree(RemoveBackslash(OldDir), True, True, True);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

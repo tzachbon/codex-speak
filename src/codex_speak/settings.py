@@ -62,8 +62,8 @@ def load(path=PATH) -> dict:
 
 
 def migrate(dirs=LEGACY_DIRS) -> None:
-    """Moves each old folder to its new name. If it can't, copies the files worth keeping that the
-    new folder lacks, retrying on every start until they are there. Never raises."""
+    """Moves each old folder to its new name. If it can't, copies the files worth keeping over the
+    new ones on every start until a copy of all of them succeeds. Never raises."""
     for old, new, keep in dirs:
         if not os.path.isdir(old):
             continue
@@ -73,14 +73,19 @@ def migrate(dirs=LEGACY_DIRS) -> None:
                 continue
             except OSError:
                 pass  # a file in it is locked: copy instead
-        for name in keep:
-            src, dst = os.path.join(old, name), os.path.join(new, name)
-            if os.path.exists(src) and not os.path.exists(dst):
-                try:
-                    os.makedirs(new, exist_ok=True)
-                    shutil.copy2(src, dst)
-                except OSError:
-                    pass  # tried again next start
+        done = os.path.join(new, ".migrated")  # from then on, the new folder's files win
+        if os.path.exists(done):
+            continue
+        try:
+            os.makedirs(new, exist_ok=True)
+            for name in keep:
+                src, dst = os.path.join(old, name), os.path.join(new, name)
+                if os.path.exists(src):
+                    shutil.copy2(src, dst + ".tmp")
+                    os.replace(dst + ".tmp", dst)  # never a half-copied file
+            open(done, "w").close()
+        except OSError:
+            pass  # tried again next start
 
 
 def save(s: dict, path=PATH) -> None:

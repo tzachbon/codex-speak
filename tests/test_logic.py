@@ -314,21 +314,23 @@ class RenameMigration(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
 
-    def test_newer_settings_are_kept(self):
+    def test_settings_saved_after_a_finished_copy_are_kept(self):
         with tempfile.TemporaryDirectory() as d:
             old, new, dirs = self.dirs(d)
             os.makedirs(new)
+            settings.migrate(dirs)
             settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
             settings.migrate(dirs)
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
 
-    def test_failed_copy_never_raises_and_is_retried(self):
+    def test_failed_copy_never_raises_and_its_defaults_are_replaced(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as d:
             old, new, dirs = self.dirs(d)
             with patch.object(settings.os, "rename", side_effect=PermissionError), \
                     patch.object(settings.shutil, "copy2", side_effect=PermissionError):
                 settings.migrate(dirs)
+            settings.save(dict(settings.DEFAULTS), os.path.join(new, "settings.json"))  # the app started anyway
             with patch.object(settings.os, "rename", side_effect=PermissionError):
                 settings.migrate(dirs)
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
