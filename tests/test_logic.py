@@ -131,10 +131,44 @@ class Trigger(unittest.TestCase):
 
 
 class Player(unittest.TestCase):
+    def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
+        p = PcmPlayer.__new__(PcmPlayer)
+        p._buf, p._lock, p._width, p._paused = bytearray(), threading.Lock(), 2, threading.Event()
+        pending_when_output_is_filled, heard = [], []
+
+        class Output(bytearray):
+            def __setitem__(self, key, value):
+                pending_when_output_is_filled.append(p.pending)
+                super().__setitem__(key, value)
+
+        p.arm(lambda: heard.append(1))
+        p.write(array.array("h", [1000] * 4).tobytes())
+        p._fill(Output(8), 4, None, None)
+        self.assertTrue(all(pending_when_output_is_filled))
+        self.assertEqual((p.pending, heard), (False, [1]))
+
+    def test_start_waits_for_voiced_unpaused_output_and_fires_once(self):
+        p = PcmPlayer.__new__(PcmPlayer)
+        p._buf, p._lock, p._width, p._paused = bytearray(), threading.Lock(), 2, threading.Event()
+        heard, out = [], bytearray(8)
+        p.arm(lambda: heard.append(1))
+        p.write(bytes(8))  # warmup silence is not speech
+        p._fill(out, 4, None, None)
+        self.assertFalse(heard)
+        p._paused.set()
+        p.write(array.array("h", [1000] * 8).tobytes())
+        p._fill(out, 4, None, None)
+        self.assertEqual((heard, bytes(out), len(p._buf)), ([], bytes(8), 16))
+        p._paused.clear()
+        p._fill(out, 4, None, None)
+        p._fill(out, 4, None, None)
+        self.assertEqual(heard, [1])
+
     def test_paused_player_plays_silence_and_keeps_the_queue(self):
         paused = threading.Event()
         p = PcmPlayer.__new__(PcmPlayer)  # no sound device: drive the callback directly
         p._buf, p._lock, p._width, p._paused = bytearray(b"\x01\x02" * 8), threading.Lock(), 2, paused
+        p._on_audio = None
         out = bytearray(8)
         paused.set()
         p._fill(out, 4, None, None)

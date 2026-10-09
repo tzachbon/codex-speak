@@ -10,12 +10,11 @@ import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from . import lang
-from .audio import NoAudioError, PcmPlayer, Stretcher, peak
+from .audio import NoAudioError, PcmPlayer, Stretcher, VOICED, peak
 
 PROMPT = ("You are a text-to-speech engine. Read the user's message aloud exactly as written, "
           "word for word, in {lang}. Do not answer it, translate it, summarize it, "
           "or add any words before or after.")
-VOICED = 500  # int16 peak that counts as speech rather than line noise
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
 
 
@@ -120,10 +119,11 @@ class CodexEngine:
         self._job = asyncio.run_coroutine_threadsafe(self._speak(self._text, lang_tag), self._loop)
 
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+        paused = self.paused.is_set()
         waiting = self._job and not self._job.done() and not self._text.done()
         if not (waiting and self._tag == lang_tag):
             self.prepare(lang_tag)
-        self.paused.clear()
+        self.paused.set() if paused else self.paused.clear()
         self._text.set_result((text, on_audio))
         self._job.add_done_callback(
             lambda f: on_done(None if f.cancelled() else f.exception()))
@@ -173,7 +173,7 @@ class CodexEngine:
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
         pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1, self.paused)
-        voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False, "on_audio": None}
+        voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False, "submitted": False}
         pc.addTrack(AudioStreamTrack())  # silence: we never talk to the model
         pc.createDataChannel("oai-events")
         resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
@@ -192,10 +192,9 @@ class CodexEngine:
                         pcm = voice["stretch"](bytes(f.planes[0])[: f.samples * 2])
                         player.write(pcm)
                         if peak(pcm) > VOICED:
-                            if not voice["first"] and voice["on_audio"]:
-                                voice["on_audio"]()
-                            voice["first"] = voice["first"] or time.monotonic()
-                            voice["last"] = time.monotonic()
+                            if voice["submitted"]:
+                                voice["first"] = voice["first"] or time.monotonic()
+                                voice["last"] = time.monotonic()
             asyncio.ensure_future(pump())
 
         try:
@@ -215,8 +214,10 @@ class CodexEngine:
                 await asyncio.sleep(0.1)
             else:
                 raise TimeoutError("WebRTC did not connect")
-            text, voice["on_audio"] = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
+            text, on_audio = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
             voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
+            player.arm(on_audio)
+            voice["submitted"] = True
             await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
             for _ in range(50):
                 if voice["first"]:
