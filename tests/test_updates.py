@@ -1,8 +1,11 @@
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import sys
+import shutil
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -103,6 +106,28 @@ class Installation(unittest.TestCase):
             with self.assertRaises(ValueError):
                 updates.install(Path("anything.exe"))
             launch.assert_not_called()
+
+
+class Packaging(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 is needed for the build script")
+    def test_build_rejects_a_mismatched_tag_without_changing_workflow_permissions(self):
+        script = Path(__file__).resolve().parents[1] / "packaging" / "build.ps1"
+        command = r"""
+        $ast = [Management.Automation.Language.Parser]::ParseFile($env:SELECT_TO_TTS_BUILD_SCRIPT, [ref]$null, [ref]$null)
+        $guard = $ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.IfStatementAst] } | Select-Object -First 1
+        if (-not $guard) { throw 'Release guard missing' }
+        $version = '0.1.1'
+        foreach ($pair in @(@('branch','master'), @('tag','v0.1.1'), @('tag','v0.1.2'))) {
+            $env:GITHUB_REF_TYPE, $env:GITHUB_REF_NAME = $pair
+            $rejected = $false
+            try { & ([scriptblock]::Create($guard.Extent.Text)) } catch { $rejected = $true }
+            if ($rejected -ne ($pair[1] -eq 'v0.1.2')) { throw "Unexpected guard result for $pair" }
+        }
+        """
+        # Pass the path as data to avoid PowerShell interpolation.
+        result = subprocess.run(["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True,
+                                env={**os.environ, "SELECT_TO_TTS_BUILD_SCRIPT": str(script)})
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
