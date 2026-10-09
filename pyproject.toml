@@ -1,6 +1,6 @@
 [project]
 name = "select-to-tts"
-version = "0.1.0"
+version = "0.1.1"
 description = "Select text anywhere on Windows and hear it read aloud"
 authors = [
     { name = "tzachbon", email = "tzachbonfil@gmail.com" }

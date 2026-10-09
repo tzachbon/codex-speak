@@ -56,6 +56,54 @@ class Fake:
 
 
 class ChainTest(unittest.TestCase):
+    def test_new_speech_stays_busy_when_old_completion_passed_its_generation_guard(self):
+        callbacks, guarded, resume = [], threading.Event(), threading.Event()
+        main_thread = threading.get_ident()
+        class CompletionBarrier(Fake):
+            def __init__(self):
+                self.calls, self.err = 0, None
+
+            @property
+            def name(self):
+                if threading.get_ident() != main_thread:
+                    guarded.set()  # completion has passed the generation guard
+                    if not resume.wait(2):
+                        raise AssertionError("test completion barrier timed out")
+                return "Edge"
+        engine = CompletionBarrier()
+        engine.speak = lambda text, tag, done, audio: callbacks.append(done)
+        chain = Chain([engine])
+        chain.speak("old", None, lambda err: None)
+        worker = threading.Thread(target=lambda: callbacks[0](None))
+        worker.start()
+        try:
+            self.assertTrue(guarded.wait(1))
+            chain.speak("new", None, lambda err: None)
+        finally:
+            resume.set()
+            worker.join(2)
+        self.assertTrue(chain.busy)
+        callbacks[1](None)
+        self.assertFalse(chain.busy)
+
+    def test_busy_includes_paused_speech_and_ignores_superseded_completion(self):
+        callbacks = []
+        engine = Fake("Edge")
+        engine.speak = lambda text, tag, done, audio: callbacks.append(done)
+        chain = Chain([engine])
+        self.assertFalse(chain.busy)
+        chain.speak("first", None, lambda err: None)
+        chain.pause()
+        self.assertTrue(chain.busy)
+        chain.speak("second", None, lambda err: None)
+        callbacks[0](None)
+        self.assertTrue(chain.busy)
+        callbacks[1](None)
+        self.assertFalse(chain.busy)
+        chain.speak("third", None, lambda err: None)
+        chain.stop()
+        self.assertFalse(chain.busy)
+
     def run_chain(self, *engines, only=None):
         chain, result = Chain(list(engines)), []
         chain.only = only
@@ -154,6 +202,14 @@ class StopClearsPause(unittest.TestCase):
 
 
 class Settings(unittest.TestCase):
+    def test_auto_update_is_opt_in_and_requires_a_boolean(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            self.assertFalse(settings.load(path)["auto_update"])
+            for value, expected in ((True, True), (False, False), ("yes", False), (1, False)):
+                settings.save({"auto_update": value}, path)
+                self.assertEqual(settings.load(path)["auto_update"], expected)
+
     def test_load_defaults_clamps_and_survives_corruption(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "sub", "settings.json")

@@ -30,6 +30,8 @@ The app lives in the tray. Click the tray icon, or start the app again from the 
 ![Settings](docs/settings.png)
 
 - **Start when I sign in to Windows**: adds or removes a Task Scheduler logon task named "Select to TTS". It starts right after sign-in, unlike Run-key apps, which Windows starts one at a time.
+- **Check and install update**: checks the latest stable GitHub release, verifies the installer's size and SHA-256 digest, then installs it into the current app folder and relaunches. If you already have that version or a newer one, it reports that you are up to date. It waits for speech, including paused speech, and active transcriptions to finish. Stop or finish a paused read to allow installation.
+- **Install updates automatically**: off by default. When enabled, checks shortly after startup and every 24 hours while the app is running, and installs when idle. Turning it off cancels a pending automatic installation. The manual button works with this option off. Settings and your sign-in startup choice are preserved.
 - **Speed**: 0.5× to 2×. Changes apply to the next read.
   - Edge and Windows voices support the full range.
   - Codex streams speech in real time, so it can only be slowed down. Above 1×, Auto starts with Edge, and "Codex only" reads at its natural pace.
@@ -38,6 +40,8 @@ The app lives in the tray. Click the tray icon, or start the app again from the 
 - **Prepare speech as soon as I select text**: off by default. When Edge reads (Edge only, or Auto above 1×), the app asks Microsoft's speech service for the audio as soon as the bar appears, so speech starts almost at once when you press play. This sends the selected text before you press play, even if you never do. Password fields are never read.
 
 Settings are saved in `%APPDATA%\select-to-tts\settings.json`. A small log is kept next to them in `select-to-tts.log`. It records the engine, timing (including the time to first audio), and errors, but never the text itself.
+
+If an update check or download fails, the app stays running and Settings shows the error. Use the update button to retry. Installation errors are shown by the installer. Downloaded installers and `setup.log` are kept under `%LOCALAPPDATA%\select-to-tts\updates` for diagnosis and removed on uninstall. If setup fails, run the latest trusted installer manually. The digest checks that the download matches GitHub's release metadata. The installer remains unsigned and the updater trusts this repository's release account.
 
 ## Uninstall
 
@@ -50,6 +54,8 @@ uv sync
 uv run select-to-tts            # or start .venv\Scripts\select-to-tts.exe (no console window)
 ```
 
+Update installation controls are disabled when running from source. Update the checkout and run `uv sync` yourself.
+
 ## Build the installer
 
 Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
@@ -58,7 +64,7 @@ Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isin
 .\packaging\build.ps1           # PyInstaller app folder, then dist\SelectToTTS-Setup.exe
 ```
 
-CI (`.github/workflows/build.yml`) runs the tests and builds the installer on every push. Pushing a `v*` tag publishes a release with the installer attached.
+CI (`.github/workflows/build.yml`) runs the tests and builds the installer on every push to master and every PR. Pushing a `v*` tag publishes a release with the installer attached. The tag must match the version in `pyproject.toml` (for example, `v0.1.1` for `0.1.1`), which is also bundled into the app for update checks.
 
 ## How it works
 

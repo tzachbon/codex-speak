@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -13,7 +14,7 @@ from ctypes import wintypes
 import pystray
 from PIL import Image, ImageDraw
 
-from . import selection, settings, stt_server
+from . import selection, settings, stt_server, updates
 from .codex_rt import CodexEngine
 from .engines import Chain, EdgeEngine, SapiEngine
 from .popup import Popup
@@ -47,6 +48,10 @@ class App:
         self.root.withdraw()
         self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
         self.stt, self.stt_error = None, None
+        self._draining_stt = []
+        self._closing, self._update_busy, self._update_manual = False, False, False
+        self._pending_update = None
+        self._update_text = "Checks at startup and daily when enabled. Updates restart this app."
         self.chain = Chain([CodexEngine(), EdgeEngine(), SapiEngine()])
         first_run = not os.path.exists(settings.PATH)
         self.cfg = settings.load()
@@ -99,10 +104,14 @@ class App:
             self.stt_error = "The server is off."
             if self.stt:
                 server, self.stt = self.stt, None
+                self._draining_stt.append(server)
                 server.shutdown()  # up to 0.5 s
                 server.socket.close()  # frees the port now for a quick re-enable
                 # server_close() waits for a transcription in flight, so not on the Tk thread
-                threading.Thread(target=server.server_close, daemon=True).start()
+                def close():
+                    server.server_close()
+                    self.events.put(("stt_closed", server))
+                threading.Thread(target=close, daemon=True).start()
 
     def change(self, key, value, save=True):
         self.cfg[key] = value
@@ -117,6 +126,74 @@ class App:
             settings.save(self.cfg)
         except OSError as e:
             self.icon.notify(f"Could not save settings: {e}", "Select to TTS")
+        if key == "auto_update":
+            if value:
+                self.check_update(manual=False)
+            elif not self._update_manual:
+                self._discard_update()
+
+    def update_state(self):
+        return self._update_text, self._update_busy or self._pending_update is not None
+
+    def _update_status(self, text):
+        self._update_text = text
+        if self.settings_win and self.settings_win.alive:
+            self.settings_win.refresh_updates()
+
+    def check_update(self, manual=True):
+        if (not getattr(sys, "frozen", False) or self._closing or self._update_busy
+                or self._pending_update is not None):
+            return
+        self._update_busy, self._update_manual = True, manual
+        self._update_status("Checking for updates…")
+
+        def work():
+            try:
+                asset = updates.check()
+                if asset:
+                    self.events.put(("update_status", f"Downloading v{asset['version']}…"))
+                    path = updates.download(asset)
+                    text = f"v{asset['version']} is ready to install."
+                else:
+                    path, text = None, "You are up to date."
+            except Exception as e:
+                path, text = None, f"Could not update: {e}"
+            self.events.put(("update_result", path, text))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _auto_update(self):
+        if self.cfg["auto_update"]:
+            self.check_update(manual=False)
+        self.root.after(24 * 60 * 60 * 1000, self._auto_update)
+
+    def _discard_update(self):
+        if self._pending_update:
+            shutil.rmtree(self._pending_update.parent, ignore_errors=True)
+            self._pending_update = None
+            self._update_status("Automatic update cancelled.")
+
+    def _try_update(self):
+        if not self._pending_update or self._closing:
+            return
+        if not self._update_manual and not self.cfg["auto_update"]:
+            self._discard_update()
+            return
+        server = self.stt
+        if (self.chain.busy or self._draining_stt
+                or (server and not server.busy.acquire(blocking=False))):
+            self._update_status("Update ready. Waiting for speech and transcription to finish…")
+            self.root.after(1000, self._try_update)
+            return
+        try:
+            settings.save(self.cfg)
+            updates.install(self._pending_update)
+        except Exception as e:
+            if server:
+                server.busy.release()
+            self._discard_update()
+            self._update_status(f"Could not install update: {e}")
+            return
+        self._handle("quit")
 
     def _popup_speed(self, speed):
         self.change("speed", speed)
@@ -170,13 +247,22 @@ class App:
             except Exception as e:
                 log.exception("handling %s", kind)
                 self.icon.notify(f"Unexpected error: {e}", "Select to TTS")
-            if kind == "quit":
+            if self._closing:
                 return
         self.root.after(30, self._pump)
 
     def _handle(self, kind, *args):
         p = self.popup
-        if kind == "show":
+        if kind == "stt_closed":
+            self._draining_stt.remove(args[0])
+        elif kind == "update_status":
+            self._update_status(args[0])
+        elif kind == "update_result":
+            self._update_busy = False
+            self._pending_update = args[0]
+            self._update_status(args[1])
+            self._try_update()
+        elif kind == "show":
             text, x, y = args
             # double-clicking the popup is not a new selection, and a running read isn't interrupted
             if not (p.contains(x, y) or (p.playing and not p.paused)):
@@ -205,8 +291,10 @@ class App:
                 self.settings_win.focus()
             else:
                 self.settings_win = SettingsWindow(self.root, dict(self.cfg), icon_image(256), self.change,
-                                                   self.test_voice, lambda: self.stt_error)
+                                                   self.test_voice, lambda: self.stt_error,
+                                                   self.update_state, self.check_update)
         elif kind == "quit":
+            self._closing = True
             self._run_stt(False)
             self.trigger.stop()
             self.chain.close()
@@ -222,6 +310,7 @@ class App:
         threading.Thread(target=self._wait_show_settings, daemon=True).start()
         self.trigger.start()
         self.root.after(30, self._pump)
+        self.root.after(30_000, self._auto_update)
         self.root.mainloop()
 
 
