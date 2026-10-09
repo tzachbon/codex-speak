@@ -136,7 +136,7 @@ class App:
         self.change("speed", speed)
 
     def _prepare_selection(self, tag=None):
-        if self._read_options:
+        if self._read_options or not self.popup.visible:
             return
         units = sentences.split(self.popup.text)
         if units:

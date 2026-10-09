@@ -39,6 +39,7 @@ class Popup:
 
     def show(self, text, x, y):
         self.text = text
+        self.visible = True
         self.set_playing(False)
 
     def hide(self):
@@ -120,12 +121,24 @@ class Sequence(unittest.TestCase):
     def test_idle_speed_change_prepares_the_same_first_unit_as_play(self):
         a = app()
         a.popup.playing = False
+        a.popup.visible = True
         a.popup.text = "Hello. שלום עולם!"
         a.cfg["prefetch"] = a.chain.prefetch = True
         a.change("speed", 0.5, save=False)
         self.assertEqual(a.chain.prepared, [("he-IL", "Hello.")])
         a.play(a.popup.text, None)
         self.assertEqual(a.chain.calls[0][:2], ("Hello.", "he-IL"))
+
+    def test_hidden_selection_is_not_prepared_when_speech_settings_change(self):
+        for key, value in (("speed", 0.5), ("engine", "Edge"), ("prefetch", True)):
+            with self.subTest(key=key):
+                a = app()
+                a.popup.show("Old selection. More text.", 1, 1)
+                a.popup.hide()
+                a.cfg["prefetch"] = a.chain.prefetch = True
+                a.change(key, value, save=False)
+                a._prepare_selection("en-US")
+                self.assertEqual(a.chain.prepared, [])
 
     def test_stop_replacement_and_test_voice_ignore_late_caption_and_errors(self):
         for action in ("stop", "replacement", "test"):
