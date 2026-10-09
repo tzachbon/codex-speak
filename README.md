@@ -29,7 +29,9 @@ Requirements: Windows 11, 64-bit.
 3. Pick a reading speed from the speed menu on the bar. It is saved and shared with Settings.
 4. ⏸ pauses and ▶ continues from the same spot. ■ stops. Selecting new text while paused replaces the paused read.
 
-The app lives in the tray. Click the tray icon, or start the app again from the Start menu, to open **Settings**:
+Click ⚙ on the floating bar to open **Settings**. This pauses active speech. Press ▶ on the bar to resume when you're ready.
+
+The app also lives in the tray. Click the tray icon, or start the app again from the Start menu, to open **Settings**:
 
 ![Settings](docs/settings.png)
 

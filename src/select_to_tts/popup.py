@@ -16,7 +16,7 @@ IDLE_HIDE_MS = 4000
 # Windows 11 light flyout colors
 BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1b1b", "#005fb8", "#e0e0e0"
 SUBTLE = "#5f5f5f"
-PLAY, PAUSE, STOP, CHEVRON, CLOSE = "\ue768", "\ue769", "\ue71a", "\ue70d", "\ue8bb"
+PLAY, PAUSE, STOP, CHEVRON, CLOSE, SETTINGS = "\ue768", "\ue769", "\ue71a", "\ue70d", "\ue8bb", "\ue713"
 
 
 def fonts(root):
@@ -79,9 +79,10 @@ class _FlatButton(tk.Frame):
 
 
 class Popup:
-    def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed):
+    def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings):
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
         self.on_lang, self.on_speed = on_lang, on_speed
+        self.on_settings = on_settings
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
         self.speed = tk.DoubleVar(master=root, value=speed)
@@ -103,6 +104,8 @@ class Popup:
         self.speed_btn = _FlatButton(w, lambda: self._post_menu(self.speed_btn, self.speed_menu),
                                      (settings.speed_label(speed), (text, 10), FG), (CHEVRON, (icons, 7), FG))
         self.speed_btn.pack(side="left", padx=0, pady="2p")
+        self.settings_btn = _FlatButton(w, self._open_settings, (SETTINGS, (icons, 11), FG))
+        self.settings_btn.pack(side="left", padx=0, pady="2p")
         self.close_btn = _FlatButton(w, self.close, (CLOSE, (icons, 7), SUBTLE))
         self.close_btn.pack(side="left", padx=(0, "2p"), pady="2p")
         self.menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
@@ -228,6 +231,11 @@ class Popup:
         else:
             self.on_pause()
             self.set_playing(True, paused=True)
+
+    def _open_settings(self):
+        if self.playing and not self.paused:
+            self._toggle()
+        self.on_settings()
 
     def _stop(self):
         self.on_stop()

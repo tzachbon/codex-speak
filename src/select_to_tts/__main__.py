@@ -61,7 +61,8 @@ class App:
             self.apply(key, value)
         self.popup = Popup(self.root, self.cfg["speed"], on_play=self.play, on_stop=self.stop,
                            on_pause=self.pause, on_resume=self.resume,
-                           on_lang=self._prepare_selection, on_speed=self._popup_speed)
+                           on_lang=self._prepare_selection, on_speed=self._popup_speed,
+                           on_settings=lambda: self.events.put(("settings",)))
         self._configure_captions()
         self.trigger = SelectionTrigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
         self.icon = pystray.Icon("select-to-tts", icon_image(), "Select to TTS", self._menu())
