@@ -1,0 +1,50 @@
+name: Bug report
+description: Something doesn't work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in Settings under General, for example "Codex Speak 0.5.0". Write "source" if you run from a checkout.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Run `winver`, for example "Windows 11 24H2 (26100.4061)".
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Voice setting
+      options:
+        - "Auto: Codex, then Edge, then Windows"
+        - Codex only
+        - Edge only
+        - Windows only
+        - Not about speech
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App where you selected text
+      description: For example Chrome, Notepad, VS Code, Word.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Paste the relevant lines from `%APPDATA%\codex-speak\codex-speak.log`.
+        The log records engines, timing, and errors. It never contains the selected text.
+      render: text

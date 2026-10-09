@@ -15,14 +15,14 @@ OpenWhispr keeps working. The manual command below is for running without the tr
 From this project's directory:
 
 ```powershell
-.venv\Scripts\python.exe -m select_to_tts.stt_server
+.venv\Scripts\python.exe -m codex_speak.stt_server
 ```
 
 The default port is 18765. Binding fails if another service already owns it.
 Keep that process running. Ctrl+C stops accepting requests and waits for active
 transcription to finish. It does not install a service or start automatically.
 
-Open `%LOCALAPPDATA%\select-to-tts\stt-connection.json` and copy `base_url` into
+Open `%LOCALAPPDATA%\codex-speak\stt-connection.json` and copy `base_url` into
 OpenWhispr's **Speech-to-Text → Self-Hosted → Server URL**. Set **Model** to
 `codex-realtime` (or leave it empty). No API key is needed in that panel.
 
@@ -35,7 +35,7 @@ recordings, or transcripts. `--port` and `--connection-file` can override defaul
 
 ```python
 from pathlib import Path
-from select_to_tts.stt import transcribe
+from codex_speak.stt import transcribe
 
 # Blocking call: run in a worker thread, not the GUI thread.
 text = transcribe(Path("recording.webm").read_bytes())
@@ -59,7 +59,7 @@ ready for its callers to supply a recording.
 - Backend failures add `error.code` (for example `no_transcript`, `connection_failed`,
   `backend_start_failed`, `unknown`) and `error.request_id`. Messages never include
   backend exception text, and only startup failures suggest checking the Codex login.
-- Each transcription call (including invalid-input and busy rejections) appends one metadata line to `%LOCALAPPDATA%\select-to-tts\stt-diagnostics.log`
+- Each transcription call (including invalid-input and busy rejections) appends one metadata line to `%LOCALAPPDATA%\codex-speak\stt-diagnostics.log`
   (rotated at 1 MiB): request ID, outcome code, failing stage, stage timings, event-type
   counts, and the audio duration Codex reported receiving. No audio, text, or URLs.
   `no_transcript` with a low `server_audio_ms` means Codex did not ingest the audio.

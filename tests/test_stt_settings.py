@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-from select_to_tts import settings_ui
+from codex_speak import settings_ui
 
 
 class SttSettings(unittest.TestCase):
@@ -45,7 +45,7 @@ class SttSettings(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, LOCALAPPDATA=self.temp.name)
         self.env.start()
-        self.path = Path(self.temp.name) / "select-to-tts/stt-connection.json"
+        self.path = Path(self.temp.name) / "codex-speak/stt-connection.json"
         self.path.parent.mkdir()
 
     def tearDown(self):

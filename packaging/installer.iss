@@ -1,10 +1,12 @@
-; Per-user installer for Select to TTS. Built by packaging\build.ps1 (Inno Setup 6).
-#define AppName "Select to TTS"
-#define AppExe "SelectToTTS.exe"
+; Per-user installer for Codex Speak. Built by packaging\build.ps1 (Inno Setup 6).
+#define AppName "Codex Speak"
+#define AppExe "CodexSpeak.exe"
 #define AppId "FED44346-501C-414C-A557-8F7BDA1AC94A"
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
 ; Older builds started at sign-in through this Run value
 #define RunValue "select-to-tts"
+; The app was called Select to TTS before 0.5.0. Setup replaces that install in place (same AppId).
+#define OldExe "SelectToTTS.exe"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -14,12 +16,13 @@ AppId={{{#AppId}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=tzachbon
-AppPublisherURL=https://github.com/tzachbon/select-to-tts
-DefaultDirName={autopf}\{#AppName}
+AppPublisherURL=https://github.com/tzachbon/codex-speak
+DefaultDirName={code:DefaultDir}
+UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=SelectToTTS-Setup
+OutputBaseFilename=CodexSpeak-Setup
 SetupIconFile=..\build\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 WizardStyle=modern
@@ -32,17 +35,22 @@ Name: startup; Description: "Start {#AppName} when I sign in to Windows"; Check:
 Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "..\build\dist\SelectToTTS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\dist\CodexSpeak\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 ; Drop files from an older version that this version no longer ships
 Type: filesandordirs; Name: "{app}\_internal"
+; Leftovers from Select to TTS. The app moves its settings and sign-in task on first start.
+Type: files; Name: "{autoprograms}\Select to TTS.lnk"
+Type: files; Name: "{autodesktop}\Select to TTS.lnk"
+Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
+Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
 
 [UninstallDelete]
-; App-owned caches outside {app}. Settings and the log in %APPDATA%\select-to-tts are kept.
-Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
-Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
-Type: filesandordirs; Name: "{localappdata}\select-to-tts\updates"
+; App-owned caches outside {app}. Settings and the log in %APPDATA%\codex-speak are kept.
+Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\CodexSpeak-311"
+Type: filesandordirs; Name: "{%TEMP}\codex-speak"
+Type: filesandordirs; Name: "{localappdata}\codex-speak\updates"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -60,6 +68,18 @@ Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait pos
 Filename: "{app}\{#AppExe}"; Parameters: "--startup off"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveStartupTask"
 
 [Code]
+function DefaultDir(Param: String): String;
+var
+  Dir: String;
+begin
+  // Codex Speak upgrades keep a custom folder. Select to TTS moves to the new default.
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                         'InstallLocation', Dir) and FileExists(AddBackslash(Dir) + '{#AppExe}') then
+    Result := RemoveBackslash(Dir)
+  else
+    Result := ExpandConstant('{autopf}\{#AppName}');
+end;
+
 // Upgrades keep the user's sign-in choice from the Settings page instead of re-asking.
 function IsFreshInstall: Boolean;
 begin
@@ -70,14 +90,44 @@ procedure StopApp;
 var
   Code: Integer;
 begin
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe} /IM {#OldExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Sleep(500);
 end;
+
+var
+  OldDir, OldUninstaller: String;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopApp;
+  // Where Select to TTS was installed, possibly not the default folder
+  if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                             'InstallLocation', OldDir) then
+    OldDir := '';
+  RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                      'UninstallString', OldUninstaller);
+  OldUninstaller := RemoveQuotes(OldUninstaller);
   Result := '';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // Keep shared folders and any folder containing the new install.
+  if (CurStep = ssPostInstall) and (OldDir <> '') and FileExists(AddBackslash(OldDir) + '{#OldExe}')
+     and (CompareText(RemoveBackslash(OldDir), RemoveBackslash(ExpandConstant('{app}'))) <> 0)
+     and (CompareText(Copy(AddBackslash(ExpandConstant('{app}')), 1, Length(AddBackslash(OldDir))),
+                      AddBackslash(OldDir)) <> 0) then
+  begin
+    DeleteFile(AddBackslash(OldDir) + '{#OldExe}');
+    DelTree(AddBackslash(OldDir) + '_internal', True, True, True);
+    // Shared folders may have another app's unins000. Only remove our registered uninstaller.
+    if CompareText(ExtractFileDir(OldUninstaller), RemoveBackslash(OldDir)) = 0 then
+    begin
+      DeleteFile(OldUninstaller);
+      DeleteFile(ChangeFileExt(OldUninstaller, '.dat'));
+    end;
+    RemoveDir(RemoveBackslash(OldDir));  // succeeds only when empty
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

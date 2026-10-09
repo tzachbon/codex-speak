@@ -9,7 +9,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from select_to_tts import updates
+from codex_speak import updates
 
 
 class Response(io.BytesIO):
@@ -25,9 +25,9 @@ def response(data, url):
 
 def release(tag="v0.10.0"):
     return {"tag_name": tag, "draft": False, "prerelease": False, "assets": [{
-        "name": "SelectToTTS-Setup.exe", "state": "uploaded", "size": 3,
+        "name": "CodexSpeak-Setup.exe", "state": "uploaded", "size": 3,
         "digest": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-        "browser_download_url": f"https://github.com/tzachbon/select-to-tts/releases/download/{tag}/SelectToTTS-Setup.exe"}]}
+        "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/CodexSpeak-Setup.exe"}]}
 
 
 class Releases(unittest.TestCase):
@@ -99,7 +99,7 @@ class Downloads(unittest.TestCase):
 class Installation(unittest.TestCase):
     def test_installer_targets_running_install_without_a_shell_or_reboot(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(updates, "CACHE", Path(directory)), patch.object(
-                sys, "frozen", True, create=True), patch.object(sys, "executable", r"C:\Apps\Select to TTS\SelectToTTS.exe"), patch(
+                sys, "frozen", True, create=True), patch.object(sys, "executable", r"C:\Apps\Codex Speak\CodexSpeak.exe"), patch(
                 "subprocess.Popen") as launch:
             path = Path(directory) / "update-123" / updates.ASSET
             path.parent.mkdir()
@@ -107,7 +107,7 @@ class Installation(unittest.TestCase):
             updates.install(path)
             args = launch.call_args.args[0]
             self.assertEqual(args[:4], [str(path), "/SP-", "/SILENT", "/NORESTART"])
-            self.assertIn(r"/DIR=C:\Apps\Select to TTS", args)
+            self.assertIn(r"/DIR=C:\Apps\Codex Speak", args)
             self.assertEqual(launch.call_args.kwargs["shell"], False)
         with patch.object(sys, "frozen", False, create=True), patch("subprocess.Popen") as launch:
             with self.assertRaises(ValueError):
@@ -120,7 +120,7 @@ class Packaging(unittest.TestCase):
     def test_build_rejects_a_mismatched_tag_without_changing_workflow_permissions(self):
         script = Path(__file__).resolve().parents[1] / "packaging" / "build.ps1"
         command = r"""
-        $ast = [Management.Automation.Language.Parser]::ParseFile($env:SELECT_TO_TTS_BUILD_SCRIPT, [ref]$null, [ref]$null)
+        $ast = [Management.Automation.Language.Parser]::ParseFile($env:CODEX_SPEAK_BUILD_SCRIPT, [ref]$null, [ref]$null)
         $guard = $ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.IfStatementAst] } | Select-Object -First 1
         if (-not $guard) { throw 'Release guard missing' }
         $version = '0.1.1'
@@ -133,7 +133,7 @@ class Packaging(unittest.TestCase):
         """
         # Pass the path as data to avoid PowerShell interpolation.
         result = subprocess.run(["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True,
-                                env={**os.environ, "SELECT_TO_TTS_BUILD_SCRIPT": str(script)})
+                                env={**os.environ, "CODEX_SPEAK_BUILD_SCRIPT": str(script)})
         self.assertEqual(result.returncode, 0, result.stderr)
 
 

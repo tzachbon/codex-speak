@@ -8,8 +8,8 @@ from unittest.mock import patch
 from pathlib import Path
 
 from PIL import Image
-from select_to_tts import settings
-from select_to_tts import settings_ui
+from codex_speak import settings
+from codex_speak import settings_ui
 
 
 class CaptionSettings(unittest.TestCase):

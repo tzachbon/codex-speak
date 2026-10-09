@@ -14,8 +14,8 @@ import wave
 
 import av
 
-from select_to_tts import stt, stt_server
-from select_to_tts.codex_rt import AppServer
+from codex_speak import stt, stt_server
+from codex_speak.codex_rt import AppServer
 
 
 def wav(seconds=0.1):
@@ -257,7 +257,7 @@ class Module(unittest.TestCase):
             self.assertIsNotNone(diag["stream_end_ms"])
 
     def test_failed_init_reaps_process(self):
-        with patch("select_to_tts.codex_rt.codex_exe", return_value="codex"), patch("select_to_tts.codex_rt.subprocess.Popen") as popen, patch("select_to_tts.codex_rt.subprocess.run"), patch("select_to_tts.codex_rt.threading.Thread"), patch.object(AppServer, "call", side_effect=RuntimeError("init failed")):
+        with patch("codex_speak.codex_rt.codex_exe", return_value="codex"), patch("codex_speak.codex_rt.subprocess.Popen") as popen, patch("codex_speak.codex_rt.subprocess.run"), patch("codex_speak.codex_rt.threading.Thread"), patch.object(AppServer, "call", side_effect=RuntimeError("init failed")):
             popen.return_value.poll.return_value = None
             with self.assertRaises(RuntimeError):
                 AppServer()

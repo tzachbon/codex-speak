@@ -1,5 +1,5 @@
 #Requires -Version 7.4
-# Builds dist\SelectToTTS-Setup.exe: PyInstaller app folder, then the Inno Setup 6 installer.
+# Builds dist\CodexSpeak-Setup.exe: PyInstaller app folder, then the Inno Setup 6 installer.
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true  # a failing uv/pyinstaller/iscc stops the build
 Set-Location (Split-Path $PSScriptRoot)
@@ -9,9 +9,9 @@ if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") {
     throw "Release tag must match pyproject.toml version"
 }
 New-Item -ItemType Directory -Force build | Out-Null
-uv run python -c "from select_to_tts.__main__ import icon_image; icon_image(256).save('build/icon.ico', sizes=[(s, s) for s in (16, 20, 24, 32, 40, 48, 64, 256)])"
-uv run pyinstaller --noconfirm --clean --windowed --name SelectToTTS --icon "$PWD\build\icon.ico" `
-    --collect-all uiautomation --hidden-import pystray._win32 --copy-metadata select-to-tts `
+uv run python -c "from codex_speak.__main__ import icon_image; icon_image(256).save('build/icon.ico', sizes=[(s, s) for s in (16, 20, 24, 32, 40, 48, 64, 256)])"
+uv run pyinstaller --noconfirm --clean --windowed --name CodexSpeak --icon "$PWD\build\icon.ico" `
+    --collect-all uiautomation --hidden-import pystray._win32 --copy-metadata codex-speak `
     --distpath build\dist --workpath build\work --specpath build packaging\launcher.py
 if ($LASTEXITCODE) { throw "pyinstaller failed" }
 $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") |
@@ -19,4 +19,4 @@ $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFile
 if (-not $iscc) { throw "Inno Setup 6 not found. Install it with: winget install JRSoftware.InnoSetup" }
 & $iscc /Qp "/DAppVersion=$version" packaging\installer.iss
 if ($LASTEXITCODE) { throw "iscc failed" }
-Get-Item dist\SelectToTTS-Setup.exe
+Get-Item dist\CodexSpeak-Setup.exe

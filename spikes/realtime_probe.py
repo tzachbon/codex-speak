@@ -26,7 +26,7 @@ class AppServer:
                                   encoding="utf-8", bufsize=1,
                                   creationflags=subprocess.CREATE_NO_WINDOW)
         threading.Thread(target=self._read, daemon=True).start()
-        self.call("initialize", {"clientInfo": {"name": "select-to-tts-probe", "version": "0"},
+        self.call("initialize", {"clientInfo": {"name": "codex-speak-probe", "version": "0"},
                                  "capabilities": {"experimentalApi": True}})
         self._send({"method": "initialized"})
 

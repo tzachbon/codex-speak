@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from select_to_tts import updates
+from codex_speak import updates
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging"))
 import publish_release
@@ -117,7 +117,7 @@ class Publication(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.artifact = Path(directory.name) / "SelectToTTS-Setup.exe"
+        self.artifact = Path(directory.name) / "CodexSpeak-Setup.exe"
         self.artifact.write_bytes(b"Test installer")
         self.tags, self.release, self.published, self.calls = {}, None, [], []
         self.upload_state = "uploaded"
@@ -129,7 +129,7 @@ class Publication(unittest.TestCase):
         return {"name": self.artifact.name, "state": state,
                 "size": self.artifact.stat().st_size if state == "uploaded" else 0,
                 "digest": "sha256:" + hashlib.sha256(self.artifact.read_bytes()).hexdigest(),
-                "browser_download_url": f"https://github.com/tzachbon/select-to-tts/releases/download/v0.2.0/{self.artifact.name}"}
+                "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/v0.2.0/{self.artifact.name}"}
 
     def run_command(self, args, **kwargs):
         args = tuple(args)

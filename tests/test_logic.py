@@ -7,11 +7,11 @@ import unittest
 
 from pynput.mouse import Button
 
-from select_to_tts import clipboard, lang, settings
-from select_to_tts.audio import NoAudioError, PcmPlayer, Stretcher
-from select_to_tts.codex_rt import CodexEngine
-from select_to_tts.engines import Chain, EdgeEngine, sapi_rate
-from select_to_tts.trigger import SelectionTrigger
+from codex_speak import clipboard, lang, settings
+from codex_speak.audio import NoAudioError, PcmPlayer, Stretcher
+from codex_speak.codex_rt import CodexEngine
+from codex_speak.engines import Chain, EdgeEngine, sapi_rate
+from codex_speak.trigger import SelectionTrigger
 
 
 class Lang(unittest.TestCase):
@@ -278,21 +278,184 @@ class Settings(unittest.TestCase):
                 self.assertEqual(settings.load(path)["prefetch"], expected, saved)
 
     def test_startup_round_trip(self):
-        name = "select-to-tts-unittest"
-        try:
-            settings.set_startup(True, name)
-            self.assertTrue(settings.startup_enabled(name))
-            settings.set_startup(False, name)
-            self.assertFalse(settings.startup_enabled(name))
-            settings.set_startup(False, name)  # already off: no error
-        finally:
-            settings.set_startup(False, name)
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+        service, tasks = MagicMock(), {}
+        folder = service.GetFolder.return_value
+        folder.GetTask.side_effect = lambda name: tasks[name]
+        folder.RegisterTaskDefinition.side_effect = lambda name, *args: tasks.update({name: SimpleNamespace(Enabled=True)})
+        folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
+        with patch.object(settings, "_scheduler", return_value=service):
+            name = "codex-speak-unittest"
+            try:
+                settings.set_startup(True, name)
+                self.assertTrue(settings.startup_enabled(name))
+                tasks[name].Enabled = False
+                self.assertFalse(settings.startup_enabled(name))
+                settings.set_startup(False, name)
+                self.assertFalse(settings.startup_enabled(name))
+                settings.set_startup(False, name)  # already off: no error
+            finally:
+                settings.set_startup(False, name)
+
+
+class RenameMigration(unittest.TestCase):
+    """Select to TTS became Codex Speak. Its folders and sign-in task move on first start."""
+
+    def dirs(self, d):
+        old, new = os.path.join(d, "select-to-tts"), os.path.join(d, "codex-speak")
+        os.makedirs(old)
+        with open(os.path.join(old, "settings.json"), "w") as f:
+            f.write('{"speed": 1.5}')
+        return old, new, [(old, new, ("settings.json",))]
+
+    def test_old_folder_moves(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            settings.migrate(dirs)
+            self.assertFalse(os.path.exists(old))
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_missing_files_are_copied_into_an_existing_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            os.makedirs(new)
+            settings.migrate(dirs)
+            self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_moved_folder_marker_keeps_new_settings_when_old_folder_returns(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            settings.migrate(dirs)
+            self.assertTrue(os.path.isfile(os.path.join(new, ".migrated")))
+            settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
+            self.dirs(d)  # a legacy build recreates its folder
+            settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
+
+    def test_marker_failure_copies_before_moving_and_keeps_new_settings(self):
+        from unittest.mock import patch
+        real_open = open
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+
+            def fail_old_marker(path, *args, **kwargs):
+                if path == os.path.join(old, ".migrated"):
+                    raise PermissionError
+                return real_open(path, *args, **kwargs)
+
+            with patch("builtins.open", side_effect=fail_old_marker), \
+                    patch.object(settings.os, "rename", wraps=settings.os.rename) as move:
+                settings.migrate(dirs)
+            move.assert_not_called()
+            self.assertTrue(os.path.isfile(os.path.join(new, ".migrated")))
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+            settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
+            settings.save({"speed": 2.0}, os.path.join(old, "settings.json"))
+            settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
+
+    def test_settings_saved_after_a_finished_copy_are_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            os.makedirs(new)
+            settings.migrate(dirs)
+            settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
+            settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
+
+    def test_failed_copy_never_raises_and_its_defaults_are_replaced(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            with patch.object(settings.os, "rename", side_effect=PermissionError), \
+                    patch.object(settings.shutil, "copy2", side_effect=PermissionError):
+                settings.migrate(dirs)
+            settings.save(dict(settings.DEFAULTS), os.path.join(new, "settings.json"))  # the app started anyway
+            with patch.object(settings.os, "rename", side_effect=PermissionError):
+                settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_installed_build_replaces_the_old_task(self):
+        from unittest.mock import call, patch
+        replaced = [call(True), call(False, settings.LEGACY_TASK)]
+        for old_enabled, expected in ((True, replaced), (False, replaced[1:])):  # a disabled one stays off
+            with patch.object(settings.sys, "frozen", True, create=True), \
+                    patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else None), \
+                    patch.object(settings, "startup_enabled", return_value=False), \
+                    patch.object(settings, "set_startup") as set_startup, \
+                    patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+                settings.refresh_startup()
+            self.assertEqual(set_startup.call_args_list, expected, old_enabled)
+
+    def test_source_run_leaves_the_old_task_alone(self):
+        from unittest.mock import patch
+        with patch.object(settings.sys, "frozen", False, create=True), \
+                patch.object(settings, "startup_enabled", return_value=True), \
+                patch.object(settings, "_task_enabled", return_value=True) as old_task, \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+            settings.refresh_startup()
+        set_startup.assert_not_called()
+        old_task.assert_not_called()
+
+    def test_installed_refresh_keeps_a_disabled_current_task_off(self):
+        from unittest.mock import call, patch
+        for old_enabled in (None, False, True):
+            for legacy_run in (False, True):
+                with self.subTest(old_enabled=old_enabled, legacy_run=legacy_run), \
+                        patch.object(settings.sys, "frozen", True, create=True), \
+                        patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else False), \
+                        patch.object(settings, "set_startup") as set_startup, \
+                        patch.object(settings, "_drop_run_value") as drop_run, \
+                        patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
+                        patch.object(settings.winreg, "OpenKey", side_effect=None if legacy_run else OSError):
+                    settings.refresh_startup()
+                self.assertEqual(set_startup.call_args_list, [] if old_enabled is None else [call(False, settings.LEGACY_TASK)])
+                self.assertEqual(drop_run.call_count, int(legacy_run))
+
+    def test_disabled_legacy_task_overrides_an_older_run_value(self):
+        from unittest.mock import patch
+        with patch.object(settings.sys, "frozen", True, create=True), \
+                patch.object(settings, "_task_enabled", side_effect=lambda name: False if name == settings.LEGACY_TASK else None), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings, "_drop_run_value") as drop_run, \
+                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
+                patch.object(settings.winreg, "OpenKey"):
+            settings.refresh_startup()
+        set_startup.assert_called_once_with(False, settings.LEGACY_TASK)
+        drop_run.assert_called_once()
+
+    def test_installed_disable_removes_both_disabled_tasks(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+        service = MagicMock()
+        tasks = {name: SimpleNamespace(Enabled=False) for name in (settings.TASK, settings.LEGACY_TASK)}
+        folder = service.GetFolder.return_value
+        folder.GetTask.side_effect = lambda name: tasks[name]
+        folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
+        with patch.object(settings.sys, "frozen", True, create=True), \
+                patch.object(settings, "_scheduler", return_value=service), \
+                patch.object(settings, "_drop_run_value"):
+            settings.set_startup(False)
+        self.assertEqual(tasks, {})
+
+    def test_source_run_leaves_the_legacy_run_value_alone(self):
+        from unittest.mock import patch
+        with patch.object(settings.sys, "frozen", False, create=True), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey"), \
+                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)) as query:
+            settings.refresh_startup()
+        query.assert_called_once()
+        set_startup.assert_not_called()
 
 
 class SttServerRestart(unittest.TestCase):
     def test_restarted_server_keeps_its_url(self):
         from pathlib import Path
-        from select_to_tts import stt_server
+        from codex_speak import stt_server
         with tempfile.TemporaryDirectory() as d:
             conn = Path(d) / "stt-connection.json"
             urls = []
