@@ -65,7 +65,13 @@ Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isin
 .\packaging\build.ps1           # PyInstaller app folder, then dist\SelectToTTS-Setup.exe
 ```
 
-CI (`.github/workflows/build.yml`) runs the tests and builds the installer on every push. Pushing a `v*` tag publishes a release with the installer attached.
+CI (`.github/workflows/build.yml`) tests and builds pull requests. Every successful push to `master`, including a merged PR, automatically publishes a release with the installer attached.
+
+Versions follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `feat:` adds a minor version, a `!` header or `BREAKING CHANGE:` footer adds a major version, and everything else adds a patch. Scoped headers such as `feat(captions):` work too. Each commit on master's first-parent history advances the version once, so delayed builds cannot claim the same version for different commits. A normal merge includes its new branch commits when choosing the bump. A rebase merge can skip unused version numbers.
+
+The release tag is the published version. CI stamps that version into `pyproject.toml`, the lockfile, and the installer in its build checkout. Source archives and source checkouts retain the development version. Manual stable `vMAJOR.MINOR.PATCH` tag pushes still build and publish that exact version. Releases wait for tests and the installer build, and delayed older releases do not replace a newer release as Latest.
+
+Rerunning a failed release reuses its tag and completes an unfinished draft without replacing uploaded assets. An empty or incomplete installer asset fails closed and needs recovery before rerunning.
 
 ## How it works
 

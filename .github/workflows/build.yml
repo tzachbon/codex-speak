@@ -1,4 +1,4 @@
-# Tests and builds the installer on every push. A v* tag also publishes it as a GitHub release.
+# Every successful master build publishes a versioned installer.
 name: build
 
 on:
@@ -8,14 +8,32 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && 'release' || github.ref }}
+  queue: max
 
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v6
+      - run: uv lock --check
+      - name: Resolve release version
+        id: version
+        run: uv run --no-project python packaging/release_version.py
+      - name: Stamp build metadata
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: uv version "$env:RELEASE_VERSION" --no-sync
       - run: uv sync --locked
       - run: uv run python -m unittest discover -s tests
       - name: Install Inno Setup if the runner lacks it
@@ -25,8 +43,26 @@ jobs:
         with:
           name: SelectToTTS-Setup
           path: dist/SelectToTTS-Setup.exe
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: SelectToTTS-Setup
+          path: dist
+      - name: Publish tested installer
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/SelectToTTS-Setup.exe --title "Select to TTS ${{ github.ref_name }}" --generate-notes
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+        run: uv run --no-project python packaging/publish_release.py
