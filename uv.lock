@@ -1320,6 +1320,9 @@ dependencies = [
 dev = [
     { name = "pyinstaller" },
 ]
+spike = [
+    { name = "aiortc" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1335,6 +1338,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "pyinstaller", specifier = ">=6.22.3" }]
+spike = [{ name = "aiortc", specifier = ">=1.15.0" }]
 
 [[package]]
 name = "setuptools"
