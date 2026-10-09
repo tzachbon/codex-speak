@@ -1,6 +1,7 @@
 """The Settings window: native ttk controls laid out like Windows 11 Settings. Changes apply at once."""
 import json
 import os
+import sys
 from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
@@ -9,7 +10,7 @@ from urllib.parse import urlsplit
 
 from PIL import ImageTk
 
-from . import settings
+from . import settings, updates
 from .popup import fonts, work_area
 
 PAGE, CARD, BORDER, SUBTLE = "#f3f3f3", "#ffffff", "#e5e5e5", "#5f5f5f"
@@ -30,9 +31,11 @@ def stt_connection():
 
 
 class SettingsWindow:
-    def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None):
+    def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
+                 update_state=lambda: ("Ready to check.", False), on_update=lambda: None):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
         self.stt_state = stt_state  # None when running, else why not
+        self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
         w.title("Select to TTS settings")
         w.resizable(False, False)
@@ -71,6 +74,17 @@ class SettingsWindow:
         card = self._card("General")
         ttk.Checkbutton(card, text="Start Select to TTS when I sign in to Windows", style="Card.TCheckbutton",
                         variable=self.startup, command=self._startup_changed).pack(anchor="w")
+        row = tk.Frame(card, bg=CARD)
+        row.pack(fill="x", pady=(10, 0))
+        ttk.Label(row, text=f"Select to TTS {updates.current_version()}", style="Card.TLabel").pack(side="left")
+        self.update_button = ttk.Button(row, text="Check and install update", command=on_update)
+        self.update_button.pack(side="right")
+        self.auto_update = tk.BooleanVar(w, cfg.get("auto_update", False))
+        self.auto_update_button = ttk.Checkbutton(card, text="Install updates automatically", style="Card.TCheckbutton",
+            variable=self.auto_update, command=lambda: self._set("auto_update", self.auto_update.get()))
+        self.auto_update_button.pack(anchor="w", pady=(8, 0))
+        self.update_status = ttk.Label(card, style="Sub.Card.TLabel", wraplength=420)
+        self.update_status.pack(anchor="w", pady=(4, 0))
 
         card = self._card("Reading")
         row = tk.Frame(card, bg=CARD)
@@ -202,9 +216,17 @@ class SettingsWindow:
 
     def focus(self):
         self._refresh_stt()
+        self.refresh_updates()
         self.win.deiconify()
         self.win.lift()
         self.win.focus_force()
+
+    def refresh_updates(self):
+        text, busy = self.update_state()
+        installed = getattr(sys, "frozen", False)
+        self.update_button["state"] = "normal" if installed and not busy else "disabled"
+        self.auto_update_button["state"] = "normal" if installed else "disabled"
+        self.update_status["text"] = text if installed else "Updates are available in installed builds."
 
     def _refresh_stt(self):
         try:

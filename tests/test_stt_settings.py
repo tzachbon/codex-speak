@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import tkinter as tk
 import unittest
 from unittest.mock import patch
@@ -11,6 +12,35 @@ from select_to_tts import settings_ui
 
 
 class SttSettings(unittest.TestCase):
+    def test_update_controls_invoke_manual_check_and_persist_opt_in(self):
+        root = tk.Tk()
+        root.withdraw()
+        checks, changes, state = [], [], ["Ready to check.", False]
+        window = None
+        try:
+            with patch.object(settings_ui.settings, "startup_enabled", return_value=False), patch.object(
+                    sys, "frozen", True, create=True):
+                window = settings_ui.SettingsWindow(root, dict(settings_ui.settings.DEFAULTS), Image.new("RGBA", (32, 32)),
+                    lambda *a: changes.append(a), lambda *a: None, update_state=lambda: tuple(state),
+                    on_update=lambda: checks.append(True))
+                window.win.withdraw()
+                window.update_button.invoke()
+                self.assertEqual(checks, [True])
+                window.auto_update_button.invoke()
+                self.assertEqual(changes, [("auto_update", True)])
+                state[:] = ["Downloading…", True]
+                window.refresh_updates()
+                self.assertEqual(window.update_status["text"], "Downloading…")
+                self.assertEqual(str(window.update_button["state"]), "disabled")
+                with patch.object(sys, "frozen", False):
+                    window.refresh_updates()
+                    self.assertEqual(str(window.auto_update_button["state"]), "disabled")
+                    self.assertIn("installed", window.update_status["text"])
+        finally:
+            if window:
+                window.close()
+            root.destroy()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, LOCALAPPDATA=self.temp.name)
