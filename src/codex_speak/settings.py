@@ -69,11 +69,8 @@ def migrate(dirs=LEGACY_DIRS) -> None:
             continue
         if not os.path.exists(new):
             try:
+                open(os.path.join(old, ".migrated"), "w").close()  # moves atomically with the folder
                 os.rename(old, new)
-                try:
-                    open(os.path.join(new, ".migrated"), "w").close()
-                except OSError:
-                    pass  # the move succeeded even if its marker couldn't be written
                 continue
             except OSError:
                 pass  # a file in it is locked: copy instead
@@ -119,17 +116,13 @@ def _scheduler():
 
 
 def startup_enabled(name=TASK) -> bool:
-    try:
-        _scheduler().GetFolder("\\").GetTask(name)
-        return True
-    except Exception:  # COMError when the task does not exist
-        return False
+    return bool(_task_enabled(name))
 
 
-def _legacy_task_enabled() -> bool | None:
-    """None when there is no Select to TTS task, else whether it was enabled."""
+def _task_enabled(name) -> bool | None:
+    """None when the task is absent, otherwise its enabled state."""
     try:
-        return bool(_scheduler().GetFolder("\\").GetTask(LEGACY_TASK).Enabled)
+        return bool(_scheduler().GetFolder("\\").GetTask(name).Enabled)
     except Exception:  # COMError when the task does not exist
         return None
 
@@ -147,7 +140,7 @@ def set_startup(on: bool, name=TASK) -> None:
         else:
             installed = name == TASK and getattr(sys, "frozen", False)  # source runs keep the old task
             for task in (name, LEGACY_TASK) if installed else (name,):
-                if startup_enabled(task):
+                if _task_enabled(task) is not None:
                     folder.DeleteTask(task, 0)
     except COMError as e:
         raise OSError(str(e)) from e
@@ -187,8 +180,15 @@ def refresh_startup() -> None:
     except OSError:
         legacy = False
     frozen = getattr(sys, "frozen", False)
-    old_task = _legacy_task_enabled() if frozen else None
-    if frozen and (legacy or old_task or startup_enabled()):
+    if not frozen:
+        return
+    old_task = _task_enabled(LEGACY_TASK)
+    enabled = _task_enabled(TASK)
+    if enabled is None:
+        enabled = old_task if old_task is not None else legacy
+    if enabled:
         set_startup(True)
     if old_task is not None:  # a disabled one is dropped, not carried over
         set_startup(False, LEGACY_TASK)
+    if legacy and not enabled:
+        _drop_run_value()

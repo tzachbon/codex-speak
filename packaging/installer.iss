@@ -41,7 +41,6 @@ Source: "..\build\dist\CodexSpeak\*"; DestDir: "{app}"; Flags: ignoreversion rec
 ; Drop files from an older version that this version no longer ships
 Type: filesandordirs; Name: "{app}\_internal"
 ; Leftovers from Select to TTS. The app moves its settings and sign-in task on first start.
-Type: filesandordirs; Name: "{autopf}\Select to TTS"
 Type: files; Name: "{autoprograms}\Select to TTS.lnk"
 Type: files; Name: "{autodesktop}\Select to TTS.lnk"
 Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
@@ -96,7 +95,7 @@ begin
 end;
 
 var
-  OldDir: String;
+  OldDir, OldUninstaller: String;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
@@ -105,6 +104,9 @@ begin
   if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
                              'InstallLocation', OldDir) then
     OldDir := '';
+  RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                      'UninstallString', OldUninstaller);
+  OldUninstaller := RemoveQuotes(OldUninstaller);
   Result := '';
 end;
 
@@ -118,8 +120,12 @@ begin
   begin
     DeleteFile(AddBackslash(OldDir) + '{#OldExe}');
     DelTree(AddBackslash(OldDir) + '_internal', True, True, True);
-    DeleteFile(AddBackslash(OldDir) + 'unins000.exe');
-    DeleteFile(AddBackslash(OldDir) + 'unins000.dat');
+    // Shared folders may have another app's unins000. Only remove our registered uninstaller.
+    if CompareText(ExtractFileDir(OldUninstaller), RemoveBackslash(OldDir)) = 0 then
+    begin
+      DeleteFile(OldUninstaller);
+      DeleteFile(ChangeFileExt(OldUninstaller, '.dat'));
+    end;
     RemoveDir(RemoveBackslash(OldDir));  // succeeds only when empty
   end;
 end;

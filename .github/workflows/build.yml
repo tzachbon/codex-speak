@@ -35,9 +35,9 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: uv version "$env:RELEASE_VERSION" --no-sync
       - run: uv sync --locked
-      - run: uv run python -m unittest discover -s tests
       - name: Install Inno Setup if the runner lacks it
         run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - run: uv run python -m unittest discover -s tests
       - run: ./packaging/build.ps1
       - uses: actions/upload-artifact@v4
         with:

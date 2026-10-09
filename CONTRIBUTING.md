@@ -30,6 +30,8 @@ uv run python -m unittest discover -s tests
 
 CI runs the same command on `windows-latest` for every pull request. Add or update a test for the behavior you change. Tests that need a network or a Codex login must be opt-in, like the live speech-to-text check below.
 
+Installer cleanup tests run the shipped Pascal code in a temporary Inno Setup harness. Install Inno Setup 6 to run these locally. CI installs it before the suite.
+
 Some checks are manual:
 
 ```powershell
