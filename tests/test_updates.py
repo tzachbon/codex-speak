@@ -58,6 +58,13 @@ class Releases(unittest.TestCase):
 
 
 class Downloads(unittest.TestCase):
+    def test_cleanup_failure_preserves_the_download_error(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(updates, "CACHE", Path(directory)), patch.object(
+                updates, "urlopen", return_value=response(b"abd", "https://release-assets.githubusercontent.com/file")):
+            with patch("shutil.os.unlink", side_effect=PermissionError("installer is locked")):
+                with self.assertRaisesRegex(ValueError, "Installer verification failed"):
+                    updates.download(release()["assets"][0])
+
     def test_bytes_are_verified_and_bad_downloads_are_removed(self):
         asset = {**release()["assets"][0], "version": "0.10.0"}
         for body, valid in ((b"abc", True), (b"abd", False), (b"ab", False), (b"abcd", False)):

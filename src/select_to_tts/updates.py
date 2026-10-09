@@ -100,7 +100,7 @@ def download(asset):
             raise ValueError("Installer verification failed. Try again later.")
         return path
     except BaseException:
-        shutil.rmtree(directory)
+        shutil.rmtree(directory, ignore_errors=True)
         raise
 
 
