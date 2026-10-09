@@ -306,40 +306,55 @@ class RenameMigration(unittest.TestCase):
             self.assertFalse(os.path.exists(old))
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
 
-    def test_existing_new_folder_is_left_alone(self):
+    def test_missing_files_are_copied_into_an_existing_folder(self):
         with tempfile.TemporaryDirectory() as d:
             old, new, dirs = self.dirs(d)
             os.makedirs(new)
             settings.migrate(dirs)
             self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
-            self.assertEqual(os.listdir(new), [])
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
 
-    def test_failed_move_copies_settings(self):
+    def test_newer_settings_are_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            os.makedirs(new)
+            settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
+            settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
+
+    def test_failed_copy_never_raises_and_is_retried(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as d:
             old, new, dirs = self.dirs(d)
+            with patch.object(settings.os, "rename", side_effect=PermissionError), \
+                    patch.object(settings.shutil, "copy2", side_effect=PermissionError):
+                settings.migrate(dirs)
             with patch.object(settings.os, "rename", side_effect=PermissionError):
                 settings.migrate(dirs)
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
 
     def test_installed_build_replaces_the_old_task(self):
         from unittest.mock import call, patch
-        enabled = {settings.LEGACY_TASK}
-        with patch.object(settings.sys, "frozen", True, create=True), \
-                patch.object(settings, "startup_enabled", side_effect=lambda name=settings.TASK: name in enabled), \
-                patch.object(settings, "set_startup") as set_startup, \
-                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
-            settings.refresh_startup()
-        self.assertEqual(set_startup.call_args_list, [call(True), call(False, settings.LEGACY_TASK)])
+        replaced = [call(True), call(False, settings.LEGACY_TASK)]
+        for old_enabled, expected in ((True, replaced), (False, replaced[1:])):  # a disabled one stays off
+            with patch.object(settings.sys, "frozen", True, create=True), \
+                    patch.object(settings, "_legacy_task_enabled", return_value=old_enabled), \
+                    patch.object(settings, "startup_enabled", return_value=False), \
+                    patch.object(settings, "set_startup") as set_startup, \
+                    patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+                settings.refresh_startup()
+            self.assertEqual(set_startup.call_args_list, expected, old_enabled)
 
     def test_source_run_leaves_the_old_task_alone(self):
         from unittest.mock import patch
         with patch.object(settings.sys, "frozen", False, create=True), \
                 patch.object(settings, "startup_enabled", return_value=True), \
+                patch.object(settings, "_legacy_task_enabled", return_value=True) as old_task, \
                 patch.object(settings, "set_startup") as set_startup, \
                 patch.object(settings.winreg, "OpenKey", side_effect=OSError):
             settings.refresh_startup()
         set_startup.assert_not_called()
+        old_task.assert_not_called()
 
 
 class SttServerRestart(unittest.TestCase):

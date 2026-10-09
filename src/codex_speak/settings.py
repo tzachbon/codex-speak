@@ -62,19 +62,25 @@ def load(path=PATH) -> dict:
 
 
 def migrate(dirs=LEGACY_DIRS) -> None:
-    """Moves each old folder to its new name once. If the move fails, copies the files worth keeping."""
+    """Moves each old folder to its new name. If it can't, copies the files worth keeping that the
+    new folder lacks, retrying on every start until they are there. Never raises."""
     for old, new, keep in dirs:
-        if os.path.exists(new) or not os.path.isdir(old):
+        if not os.path.isdir(old):
             continue
-        try:
-            os.rename(old, new)
-        except OSError:
-            os.makedirs(new, exist_ok=True)
-            for name in keep:
+        if not os.path.exists(new):
+            try:
+                os.rename(old, new)
+                continue
+            except OSError:
+                pass  # a file in it is locked: copy instead
+        for name in keep:
+            src, dst = os.path.join(old, name), os.path.join(new, name)
+            if os.path.exists(src) and not os.path.exists(dst):
                 try:
-                    shutil.copy2(os.path.join(old, name), new)
+                    os.makedirs(new, exist_ok=True)
+                    shutil.copy2(src, dst)
                 except OSError:
-                    pass  # not there
+                    pass  # tried again next start
 
 
 def save(s: dict, path=PATH) -> None:
@@ -111,6 +117,14 @@ def startup_enabled(name=TASK) -> bool:
         return False
 
 
+def _legacy_task_enabled() -> bool | None:
+    """None when there is no Select to TTS task, else whether it was enabled."""
+    try:
+        return bool(_scheduler().GetFolder("\\").GetTask(LEGACY_TASK).Enabled)
+    except Exception:  # COMError when the task does not exist
+        return None
+
+
 def set_startup(on: bool, name=TASK) -> None:
     """A logon task for this user only, which needs no admin rights. Also drops the old Run value."""
     from comtypes import COMError
@@ -122,7 +136,8 @@ def set_startup(on: bool, name=TASK) -> None:
             d = _logon_task(service, user, *launch_command())
             folder.RegisterTaskDefinition(name, d, 6, user, None, 3)  # create or update, interactive
         else:
-            for task in (name, LEGACY_TASK) if name == TASK else (name,):
+            installed = name == TASK and getattr(sys, "frozen", False)  # source runs keep the old task
+            for task in (name, LEGACY_TASK) if installed else (name,):
                 if startup_enabled(task):
                     folder.DeleteTask(task, 0)
     except COMError as e:
@@ -163,8 +178,8 @@ def refresh_startup() -> None:
     except OSError:
         legacy = False
     frozen = getattr(sys, "frozen", False)
-    renamed = frozen and startup_enabled(LEGACY_TASK)
-    if legacy or renamed or (frozen and startup_enabled()):
+    old_task = _legacy_task_enabled() if frozen else None
+    if legacy or old_task or (frozen and startup_enabled()):
         set_startup(True)
-    if renamed:
+    if old_task is not None:  # a disabled one is dropped, not carried over
         set_startup(False, LEGACY_TASK)
