@@ -6,6 +6,8 @@ from fractions import Fraction
 import av
 import sounddevice as sd
 
+VOICED = 500  # int16 peak that counts as speech rather than line noise
+
 
 class NoAudioError(RuntimeError):
     """An engine failed before producing any speech, so the next engine may take over."""
@@ -51,6 +53,8 @@ class PcmPlayer:
     def __init__(self, rate: int = 24000, channels: int = 1, paused: threading.Event | None = None):
         self._buf, self._lock, self._width = bytearray(), threading.Lock(), 2 * channels
         self._paused = paused or threading.Event()  # set: play silence and keep the queue
+        self._on_audio = None
+        self._output_pending = False
         self._stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
                                           callback=self._fill)
         self._stream.start()
@@ -62,9 +66,23 @@ class PcmPlayer:
             return
         with self._lock:
             chunk = bytes(self._buf[:n])
+            self._output_pending = bool(chunk)  # drain cannot complete ahead of the start notification
             del self._buf[:n]
-        out[: len(chunk)] = chunk
-        out[len(chunk):] = bytes(n - len(chunk))
+            on_audio = self._on_audio if peak(chunk) > VOICED else None
+            if on_audio:
+                self._on_audio = None
+        try:
+            out[: len(chunk)] = chunk
+            out[len(chunk):] = bytes(n - len(chunk))
+            if on_audio:
+                on_audio()
+        finally:
+            self._output_pending = False
+
+    def arm(self, on_audio):
+        """Notify once when voiced PCM reaches unpaused output, never merely on receipt."""
+        with self._lock:
+            self._on_audio = on_audio
 
     def write(self, pcm: bytes) -> None:
         with self._lock:
@@ -72,7 +90,7 @@ class PcmPlayer:
 
     @property
     def pending(self) -> bool:
-        return bool(self._buf)
+        return bool(self._buf) or self._output_pending
 
     @property
     def active(self) -> bool:
@@ -81,5 +99,6 @@ class PcmPlayer:
     def close(self) -> None:
         with self._lock:
             self._buf.clear()
+            self._on_audio = None
         self._stream.abort()
         self._stream.close()

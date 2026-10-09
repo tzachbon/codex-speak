@@ -13,7 +13,7 @@ from ctypes import wintypes
 import pystray
 from PIL import Image, ImageDraw
 
-from . import selection, settings, stt_server
+from . import lang, selection, sentences, settings, stt_server
 from .codex_rt import CodexEngine
 from .engines import Chain, EdgeEngine, SapiEngine
 from .popup import Popup
@@ -46,6 +46,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()
         self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
+        self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
         self.stt, self.stt_error = None, None
         self.chain = Chain([CodexEngine(), EdgeEngine(), SapiEngine()])
         first_run = not os.path.exists(settings.PATH)
@@ -58,9 +59,10 @@ class App:
             self.events.put(("settings",))  # show new users where the app lives
         for key, value in self.cfg.items():
             self.apply(key, value)
-        self.popup = Popup(self.root, self.cfg["speed"], on_play=self.play, on_stop=self.chain.stop,
-                           on_pause=self.chain.pause, on_resume=self.chain.resume,
-                           on_lang=lambda tag: self.chain.prepare(tag, self.popup.text), on_speed=self._popup_speed)
+        self.popup = Popup(self.root, self.cfg["speed"], on_play=self.play, on_stop=self.stop,
+                           on_pause=self.pause, on_resume=self.resume,
+                           on_lang=self._prepare_selection, on_speed=self._popup_speed)
+        self._configure_captions()
         self.trigger = SelectionTrigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
         self.icon = pystray.Icon("select-to-tts", icon_image(), "Select to TTS", self._menu())
 
@@ -73,6 +75,12 @@ class App:
 
     def apply(self, key, value):
         """Called on the tk thread. Engines read these attributes when the next read starts."""
+        if key.startswith("caption_"):
+            if hasattr(self, "popup"):
+                self._configure_captions()
+            return
+        if self._read_options and key in ("engine", "speed", "prefetch"):
+            return  # speech options are captured for the entire selection
         if key == "engine":
             self.chain.only = value
         elif key == "speed":
@@ -82,6 +90,10 @@ class App:
             self.chain.prefetch = value
         elif key == "stt_server":
             self._run_stt(value)
+
+    def _configure_captions(self):
+        self.popup.configure_captions(self.cfg["caption_font_size"], self.cfg["caption_background"],
+                                      self.cfg["caption_background_opacity"])
 
     def _run_stt(self, on, tries=60):
         if on and not self.stt:
@@ -111,6 +123,8 @@ class App:
             self.popup.set_speed(value)
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.set_speed(value)
+        if key in ("engine", "speed", "prefetch") and not self._read_options and self.popup.text:
+            self._prepare_selection(self.popup.lang.get() or None)
         if not save:
             return
         try:
@@ -120,15 +134,21 @@ class App:
 
     def _popup_speed(self, speed):
         self.change("speed", speed)
-        if not self.popup.playing:
-            self.chain.prepare(self.popup.lang.get() or None, self.popup.text)  # the first engine may differ now
+
+    def _prepare_selection(self, tag=None):
+        if self._read_options or not self.popup.visible:
+            return
+        units = sentences.split(self.popup.text)
+        if units:
+            self.chain.prepare(tag, units[0], fallback_tag=lang.detect(self.popup.text))
 
     def test_voice(self, text):
-        self.popup.set_playing(False)  # a popup read in progress is replaced by the test
+        self.stop()  # a popup read in progress is replaced by the test
         if self.popup.visible:
             self.popup.hide()
         self._read_id += 1
-        done, _ = self._logged(text, lambda err: err and self.events.put(("done", err, None)))
+        rid = self._read_id
+        done, _ = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.chain.speak(text, "en-US", done)
 
     def _selected(self, x, y):  # mouse-hook thread: hand off, never block
@@ -145,20 +165,59 @@ class App:
             self.events.put(("show", text, x, y))
 
     def play(self, text, lang_tag):
+        if self._read_options:
+            self.stop()
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
-        done, heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
-        self.chain.speak(text, lang_tag, done, lambda: (heard(), self.events.put(("audio", rid))))
+        self._units, self._unit_index, self._pending_next = sentences.split(text), 0, False
+        self._read_options = (lang_tag, self.cfg["engine"], self.cfg["speed"], lang.detect(text))
+        self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
+        self.popup.set_caption("")
+        if self._units:
+            self._start_unit()
+        else:
+            self._read_done(None)
+
+    def _start_unit(self):
+        rid, index = self._read_id, self._unit_index
+        heard = self._read_heard
+        self.chain.speak(self._units[index], self._read_options[0],
+                         lambda err: self.events.put(("sentence_done", err, rid, index)),
+                         lambda: (heard(), self.events.put(("audio", rid, index))),
+                         fallback_tag=self._read_options[3])
+
+    def _restore_speech_options(self):
+        self._read_options = None
+        for key in ("engine", "speed", "prefetch"):
+            self.apply(key, self.cfg[key])
+
+    def stop(self):
+        self._read_id += 1  # invalidate callbacks before asynchronous engine cleanup
+        self._units, self._pending_next = [], False
+        self.chain.stop()
+        self._restore_speech_options()
+        self.popup.set_playing(False)
+
+    def pause(self):
+        self.popup.set_caption_paused(True)
+        self.chain.pause()
+
+    def resume(self):
+        self.popup.set_caption_paused(False)
+        self.chain.resume()
+        if self._pending_next:
+            self._pending_next = False
+            self._start_unit()
 
     def _logged(self, text, on_done):
         """(done, heard): done logs the read, heard marks the first audio, which ends the spinner."""
-        t0, first = time.monotonic(), []
+        t0, first, speed = time.monotonic(), [], self.cfg["speed"]
 
         def done(err):  # never the text, nor an error message, which could echo the text
             error = f"{type(err).__name__} from {type(err.__cause__).__name__}" if err else None
             log.info("read %d chars with %s in %.1fs (first audio %s) at %sx, error: %s", len(text),
                      self.chain.last, time.monotonic() - t0, f"{first[0]:.1f}s" if first else "-",
-                     self.cfg["speed"], error)
+                     speed, error)
             on_done(err)
         return done, lambda: first or first.append(time.monotonic() - t0)
 
@@ -181,9 +240,9 @@ class App:
             # double-clicking the popup is not a new selection, and a running read isn't interrupted
             if not (p.contains(x, y) or (p.playing and not p.paused)):
                 if p.paused:
-                    self.chain.stop()  # a new selection replaces the paused read
+                    self.stop()  # a new selection replaces the paused read
                 p.show(text, x, y)
-                self.chain.prepare(None, text)  # warm up Codex, or Edge when prefetch is on, while the mouse travels to ▶
+                self._prepare_selection()
         elif kind == "press":
             if p.contains(*args):
                 pass  # clicks on the popup itself (including opening the menu)
@@ -193,11 +252,27 @@ class App:
             elif p.visible and not p.playing:
                 p.hide()
         elif kind == "audio":
-            if args[0] == self._read_id:
+            if args[0] == self._read_id and args[1] == self._unit_index and self._read_options:
                 p.set_loading(False)
+                p.set_caption(self._units[self._unit_index])
+        elif kind == "sentence_done":
+            err, rid, index = args
+            if rid != self._read_id or index != self._unit_index or not self._read_options:
+                return
+            if err or index + 1 == len(self._units):
+                self._unit_index += 1
+                self._read_done(err)
+            else:
+                self.chain.only = self.chain.last  # preserve the first successful voice across the selection
+                self._unit_index += 1
+                if p.paused:
+                    self._pending_next = True
+                else:
+                    self._start_unit()
         elif kind == "done":
-            if args[1] == self._read_id:
-                p.set_playing(False)
+            if args[1] != self._read_id:
+                return
+            self.stop()
             if args[0]:
                 self.icon.notify(f"Could not read aloud: {args[0]}", "Select to TTS")
         elif kind == "settings":
@@ -207,6 +282,7 @@ class App:
                 self.settings_win = SettingsWindow(self.root, dict(self.cfg), icon_image(256), self.change,
                                                    self.test_voice, lambda: self.stt_error)
         elif kind == "quit":
+            self.stop()
             self._run_stt(False)
             self.trigger.stop()
             self.chain.close()

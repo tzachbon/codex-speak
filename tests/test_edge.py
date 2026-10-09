@@ -120,8 +120,14 @@ class FakePlayer:
         self.pending, self.active = False, True
         FakePlayer.opened.append(self)
 
+    def arm(self, on_audio):
+        self.on_audio = on_audio
+
     def write(self, pcm):
         self.writes.append(pcm)
+        if not self.paused.is_set() and getattr(self, "on_audio", None):
+            on_audio, self.on_audio = self.on_audio, None
+            on_audio()
 
     def close(self):
         self.closed = True
@@ -148,6 +154,41 @@ def speak(e, text="hello"):
 
 
 class EdgeEngineReads(unittest.TestCase):
+    def test_receiving_pcm_while_paused_does_not_report_playback(self):
+        release = threading.Event()
+        data = tone_mp3()
+        expected = decode_whole(data) * 2
+
+        class HeldPlayer(FakePlayer):
+            def write(self, pcm):
+                self.writes.append(pcm)
+                self.pending = True
+
+            def consume(self):
+                self.pending = False
+                self.on_audio()
+                self.on_audio = None
+
+        async def source():
+            while not release.is_set():
+                await __import__("asyncio").sleep(0.01)
+            for chunk in pieces(data):
+                yield chunk
+
+        e = engine(source, player=HeldPlayer)
+        done, result, heard = speak(e)
+        e.pause()
+        release.set()
+        deadline = time.monotonic() + 5
+        while (not FakePlayer.opened or sum(map(len, FakePlayer.opened[0].writes)) < expected) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(FakePlayer.opened[0].writes)
+        self.assertEqual(heard, [])
+        e.resume()
+        FakePlayer.opened[0].consume()
+        self.assertTrue(done.wait(5))
+        self.assertEqual((result, len(heard)), ([None], 1))
+
     def test_audio_is_reported_at_the_first_chunk_while_the_request_is_still_running(self):
         data, release = list(pieces(tone_mp3())), threading.Event()
 
@@ -353,6 +394,18 @@ class Prep:
 
 
 class ChainPrefetch(unittest.TestCase):
+    def test_auto_preparation_preserves_codex_inference_and_fallback_language(self):
+        codex, edge = Prep(), Prep()
+        codex.name, edge.name = "Codex", "Edge"
+        chain = Chain([codex, edge])
+        chain.prefetch = True
+        chain.prepare(None, "Hello.", fallback_tag="he-IL")
+        chain.only = "Edge"
+        chain.prepare(None, "Hello.", fallback_tag="he-IL")
+        chain.prepare("es-ES", "Hola.", fallback_tag="en-US")
+        self.assertEqual(codex.prepared, [(None, "Hello.")])
+        self.assertEqual(edge.prepared, [("he-IL", "Hello."), ("es-ES", "Hola.")])
+
     def test_text_reaches_the_first_engine_only_when_prefetch_is_on(self):
         a = Prep()
         chain = Chain([a])
