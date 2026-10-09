@@ -10,12 +10,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
-import queue
 import secrets
 import socket
 import threading
 
-from .stt import BusyError, MAX_BYTES, MODEL, transcribe
+from .stt import BusyError, MAX_BYTES, MESSAGES, MODEL, SttError, transcribe
 
 MAX_BODY = MAX_BYTES + 65536
 CONNECTION = Path(os.environ["LOCALAPPDATA"]) / "select-to-tts" / "stt-connection.json"
@@ -127,8 +126,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def error(self, status, message):
-        self.reply(status, {"error": {"message": message}})
+    def error(self, status, message, **extra):
+        self.reply(status, {"error": {"message": message, **extra}})
 
     def authorize(self):
         hosts = self.headers.get_all("Host", [])
@@ -194,10 +193,11 @@ class Handler(BaseHTTPRequestHandler):
             self.error(400, str(error))
         except BusyError:
             self.error(429, "A transcription is already running")
-        except (TimeoutError, queue.Empty):
-            self.error(504, "Transcription timed out")
+        except SttError as failure:
+            self.error(504 if failure.timeout else 502, str(failure),
+                       code=failure.code, request_id=failure.request_id)
         except Exception:
-            self.error(502, "Codex transcription failed. Check Codex login and retry.")
+            self.error(502, MESSAGES["unknown"], code="unknown", request_id=secrets.token_hex(6))
         finally:
             self.server.busy.release()
 
