@@ -7,11 +7,11 @@ import unittest
 
 from pynput.mouse import Button
 
-from select_to_tts import clipboard, lang, settings
-from select_to_tts.audio import NoAudioError, PcmPlayer, Stretcher
-from select_to_tts.codex_rt import CodexEngine
-from select_to_tts.engines import Chain, EdgeEngine, sapi_rate
-from select_to_tts.trigger import SelectionTrigger
+from codex_speak import clipboard, lang, settings
+from codex_speak.audio import NoAudioError, PcmPlayer, Stretcher
+from codex_speak.codex_rt import CodexEngine
+from codex_speak.engines import Chain, EdgeEngine, sapi_rate
+from codex_speak.trigger import SelectionTrigger
 
 
 class Lang(unittest.TestCase):
@@ -278,7 +278,7 @@ class Settings(unittest.TestCase):
                 self.assertEqual(settings.load(path)["prefetch"], expected, saved)
 
     def test_startup_round_trip(self):
-        name = "select-to-tts-unittest"
+        name = "codex-speak-unittest"
         try:
             settings.set_startup(True, name)
             self.assertTrue(settings.startup_enabled(name))
@@ -289,10 +289,63 @@ class Settings(unittest.TestCase):
             settings.set_startup(False, name)
 
 
+class RenameMigration(unittest.TestCase):
+    """Select to TTS became Codex Speak. Its folders and sign-in task move on first start."""
+
+    def dirs(self, d):
+        old, new = os.path.join(d, "select-to-tts"), os.path.join(d, "codex-speak")
+        os.makedirs(old)
+        with open(os.path.join(old, "settings.json"), "w") as f:
+            f.write('{"speed": 1.5}')
+        return old, new, [(old, new, ("settings.json",))]
+
+    def test_old_folder_moves(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            settings.migrate(dirs)
+            self.assertFalse(os.path.exists(old))
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_existing_new_folder_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            os.makedirs(new)
+            settings.migrate(dirs)
+            self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
+            self.assertEqual(os.listdir(new), [])
+
+    def test_failed_move_copies_settings(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            with patch.object(settings.os, "rename", side_effect=PermissionError):
+                settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_installed_build_replaces_the_old_task(self):
+        from unittest.mock import call, patch
+        enabled = {settings.LEGACY_TASK}
+        with patch.object(settings.sys, "frozen", True, create=True), \
+                patch.object(settings, "startup_enabled", side_effect=lambda name=settings.TASK: name in enabled), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+            settings.refresh_startup()
+        self.assertEqual(set_startup.call_args_list, [call(True), call(False, settings.LEGACY_TASK)])
+
+    def test_source_run_leaves_the_old_task_alone(self):
+        from unittest.mock import patch
+        with patch.object(settings.sys, "frozen", False, create=True), \
+                patch.object(settings, "startup_enabled", return_value=True), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+            settings.refresh_startup()
+        set_startup.assert_not_called()
+
+
 class SttServerRestart(unittest.TestCase):
     def test_restarted_server_keeps_its_url(self):
         from pathlib import Path
-        from select_to_tts import stt_server
+        from codex_speak import stt_server
         with tempfile.TemporaryDirectory() as d:
             conn = Path(d) / "stt-connection.json"
             urls = []

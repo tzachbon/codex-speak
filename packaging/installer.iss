@@ -1,10 +1,12 @@
-; Per-user installer for Select to TTS. Built by packaging\build.ps1 (Inno Setup 6).
-#define AppName "Select to TTS"
-#define AppExe "SelectToTTS.exe"
+; Per-user installer for Codex Speak. Built by packaging\build.ps1 (Inno Setup 6).
+#define AppName "Codex Speak"
+#define AppExe "CodexSpeak.exe"
 #define AppId "FED44346-501C-414C-A557-8F7BDA1AC94A"
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
 ; Older builds started at sign-in through this Run value
 #define RunValue "select-to-tts"
+; The app was called Select to TTS before 0.1.1. Setup replaces that install in place (same AppId).
+#define OldExe "SelectToTTS.exe"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -14,12 +16,13 @@ AppId={{{#AppId}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=tzachbon
-AppPublisherURL=https://github.com/tzachbon/select-to-tts
+AppPublisherURL=https://github.com/tzachbon/codex-speak
 DefaultDirName={autopf}\{#AppName}
+UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=SelectToTTS-Setup
+OutputBaseFilename=CodexSpeak-Setup
 SetupIconFile=..\build\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 WizardStyle=modern
@@ -32,17 +35,23 @@ Name: startup; Description: "Start {#AppName} when I sign in to Windows"; Check:
 Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "..\build\dist\SelectToTTS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\dist\CodexSpeak\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 ; Drop files from an older version that this version no longer ships
 Type: filesandordirs; Name: "{app}\_internal"
+; Leftovers from Select to TTS. The app moves its settings and sign-in task on first start.
+Type: filesandordirs; Name: "{autopf}\Select to TTS"
+Type: files; Name: "{autoprograms}\Select to TTS.lnk"
+Type: files; Name: "{autodesktop}\Select to TTS.lnk"
+Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
+Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
 
 [UninstallDelete]
-; App-owned caches outside {app}. Settings and the log in %APPDATA%\select-to-tts are kept.
-Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\SelectToTTS-311"
-Type: filesandordirs; Name: "{%TEMP}\select-to-tts"
-Type: filesandordirs; Name: "{localappdata}\select-to-tts\updates"
+; App-owned caches outside {app}. Settings and the log in %APPDATA%\codex-speak are kept.
+Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\CodexSpeak-311"
+Type: filesandordirs; Name: "{%TEMP}\codex-speak"
+Type: filesandordirs; Name: "{localappdata}\codex-speak\updates"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -70,7 +79,7 @@ procedure StopApp;
 var
   Code: Integer;
 begin
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe} /IM {#OldExe}', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Sleep(500);
 end;
 

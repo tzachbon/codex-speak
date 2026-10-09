@@ -1,7 +1,7 @@
 """Local-only, OpenAI-shaped HTTP adapter for subscription STT.
 
-Run python -m select_to_tts.stt_server. The private connection URL is written
-to %LOCALAPPDATA%/select-to-tts/stt-connection.json, never logged.
+Run python -m codex_speak.stt_server. The private connection URL is written
+to %LOCALAPPDATA%/codex-speak/stt-connection.json, never logged.
 """
 import argparse
 from email import policy
@@ -17,7 +17,7 @@ import threading
 from .stt import BusyError, MAX_BYTES, MESSAGES, MODEL, SttError, transcribe
 
 MAX_BODY = MAX_BYTES + 65536
-CONNECTION = Path(os.environ["LOCALAPPDATA"]) / "select-to-tts" / "stt-connection.json"
+CONNECTION = Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "stt-connection.json"
 
 
 def parse_form(content_type, body):
@@ -225,7 +225,7 @@ def start(port=18765, connection_file=CONNECTION):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=18765)
-    parser.add_argument("--connection-file", type=Path, default=Path(os.environ["LOCALAPPDATA"]) / "select-to-tts" / "stt-connection.json")
+    parser.add_argument("--connection-file", type=Path, default=Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "stt-connection.json")
     args = parser.parse_args()
     with SttServer(args.port) as server:
         connection = json.dumps({"base_url": server.base_url, "model": MODEL}, indent=2)

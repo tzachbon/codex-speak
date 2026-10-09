@@ -1,4 +1,4 @@
-"""select-to-tts: select text anywhere, press ▶ on the floating button, hear it read aloud."""
+"""codex-speak: select text anywhere, press ▶ on the floating button, hear it read aloud."""
 import ctypes
 import logging
 import logging.handlers
@@ -21,11 +21,11 @@ from .popup import Popup
 from .settings_ui import SettingsWindow
 from .trigger import SelectionTrigger
 
-log = logging.getLogger("select_to_tts")
+log = logging.getLogger("codex_speak")
 k32 = ctypes.windll.kernel32
 for _f in (k32.CreateMutexW, k32.CreateEventW, k32.OpenEventW):
     _f.restype = wintypes.HANDLE
-SHOW_SETTINGS = "select-to-tts-show-settings"  # a second launch sets this to open Settings
+SHOW_SETTINGS = "codex-speak-show-settings"  # a second launch sets this to open Settings
 
 
 def icon_image(size=64):
@@ -70,7 +70,7 @@ class App:
                            on_settings=lambda: self.events.put(("settings",)))
         self._configure_captions()
         self.trigger = SelectionTrigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
-        self.icon = pystray.Icon("select-to-tts", icon_image(), "Select to TTS", self._menu())
+        self.icon = pystray.Icon("codex-speak", icon_image(), "Codex Speak", self._menu())
 
     def _menu(self):
         return pystray.Menu(
@@ -140,7 +140,7 @@ class App:
         try:
             settings.save(self.cfg)
         except OSError as e:
-            self.icon.notify(f"Could not save settings: {e}", "Select to TTS")
+            self.icon.notify(f"Could not save settings: {e}", "Codex Speak")
         if key == "auto_update":
             if value:
                 self.check_update(manual=False)
@@ -306,7 +306,7 @@ class App:
                 self._handle(kind, *args)
             except Exception as e:
                 log.exception("handling %s", kind)
-                self.icon.notify(f"Unexpected error: {e}", "Select to TTS")
+                self.icon.notify(f"Unexpected error: {e}", "Codex Speak")
             if self._closing:
                 return
         self.root.after(30, self._pump)
@@ -361,7 +361,7 @@ class App:
                 return
             self.stop()
             if args[0]:
-                self.icon.notify(f"Could not read aloud: {args[0]}", "Select to TTS")
+                self.icon.notify(f"Could not read aloud: {args[0]}", "Codex Speak")
         elif kind == "settings":
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.focus()
@@ -392,7 +392,8 @@ class App:
 
 
 def main():
-    if sys.argv[1:2] == ["--startup"]:  # used by the installer: SelectToTTS.exe --startup on|off|refresh
+    settings.migrate()  # before anything reads or creates the new folders
+    if sys.argv[1:2] == ["--startup"]:  # used by the installer: CodexSpeak.exe --startup on|off|refresh
         try:
             if sys.argv[2:3] == ["refresh"]:
                 settings.refresh_startup()
@@ -401,7 +402,7 @@ def main():
         except Exception:
             sys.exit(1)  # a windowed exe would show a dialog that blocks setup; the user can retry in Settings
         return
-    mutex = k32.CreateMutexW(None, False, "select-to-tts-single-instance")
+    mutex = k32.CreateMutexW(None, False, "codex-speak-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
         for _ in range(50):  # the running copy may still be starting up
             ev = k32.OpenEventW(0x0002, False, SHOW_SETTINGS)  # EVENT_MODIFY_STATE
@@ -413,7 +414,7 @@ def main():
         return
     show_event = k32.CreateEventW(None, False, False, SHOW_SETTINGS)  # before the slow start-up
     os.makedirs(settings.DIR, exist_ok=True)
-    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "select-to-tts.log"),
+    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "codex-speak.log"),
                                                    maxBytes=256_000, backupCount=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, handlers=[handler],  # libraries log IPs at INFO
                         format="%(asctime)s %(levelname)s %(message)s")

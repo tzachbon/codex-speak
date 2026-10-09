@@ -5,10 +5,10 @@ import unittest
 
 import av
 
-from select_to_tts.__main__ import App
-from select_to_tts.audio import NoAudioError
-from select_to_tts.edge_stream import EdgeStream
-from select_to_tts.engines import Chain, EdgeEngine
+from codex_speak.__main__ import App
+from codex_speak.audio import NoAudioError
+from codex_speak.edge_stream import EdgeStream
+from codex_speak.engines import Chain, EdgeEngine
 
 
 def tone_mp3(seconds=1.0, rate=24000):
@@ -421,7 +421,7 @@ class ReadLog(unittest.TestCase):
         app.chain, app.cfg = Chain([]), {"speed": 1.25}
         app.chain.last = "Edge"
         done, heard = app._logged("secret words", lambda err: None)
-        with self.assertLogs("select_to_tts", "INFO") as logs:
+        with self.assertLogs("codex_speak", "INFO") as logs:
             hear and heard()
             done(None)
         return logs.output[0]

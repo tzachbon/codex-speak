@@ -3,69 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Select to TTS: select text anywhere on Windows and hear it</title>
-<meta name="description" content="A tiny Windows tray app. Select text in any app, press play, and hear it read aloud with your ChatGPT subscription voice, Edge neural voices, or offline Windows voices.">
+<title>Codex Speak: hear any text on Windows in your ChatGPT voice</title>
+<meta name="description" content="A small, open-source Windows tray app. Select text in any app, press play, and hear it in your ChatGPT voice through Codex, with Edge and offline Windows voices as fallbacks. Unofficial.">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="icon.png">
+<link rel="canonical" href="https://tzachbon.github.io/codex-speak/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Codex Speak">
+<meta property="og:title" content="Codex Speak: hear any text on Windows in your ChatGPT voice">
+<meta property="og:description" content="Select text in any Windows app and hear it in your ChatGPT voice through Codex. No API key. Edge and offline Windows voices as fallbacks. Free and open source.">
+<meta property="og:url" content="https://tzachbon.github.io/codex-speak/">
+<meta property="og:image" content="https://tzachbon.github.io/codex-speak/social.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Codex Speak: a small play bar above selected text in a Windows app">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://tzachbon.github.io/codex-speak/social.png">
 <style>
-  :root { --accent: #005fb8; --accent-hover: #0067c0; --text: #1b1b1b; --muted: #5f5f5f; --page: #f3f3f3;
-          --card: #ffffff; --border: #e5e5e5; }
+  :root { --accent: #005fb8; --accent-hover: #0067c0; --accent-text: #fff; --text: #1b1b1b; --muted: #5f5f5f;
+          --page: #f3f3f3; --card: #ffffff; --card-alt: #fafafa; --border: #e5e5e5; --hero: #e8eef7;
+          --code: #ebebeb; --select: #cce4f7; --shadow: rgba(0, 0, 0, .08); --caption: #1b1b1b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --accent: #60cdff; --accent-hover: #7dd6ff; --accent-text: #003049; --text: #f3f3f3; --muted: #a8a8a8;
+            --page: #202020; --card: #2b2b2b; --card-alt: #323232; --border: #3a3a3a; --hero: #1a2330;
+            --code: #383838; --select: #264f78; --shadow: rgba(0, 0, 0, .4); --caption: #f3f3f3; }
+  }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--text);
          background: var(--page); line-height: 1.55; }
   a { color: var(--accent); }
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-  header { background: linear-gradient(180deg, #e8eef7 0%, var(--page) 100%); padding: 64px 0 40px; }
+  header { background: linear-gradient(180deg, var(--hero) 0%, var(--page) 100%); padding: 64px 0 40px; }
   .brand { display: flex; align-items: center; gap: 14px; }
   .brand img { width: 56px; height: 56px; }
-  h1 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-size: 44px;
-       font-weight: 650; margin: 0; letter-spacing: -0.5px; }
-  .lead { font-size: 20px; color: #333; max-width: 640px; margin: 18px 0 28px; }
+  h1, h2 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 44px; font-weight: 650; margin: 0; letter-spacing: -0.5px; }
+  .lead { font-size: 20px; max-width: 660px; margin: 18px 0 28px; }
   .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 6px;
          font-size: 15px; font-weight: 600; text-decoration: none; border: 1px solid transparent; }
-  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary { background: var(--accent); color: var(--accent-text); }
   .btn.primary:hover { background: var(--accent-hover); }
   .btn.secondary { background: var(--card); color: var(--text); border-color: var(--border); }
-  .btn.secondary:hover { background: #f9f9f9; }
+  .btn.secondary:hover { background: var(--card-alt); }
   .note { font-size: 13px; color: var(--muted); }
-  .shot { margin: 40px 0 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
-          box-shadow: 0 8px 32px rgba(0, 0, 0, .08); background: #e8eef7; }
-  .shot img { display: block; width: 100%; height: auto; }
   section { padding: 48px 0; }
-  h2 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-size: 28px;
-       font-weight: 600; margin: 0 0 20px; }
+  h2 { font-size: 28px; font-weight: 600; margin: 0 0 20px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
   .card h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
-  .card p { margin: 0; color: #333; font-size: 14.5px; }
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-  .split img { width: 100%; height: auto; }
+  .card p { margin: 0; font-size: 14.5px; }
+  .split { display: grid; grid-template-columns: 1fr 340px; gap: 48px; align-items: start; }
+  .split img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 8px 32px var(--shadow); }
   ol.steps { padding-left: 20px; margin: 0; }
-  ol.steps li { margin-bottom: 12px; }
-  code { background: #ebebeb; padding: 1px 6px; border-radius: 4px; font-size: 13.5px; }
+  ol.steps li { margin-bottom: 14px; }
+  code { background: var(--code); padding: 1px 6px; border-radius: 4px; font-size: 13.5px; }
+  .table { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; background: var(--card); border: 1px solid var(--border);
           border-radius: 8px; overflow: hidden; font-size: 14.5px; }
   th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { background: #fafafa; font-weight: 600; }
+  th { background: var(--card-alt); font-weight: 600; }
   tr:last-child td { border-bottom: 0; }
+  .after-table { margin: 14px 0 0; font-size: 14.5px; }
   footer { padding: 32px 0 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
-  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } h1 { font-size: 34px; } }
+
+  /* Hero demo: the real bar and caption over a selection, drawn in HTML. One 9 s loop. */
+  .demo { --t: 9s; margin: 40px 0 0; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;
+          background: var(--card); box-shadow: 0 8px 32px var(--shadow); }
+  .demo-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: var(--muted);
+              background: var(--card-alt); border-bottom: 1px solid var(--border); }
+  .demo-body { position: relative; padding: 96px 40px 56px; font-size: 18px; line-height: 1.7; }
+  .demo-body p { margin: 0; max-width: 820px; }
+  .sel { position: relative; background: linear-gradient(var(--select), var(--select)) no-repeat left / 0% 100%;
+         animation: select var(--t) infinite; }
+  .anchor { position: relative; }
+  .float { position: absolute; left: 0; bottom: calc(100% + 10px); display: flex; flex-direction: column;
+           align-items: flex-start; gap: 8px; opacity: 0; animation: bar var(--t) infinite; pointer-events: none; }
+  .caption { width: 320px; overflow: hidden; color: var(--caption); font-size: 14px; white-space: nowrap;
+             mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+             -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+             opacity: 0; animation: caption var(--t) infinite; }
+  .caption span { display: inline-block; padding-left: 40px; animation: pan var(--t) infinite linear; }
+  .pill { display: flex; align-items: center; gap: 14px; padding: 7px 12px; border-radius: 8px; font-size: 13px;
+          background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 16px var(--shadow); color: var(--text); }
+  .pill .sep { width: 1px; height: 18px; background: var(--border); }
+  .pill .menu { display: inline-flex; align-items: center; gap: 6px; }
+  .pill svg { display: block; }
+  .ic { color: var(--accent); }
+  .play-pause { position: relative; width: 16px; height: 16px; }
+  .play-pause svg { position: absolute; inset: 0; }
+  .play-pause .pause { opacity: 0; animation: pause var(--t) infinite step-end; }
+  .play-pause .play { animation: play var(--t) infinite step-end; }
+  @keyframes select { 0%, 4% { background-size: 0% 100%; } 16%, 94% { background-size: 100% 100%; }
+                      100% { background-size: 0% 100%; } }
+  @keyframes bar { 0%, 18% { opacity: 0; transform: translateY(4px); } 22%, 92% { opacity: 1; transform: none; }
+                   97%, 100% { opacity: 0; } }
+  @keyframes play { 0% { opacity: 1; } 32% { opacity: 0; } 92% { opacity: 1; } }
+  @keyframes pause { 0% { opacity: 0; } 32% { opacity: 1; } 92% { opacity: 0; } }
+  @keyframes caption { 0%, 33% { opacity: 0; } 36%, 88% { opacity: 1; } 92%, 100% { opacity: 0; } }
+  @keyframes pan { 0%, 36% { transform: translateX(0); } 88%, 100% { transform: translateX(-62%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .sel, .float, .caption, .caption span, .play-pause svg { animation: none; }
+    .sel { background-size: 100% 100%; }
+    .float, .caption { opacity: 1; }
+    .play-pause .play { opacity: 0; } .play-pause .pause { opacity: 1; }
+  }
+  @media (max-width: 760px) {
+    .split { grid-template-columns: 1fr; } .split img { max-width: 340px; }
+    h1 { font-size: 34px; } .demo-body { padding: 112px 20px 40px; font-size: 16px; } .float { left: 20px; } .caption { width: 240px; }
+  }
+  @media (max-width: 960px) {
+    .demo-body { padding-top: 112px; } .anchor { position: static; } .float { left: 24px; top: 16px; bottom: auto; }
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
-    <div class="brand"><img src="icon.png" alt=""><h1>Select to TTS</h1></div>
-    <p class="lead">Select text in any Windows app, press <strong>▶</strong>, and hear it read aloud.
-      Uses the voice in your ChatGPT subscription through Codex, with free Edge and offline Windows voices as backup.</p>
+    <div class="brand"><img src="icon.png" alt=""><h1>Codex Speak</h1></div>
+    <p class="lead">Select text in any Windows app, press <strong>▶</strong>, and hear it in your ChatGPT voice.
+      Codex Speak runs the Codex realtime voice from your ChatGPT sign-in, with no API key. Edge and offline Windows voices take over when Codex can't speak.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/tzachbon/select-to-tts/releases/latest/download/SelectToTTS-Setup.exe">
+      <a class="btn primary" href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 11.5 3.5 7l1-1L7.3 8.8V1h1.4v7.8L11.5 6l1 1L8 11.5ZM2 13.5h12V15H2z"/></svg>
         Download for Windows</a>
-      <a class="btn secondary" href="https://github.com/tzachbon/select-to-tts">View on GitHub</a>
-      <span class="note">Windows 11 · 64-bit · free · MIT license</span>
+      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+        Source on GitHub</a>
+      <span class="note">Windows 11 · 64-bit · free and open source (MIT) · unofficial</span>
     </div>
-    <div class="shot"><img src="popup.png" alt="A small play button with a language menu appears above selected text"></div>
+
+    <figure class="demo" role="img" aria-label="Demo: a sentence is selected in a text editor, the Codex Speak bar appears above it, play turns to pause, and a caption shows the sentence being read">
+      <div class="demo-bar" aria-hidden="true">notes.txt - Notepad</div>
+      <div class="demo-body" aria-hidden="true">
+        <p>Select any text in any Windows app. A small bar appears next to it.
+          <span class="anchor"><span class="float">
+            <span class="caption"><span>Press play and hear it read aloud in a natural voice, in six languages.</span></span>
+            <span class="pill">
+              <span class="play-pause ic">
+                <svg class="play" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M4 2.5v11l9-5.5z"/></svg>
+                <svg class="pause" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3.5" y="2.5" width="3" height="11" rx=".8"/><rect x="9.5" y="2.5" width="3" height="11" rx=".8"/></svg>
+              </span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2" width="10" height="10" rx="1.5"/></svg>
+              <span class="sep"></span>
+              <span class="menu">Auto <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2 3.5 3 3 3-3"/></svg></span>
+              <span class="menu">1× <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2 3.5 3 3 3-3"/></svg></span>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2.5 2.5 7 7m0-7-7 7"/></svg>
+            </span>
+          </span></span><span class="sel">Press play and hear it read aloud in a natural voice, in six languages.</span>
+          Pause, resume, or stop at any time.</p>
+      </div>
+    </figure>
   </div>
 </header>
 
@@ -74,12 +164,14 @@
   <div class="wrap">
     <h2>What it does</h2>
     <div class="grid">
-      <div class="card"><h3>Works in every app</h3><p>Drag or double-click to select text in a browser, Notepad, VS Code, and most other apps. A small button shows up next to the selection, and it never takes focus from the app you're in.</p></div>
-      <div class="card"><h3>Your subscription's voice</h3><p>Reads with the Codex realtime voice from your ChatGPT sign-in. You don't need an API key and there's no extra bill.</p></div>
-      <div class="card"><h3>Six languages, auto-detected</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. Auto picks the language from the text, or you can choose one from the menu.</p></div>
-      <div class="card"><h3>Speed, pause, and stop</h3><p>Pick 0.5× to 2× right on the bar, or fine-tune it in Settings. Pause and continue from the same spot, or stop.</p></div>
-      <div class="card"><h3>Always has a voice</h3><p>If Codex can't speak, Edge neural voices take over, then the offline Windows voices. You can also pin it to one engine, and "Windows only" never sends text off your PC.</p></div>
-      <div class="card"><h3>Starts with Windows</h3><p>One checkbox in Settings. It lives in the tray, and you can open Settings from the tray icon or by starting the app again.</p></div>
+      <div class="card"><h3>Works in most apps</h3><p>Drag or double-click to select text in a browser, Notepad, VS Code, and most other apps. The bar never takes focus from the app you're in.</p></div>
+      <div class="card"><h3>Your ChatGPT voice</h3><p>Reads with the Codex realtime voice from your ChatGPT sign-in. No API key. It uses your plan's Codex access and counts toward its limits.</p></div>
+      <div class="card"><h3>Always has a voice</h3><p>If Codex can't speak, Edge neural voices take over, then the offline Windows voices. You can also pin one engine.</p></div>
+      <div class="card"><h3>Pause, speed, stop</h3><p>Pause and continue from the same spot. Pick 0.5× to 2× from the bar. Your choice is saved.</p></div>
+      <div class="card"><h3>Read-along captions</h3><p>The sentence being read appears above the bar. Long sentences pan across the line. Size and background are adjustable.</p></div>
+      <div class="card"><h3>Six languages</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. In Auto, Codex infers the language, and Edge and Windows tell Hebrew, Arabic, and Russian apart by script. Or pick one from the menu.</p></div>
+      <div class="card"><h3>Optional automatic updates</h3><p>Installs new GitHub releases when the app is idle, after checking the installer's SHA-256 digest. Off by default.</p></div>
+      <div class="card"><h3>Speech-to-text too</h3><p>An optional local, OpenAI-compatible endpoint lets apps such as OpenWhispr transcribe with the same Codex sign-in. <a href="https://github.com/tzachbon/codex-speak/blob/master/STT.md">Details</a>.</p></div>
     </div>
   </div>
 </section>
@@ -89,25 +181,31 @@
     <div>
       <h2>Get started</h2>
       <ol class="steps">
-        <li><a href="https://github.com/tzachbon/select-to-tts/releases/latest/download/SelectToTTS-Setup.exe">Download the installer</a> and run it. It installs for your user only and needs no admin rights.<br>
-          <span class="note">The app isn't code-signed yet, so Windows SmartScreen may warn you. Choose <em>More info</em>, then <em>Run anyway</em>.</span></li>
+        <li><a href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe">Download the installer</a> and run it. It installs for your user only and needs no admin rights.<br>
+          <span class="note">The app isn't code-signed, so Windows SmartScreen may warn you. Choose <em>More info</em>, then <em>Run anyway</em>. You can read and build the source yourself.<br>
+          Coming from Select to TTS? It's the same app under a new name. The installer replaces it and keeps your settings.</span></li>
         <li>For the ChatGPT voice, install the <a href="https://github.com/openai/codex">Codex CLI</a> and sign in once with <code>codex login</code>. Without it, the app uses Edge and Windows voices.</li>
-        <li>Select some text anywhere and press <strong>▶</strong>. Use <strong>⏸</strong> to pause and <strong>■</strong> to stop.</li>
+        <li>Select some text anywhere and press <strong>▶</strong>. <strong>⏸</strong> pauses and <strong>■</strong> stops.</li>
+        <li>Open Settings from ⚙ on the bar or from the tray icon to set speed, voice, captions, start at sign-in, and updates.</li>
       </ol>
     </div>
-    <img src="settings.png" alt="The Settings window: start at sign-in, speed, voice engine, clipboard fallback">
+    <img src="settings.png" width="497" height="1185" loading="lazy" alt="The Settings window: start at sign-in, updates, speed, voice, captions, selection, and speech-to-text">
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>Voices</h2>
+    <h2>Where your text goes</h2>
+    <div class="table">
     <table>
-      <tr><th>Engine</th><th>Needs</th><th>Speed</th><th>Where your text goes</th></tr>
+      <tr><th>Voice</th><th>Needs</th><th>Speed</th><th>Where your text goes</th></tr>
       <tr><td>Codex realtime</td><td>Codex CLI signed in with ChatGPT</td><td>0.5× to 1×. Above 1×, Auto starts with Edge</td><td>OpenAI, through your Codex sign-in</td></tr>
       <tr><td>Edge neural</td><td>Internet</td><td>0.5× to 2×</td><td>Microsoft's Edge read-aloud service</td></tr>
       <tr><td>Windows</td><td>Nothing. It's built in</td><td>0.5× to 2×</td><td>Stays on your PC</td></tr>
     </table>
+    </div>
+    <p class="after-table">Password fields are never read. The log records engines, timing, and errors, never your text.
+      "Windows only" keeps everything on your PC.</p>
   </div>
 </section>
 
@@ -115,17 +213,28 @@
   <div class="wrap">
     <h2>Good to know</h2>
     <div class="grid">
-      <div class="card"><h3>Experimental Codex voice</h3><p>Codex's realtime API is marked experimental. If an update breaks it, the app falls back to Edge on its own.</p></div>
-      <div class="card"><h3>Your clipboard is safe</h3><p>Some apps, such as VS Code, hide their selection. For those the app borrows Ctrl+C and then puts your clipboard back exactly as it was. You can turn this off.</p></div>
-      <div class="card"><h3>Password fields are never read</h3><p>It also stays out of terminal windows, where Ctrl+C would interrupt a running command.</p></div>
-      <div class="card"><h3>Uninstall</h3><p>Use <em>Settings &gt; Apps</em>. This removes the app and its sign-in entry. Your preferences stay in <code>%APPDATA%\select-to-tts</code>.</p></div>
+      <div class="card"><h3>The Codex voice is experimental</h3><p>Codex's realtime API is marked experimental, and about 1 in 12 Codex reads in testing ended early or stayed silent. Silence falls back to Edge on its own.</p></div>
+      <div class="card"><h3>Your clipboard is restored</h3><p>Some apps, such as VS Code, hide their selection. For those the app borrows Ctrl+C and then puts back every clipboard format. You can turn this off. It's skipped in terminals.</p></div>
+      <div class="card"><h3>Mouse selections only</h3><p>Drag or double-click shows the bar. Keyboard selections with Shift+arrows don't.</p></div>
+      <div class="card"><h3>Uninstall</h3><p>Use <em>Settings &gt; Apps</em>. This removes the app and its sign-in task. Your preferences stay in <code>%APPDATA%\codex-speak</code>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Open source</h2>
+    <p>Codex Speak is written in Python and released under the MIT license. Bug reports, fixes, and new language voices are welcome.</p>
+    <div class="cta">
+      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak/blob/master/CONTRIBUTING.md">Contributing guide</a>
+      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak/issues/new/choose">Report a bug or request a feature</a>
     </div>
   </div>
 </section>
 </main>
 
 <footer>
-  <div class="wrap">Select to TTS: source on <a href="https://github.com/tzachbon/select-to-tts">GitHub</a>. Not affiliated with OpenAI or Microsoft.</div>
+  <div class="wrap">Codex Speak. Source on <a href="https://github.com/tzachbon/codex-speak">GitHub</a>. Not affiliated with OpenAI or Microsoft.</div>
 </footer>
 </body>
 </html>

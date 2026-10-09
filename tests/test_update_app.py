@@ -6,8 +6,8 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
-from select_to_tts.__main__ import App
-from select_to_tts import settings, updates
+from codex_speak.__main__ import App
+from codex_speak import settings, updates
 
 
 class UpdateApp(unittest.TestCase):
@@ -143,7 +143,7 @@ class UpdateApp(unittest.TestCase):
             self.assertTrue(draining.wait(1))
             self.assertIsNone(a.stt)
             new = Mock(busy=threading.Lock())
-            with patch("select_to_tts.__main__.stt_server.start", return_value=new):
+            with patch("codex_speak.__main__.stt_server.start", return_value=new):
                 a._run_stt(True)
             with patch.object(updates, "install") as install, patch.object(settings, "save"):
                 self.result()

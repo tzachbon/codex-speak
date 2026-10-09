@@ -2,19 +2,27 @@
 import json
 import math
 import os
+import shutil
 import sys
 import tempfile
 import winreg
 
-DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "select-to-tts")
+APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
+LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+DIR = os.path.join(APPDATA, "codex-speak")
 PATH = os.path.join(DIR, "settings.json")
-TEMP_DIR = os.path.join(tempfile.gettempdir(), "select-to-tts")  # uninstall deletes it
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "codex-speak")  # uninstall deletes it
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
             "prefetch": False, "auto_update": False, "caption_font_size": 10, "caption_background": False,
             "caption_background_opacity": 0.6}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
-TASK = "Select to TTS"  # the installer creates and removes it with `--startup on|off`
+TASK = "Codex Speak"  # the installer creates and removes it with `--startup on|off`
+# Before 0.1.1 the app was called Select to TTS. migrate() and refresh_startup() move its folders and task.
+LEGACY_TASK = "Select to TTS"
+LEGACY_DIRS = ((os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
+               (os.path.join(LOCALAPPDATA, "select-to-tts"), os.path.join(LOCALAPPDATA, "codex-speak"),
+                ("stt-connection.json",)))  # the speech-to-text URL keeps its token
 # Earlier builds used this Run value. Windows starts Run entries one at a time after sign-in,
 # waiting up to 30 s on each, which delayed the app by minutes.
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -53,6 +61,22 @@ def load(path=PATH) -> dict:
     return s
 
 
+def migrate(dirs=LEGACY_DIRS) -> None:
+    """Moves each old folder to its new name once. If the move fails, copies the files worth keeping."""
+    for old, new, keep in dirs:
+        if os.path.exists(new) or not os.path.isdir(old):
+            continue
+        try:
+            os.rename(old, new)
+        except OSError:
+            os.makedirs(new, exist_ok=True)
+            for name in keep:
+                try:
+                    shutil.copy2(os.path.join(old, name), new)
+                except OSError:
+                    pass  # not there
+
+
 def save(s: dict, path=PATH) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -69,7 +93,7 @@ def launch_command() -> tuple[str, str]:
     """(program, arguments) that start this app."""
     if getattr(sys, "frozen", False):
         return sys.executable, ""
-    return os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), "-m select_to_tts"
+    return os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), "-m codex_speak"
 
 
 def _scheduler():
@@ -97,8 +121,10 @@ def set_startup(on: bool, name=TASK) -> None:
             user = f"{os.environ['USERDOMAIN']}\\{os.environ['USERNAME']}"
             d = _logon_task(service, user, *launch_command())
             folder.RegisterTaskDefinition(name, d, 6, user, None, 3)  # create or update, interactive
-        elif startup_enabled(name):
-            folder.DeleteTask(name, 0)
+        else:
+            for task in (name, LEGACY_TASK) if name == TASK else (name,):
+                if startup_enabled(task):
+                    folder.DeleteTask(task, 0)
     except COMError as e:
         raise OSError(str(e)) from e
     if name == TASK:
@@ -107,7 +133,7 @@ def set_startup(on: bool, name=TASK) -> None:
 
 def _logon_task(service, user, program, args):
     d = service.NewTask(0)
-    d.RegistrationInfo.Description = "Starts Select to TTS when you sign in."
+    d.RegistrationInfo.Description = "Starts Codex Speak when you sign in."
     trigger = d.Triggers.Create(9)  # TASK_TRIGGER_LOGON
     trigger.UserId = user
     action = d.Actions.Create(0)  # TASK_ACTION_EXEC
@@ -129,12 +155,16 @@ def _drop_run_value():
 
 def refresh_startup() -> None:
     """Points an enabled sign-in task at this install (it may have moved) and moves an older
-    build's Run value to the task. Source runs leave an installed copy's task alone."""
+    build's Run value or Select to TTS task to the task. Source runs leave an installed copy's task alone."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
             winreg.QueryValueEx(k, RUN_VALUE)
         legacy = True
     except OSError:
         legacy = False
-    if legacy or (getattr(sys, "frozen", False) and startup_enabled()):
+    frozen = getattr(sys, "frozen", False)
+    renamed = frozen and startup_enabled(LEGACY_TASK)
+    if legacy or renamed or (frozen and startup_enabled()):
         set_startup(True)
+    if renamed:
+        set_startup(False, LEGACY_TASK)

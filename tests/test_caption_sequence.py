@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import threading
 
-from select_to_tts.__main__ import App
-from select_to_tts import sentences
-from select_to_tts.engines import SapiEngine
+from codex_speak.__main__ import App
+from codex_speak import sentences
+from codex_speak.engines import SapiEngine
 
 
 class Popup:
@@ -258,7 +258,7 @@ class WindowsPause(unittest.TestCase):
             return voice
 
         e = SapiEngine()
-        with patch("select_to_tts.engines.comtypes.CoInitialize"), patch("select_to_tts.engines.comtypes.client.CreateObject", side_effect=create):
+        with patch("codex_speak.engines.comtypes.CoInitialize"), patch("codex_speak.engines.comtypes.client.CreateObject", side_effect=create):
             e.speak("Never spoken", "en-US", lambda err: done.set())
             self.assertTrue(connecting.wait(2))
             e.pause()

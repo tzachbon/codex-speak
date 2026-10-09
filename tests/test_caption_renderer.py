@@ -6,8 +6,8 @@ import gc
 
 from PIL import Image
 
-from select_to_tts.captions import caption_layout, GdiLine, compose_caption, CaptionSurface
-from select_to_tts.popup import Popup
+from codex_speak.captions import caption_layout, GdiLine, compose_caption, CaptionSurface
+from codex_speak.popup import Popup
 
 
 class CaptionLayout(unittest.TestCase):
@@ -109,7 +109,7 @@ class CaptionWindow(unittest.TestCase):
         self.assertLess(self.caption.offset, start)
 
     def test_native_caption_is_clickthrough_nonactivating_and_cleans_up_on_parent_destroy(self):
-        from select_to_tts.captions import _get_style
+        from codex_speak.captions import _get_style
         ctypes.windll.user32.GetForegroundWindow.restype = ctypes.c_void_p
         foreground = ctypes.windll.user32.GetForegroundWindow()
         self.caption.show_text("A harmless caption sample")

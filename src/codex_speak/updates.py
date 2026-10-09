@@ -13,10 +13,10 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-API = "https://api.github.com/repos/tzachbon/select-to-tts/releases/latest"
-ASSET = "SelectToTTS-Setup.exe"
+API = "https://api.github.com/repos/tzachbon/codex-speak/releases/latest"
+ASSET = "CodexSpeak-Setup.exe"
 MAX_INSTALLER = 200 * 1024 * 1024
-CACHE = Path(os.environ["LOCALAPPDATA"]) / "select-to-tts" / "updates"
+CACHE = Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "updates"
 
 
 def _trusted(url):
@@ -37,7 +37,7 @@ urlopen = build_opener(_HTTPSRedirect()).open
 
 
 def current_version():
-    return version("select-to-tts")
+    return version("codex-speak")
 
 
 def _version(value):
@@ -47,7 +47,7 @@ def _version(value):
 
 
 def check():
-    request = Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "SelectToTTS"})
+    request = Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "CodexSpeak"})
     with urlopen(request, timeout=15) as reply:
         if reply.geturl() != API:
             raise ValueError("Unexpected release metadata location")
@@ -70,7 +70,7 @@ def check():
     if len(matches) != 1:
         raise ValueError("Release must contain one installer")
     asset = matches[0]
-    expected = f"https://github.com/tzachbon/select-to-tts/releases/download/{tag}/{ASSET}"
+    expected = f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/{ASSET}"
     size, digest = asset.get("size"), asset.get("digest")
     if (asset.get("browser_download_url") != expected or asset.get("state") != "uploaded"
             or type(size) is not int or not 0 < size <= MAX_INSTALLER
@@ -86,7 +86,7 @@ def download(asset):
     try:
         digest, size = hashlib.sha256(), 0
         deadline = time.monotonic() + 300
-        request = Request(asset["browser_download_url"], headers={"User-Agent": "SelectToTTS"})
+        request = Request(asset["browser_download_url"], headers={"User-Agent": "CodexSpeak"})
         with urlopen(request, timeout=15) as reply, path.open("xb") as output:
             if not _trusted(reply.geturl()):
                 raise ValueError("Unexpected installer download location")

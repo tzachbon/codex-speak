@@ -8,7 +8,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from select_to_tts import __main__ as main, settings, settings_ui
+from codex_speak import __main__ as main, settings, settings_ui
 
 
 class Speech:

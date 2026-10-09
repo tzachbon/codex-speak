@@ -51,7 +51,7 @@ def publish(version, commit, repository, artifact):
                               encoding="utf-8")
     if existing.returncode:
         command("gh", "release", "create", tag, str(artifact), "--repo", repository,
-                "--verify-tag", "--draft", "--title", f"Select to TTS {tag}", "--generate-notes")
+                "--verify-tag", "--draft", "--title", f"Codex Speak {tag}", "--generate-notes")
         release = read_release(repository, tag)
     else:
         release = json.loads(existing.stdout)
@@ -73,4 +73,4 @@ def publish(version, commit, repository, artifact):
 
 if __name__ == "__main__":
     publish(os.environ["RELEASE_VERSION"], os.environ["RELEASE_COMMIT"],
-            os.environ["GITHUB_REPOSITORY"], "dist/SelectToTTS-Setup.exe")
+            os.environ["GITHUB_REPOSITORY"], "dist/CodexSpeak-Setup.exe")

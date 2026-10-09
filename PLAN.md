@@ -1,5 +1,7 @@
 # select-to-tts: implementation plan
 
+> The app was renamed from Select to TTS (`select-to-tts`) to Codex Speak (`codex-speak`) in 0.1.1. This plan keeps the old names as history.
+
 ## Objective
 
 Build a personal Windows tray tool. When the user selects text with the mouse in any app, a small floating button appears next to the selection. The button has a Play/Stop control and a language picker that defaults to Auto. Pressing Play reads the selected text aloud.

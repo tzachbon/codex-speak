@@ -41,8 +41,8 @@ jobs:
       - run: ./packaging/build.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: SelectToTTS-Setup
-          path: dist/SelectToTTS-Setup.exe
+          name: CodexSpeak-Setup
+          path: dist/CodexSpeak-Setup.exe
           if-no-files-found: error
 
   release:
@@ -58,7 +58,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - uses: actions/download-artifact@v4
         with:
-          name: SelectToTTS-Setup
+          name: CodexSpeak-Setup
           path: dist
       - name: Publish tested installer
         env:
