@@ -4,6 +4,8 @@ import tkinter as tk
 import ctypes
 import gc
 
+from PIL import Image
+
 from select_to_tts.captions import caption_layout, GdiLine, compose_caption, CaptionSurface
 from select_to_tts.popup import Popup
 
@@ -21,6 +23,13 @@ class CaptionLayout(unittest.TestCase):
 
 
 class CaptionPixels(unittest.TestCase):
+    def test_text_shadow_does_not_expand_glyphs_into_an_opaque_border(self):
+        mask = Image.new("L", (100, 20))
+        mask.paste(255, (48, 8, 53, 13))
+        caption = compose_caption(mask, False, 0)
+        self.assertEqual(caption.getpixel((50, 10)), (249, 249, 249, 255))
+        self.assertLess(caption.getpixel((47, 10))[3], 128)
+
     def test_repeated_native_raster_creation_releases_gdi_objects(self):
         kernel = ctypes.windll.kernel32
         kernel.GetCurrentProcess.restype = ctypes.c_void_p

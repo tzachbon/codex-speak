@@ -140,15 +140,16 @@ def compose_caption(mask, background, background_opacity):
     ramp = Image.new("L", (width, 1))
     ramp.putdata([round(255 * min(1, x / edge, (width - 1 - x) / edge)) for x in range(width)])
     fade = ramp.resize(mask.size)
-    stroke_mask = ImageChops.multiply(mask.filter(ImageFilter.MaxFilter(3)), fade)
+    shadow_mask = ImageChops.multiply(
+        ImageChops.offset(mask.filter(ImageFilter.GaussianBlur(0.7)), 0, 1), fade)
     mask = ImageChops.multiply(mask, fade)
     result = Image.new("RGBA", mask.size)
     if background:
         ImageDraw.Draw(result).rounded_rectangle((0, 0, width - 1, height - 1), radius=height // 3,
                                                  fill=(24, 24, 24, round(255 * background_opacity)))
-    outline = Image.new("RGBA", mask.size, (20, 20, 20))
-    outline.putalpha(stroke_mask)
-    result = Image.alpha_composite(result, outline)
+    shadow = Image.new("RGBA", mask.size, (20, 20, 20))
+    shadow.putalpha(shadow_mask)
+    result = Image.alpha_composite(result, shadow)
     ink = Image.new("RGBA", mask.size, (249, 249, 249))
     ink.putalpha(mask)
     return Image.alpha_composite(result, ink)
