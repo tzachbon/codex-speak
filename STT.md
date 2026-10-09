@@ -56,6 +56,13 @@ ready for its callers to supply a recording.
   audio: 25 MiB. Maximum decoded duration: 60 seconds. One transcription at a time.
 - Busy requests receive 429. Bad audio/form fields receive 400, oversized HTTP
   uploads 413, backend failures 502, and backend timeouts 504.
+- Backend failures add `error.code` (for example `no_transcript`, `connection_failed`,
+  `backend_start_failed`, `unknown`) and `error.request_id`. Messages never include
+  backend exception text, and only startup failures suggest checking the Codex login.
+- Each transcription call (including invalid-input and busy rejections) appends one metadata line to `%LOCALAPPDATA%\select-to-tts\stt-diagnostics.log`
+  (rotated at 1 MiB): request ID, outcome code, failing stage, stage timings, event-type
+  counts, and the audio duration Codex reported receiving. No audio, text, or URLs.
+  `no_transcript` with a low `server_audio_ms` means Codex did not ingest the audio.
 - Native requests and Electron's `Origin: null` are accepted only with the private
   URL and a local Host header. Arbitrary browser origins are rejected.
 
@@ -64,10 +71,31 @@ An actual OpenWhispr dictation session is a separate acceptance check.
 
 ## Limits and verification
 
-This is experimental Codex WebRTC v3, tested with Codex 0.160.1. Audio is sent in
-real time. A fixed 12-second tail collects transcript fragments, without a verified
-final-transcript signal. Late fragments can be missed. Do not use it for long
+This is experimental Codex WebRTC v3, tested with Codex 0.160.1.
+
+Audio is sent 4 times faster than real time. Codex then keeps transcribing for a
+while (about 10 s after sending a 23 s clip). English and Hebrew synthetic clips
+stayed at 0% word errors and finished about 9 s sooner than a 1x send.
+Mixed Hebrew/English accuracy varied widely at both speeds, so whether 4x
+changes it is inconclusive.
+
+Codex sends no whole-recording final signal (its user turn often never closes).
+Each transcript fragment carries its position in the audio. The adapter returns
+once at least 2.5 s have passed since sending finished and no fragment arrived for
+2 s plus the audio Codex has not yet transcribed, plus 1 s for clock skew (Codex
+positions ran about 0.6 s ahead of the sent audio in testing). That gives a late
+word the time it would have had at 1x. The untranscribed allowance is capped at
+the time saved by sending ahead (0.75 × clip length), which is also used when a
+position is more than 1 s past the end. With no fragments at all it returns
+2.5 s + 0.75 × clip length after sending finished. The hard cap is
+12 s + 0.75 × clip length. The 2 s and 2.5 s limits are
+about twice the worst case measured on 8 synthetic EN/HE/mixed runs sent at 1x
+(last word 1.2 s after the audio, 1.1 s between words).
+A slower Codex reply can still lose final words. Do not use it for long
 recordings or as a guaranteed verbatim transcription service.
+
+Codex sometimes does not take in the audio at all (`no_transcript` or
+`session_closed` with `server_audio_ms` 0). This was seen at both speeds.
 
 The original synthetic English probe had 0% word errors. Mixed Hebrew/English
 had 33%, including unwanted transliteration. Real microphone/noisy speech is
