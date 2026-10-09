@@ -278,15 +278,22 @@ class Settings(unittest.TestCase):
                 self.assertEqual(settings.load(path)["prefetch"], expected, saved)
 
     def test_startup_round_trip(self):
-        name = "codex-speak-unittest"
-        try:
-            settings.set_startup(True, name)
-            self.assertTrue(settings.startup_enabled(name))
-            settings.set_startup(False, name)
-            self.assertFalse(settings.startup_enabled(name))
-            settings.set_startup(False, name)  # already off: no error
-        finally:
-            settings.set_startup(False, name)
+        from unittest.mock import MagicMock, patch
+        service, tasks = MagicMock(), {}
+        folder = service.GetFolder.return_value
+        folder.GetTask.side_effect = lambda name: tasks[name]
+        folder.RegisterTaskDefinition.side_effect = lambda name, *args: tasks.update({name: args[0]})
+        folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
+        with patch.object(settings, "_scheduler", return_value=service):
+            name = "codex-speak-unittest"
+            try:
+                settings.set_startup(True, name)
+                self.assertTrue(settings.startup_enabled(name))
+                settings.set_startup(False, name)
+                self.assertFalse(settings.startup_enabled(name))
+                settings.set_startup(False, name)  # already off: no error
+            finally:
+                settings.set_startup(False, name)
 
 
 class RenameMigration(unittest.TestCase):
@@ -313,6 +320,16 @@ class RenameMigration(unittest.TestCase):
             settings.migrate(dirs)
             self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
+
+    def test_moved_folder_marker_keeps_new_settings_when_old_folder_returns(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, new, dirs = self.dirs(d)
+            settings.migrate(dirs)
+            self.assertTrue(os.path.isfile(os.path.join(new, ".migrated")))
+            settings.save({"speed": 0.75}, os.path.join(new, "settings.json"))
+            self.dirs(d)  # a legacy build recreates its folder
+            settings.migrate(dirs)
+            self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
 
     def test_settings_saved_after_a_finished_copy_are_kept(self):
         with tempfile.TemporaryDirectory() as d:
@@ -357,6 +374,16 @@ class RenameMigration(unittest.TestCase):
             settings.refresh_startup()
         set_startup.assert_not_called()
         old_task.assert_not_called()
+
+    def test_source_run_leaves_the_legacy_run_value_alone(self):
+        from unittest.mock import patch
+        with patch.object(settings.sys, "frozen", False, create=True), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey"), \
+                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)) as query:
+            settings.refresh_startup()
+        query.assert_called_once()
+        set_startup.assert_not_called()
 
 
 class SttServerRestart(unittest.TestCase):

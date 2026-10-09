@@ -70,6 +70,10 @@ def migrate(dirs=LEGACY_DIRS) -> None:
         if not os.path.exists(new):
             try:
                 os.rename(old, new)
+                try:
+                    open(os.path.join(new, ".migrated"), "w").close()
+                except OSError:
+                    pass  # the move succeeded even if its marker couldn't be written
                 continue
             except OSError:
                 pass  # a file in it is locked: copy instead
@@ -184,7 +188,7 @@ def refresh_startup() -> None:
         legacy = False
     frozen = getattr(sys, "frozen", False)
     old_task = _legacy_task_enabled() if frozen else None
-    if legacy or old_task or (frozen and startup_enabled()):
+    if frozen and (legacy or old_task or startup_enabled()):
         set_startup(True)
     if old_task is not None:  # a disabled one is dropped, not carried over
         set_startup(False, LEGACY_TASK)

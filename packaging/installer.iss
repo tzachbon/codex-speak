@@ -17,7 +17,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=tzachbon
 AppPublisherURL=https://github.com/tzachbon/codex-speak
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={code:DefaultDir}
 UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -69,6 +69,18 @@ Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait pos
 Filename: "{app}\{#AppExe}"; Parameters: "--startup off"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveStartupTask"
 
 [Code]
+function DefaultDir(Param: String): String;
+var
+  Dir: String;
+begin
+  // Codex Speak upgrades keep a custom folder. Select to TTS moves to the new default.
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppId}}_is1',
+                         'InstallLocation', Dir) and FileExists(AddBackslash(Dir) + '{#AppExe}') then
+    Result := RemoveBackslash(Dir)
+  else
+    Result := ExpandConstant('{autopf}\{#AppName}');
+end;
+
 // Upgrades keep the user's sign-in choice from the Settings page instead of re-asking.
 function IsFreshInstall: Boolean;
 begin
@@ -98,10 +110,18 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  // Only a folder that still holds the old app is removed, never the new one
+  // Keep shared folders and any folder containing the new install.
   if (CurStep = ssPostInstall) and (OldDir <> '') and FileExists(AddBackslash(OldDir) + '{#OldExe}')
-     and (CompareText(RemoveBackslash(OldDir), RemoveBackslash(ExpandConstant('{app}'))) <> 0) then
-    DelTree(RemoveBackslash(OldDir), True, True, True);
+     and (CompareText(RemoveBackslash(OldDir), RemoveBackslash(ExpandConstant('{app}'))) <> 0)
+     and (CompareText(Copy(AddBackslash(ExpandConstant('{app}')), 1, Length(AddBackslash(OldDir))),
+                      AddBackslash(OldDir)) <> 0) then
+  begin
+    DeleteFile(AddBackslash(OldDir) + '{#OldExe}');
+    DelTree(AddBackslash(OldDir) + '_internal', True, True, True);
+    DeleteFile(AddBackslash(OldDir) + 'unins000.exe');
+    DeleteFile(AddBackslash(OldDir) + 'unins000.dat');
+    RemoveDir(RemoveBackslash(OldDir));  // succeeds only when empty
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
