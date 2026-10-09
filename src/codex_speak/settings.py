@@ -18,7 +18,7 @@ DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_serve
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Codex Speak"  # the installer creates and removes it with `--startup on|off`
-# Before 0.1.1 the app was called Select to TTS. migrate() and refresh_startup() move its folders and task.
+# Before 0.5.0 the app was called Select to TTS. migrate() and refresh_startup() move its folders and task.
 LEGACY_TASK = "Select to TTS"
 LEGACY_DIRS = ((os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
                (os.path.join(LOCALAPPDATA, "select-to-tts"), os.path.join(LOCALAPPDATA, "codex-speak"),

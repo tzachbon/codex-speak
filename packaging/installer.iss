@@ -5,7 +5,7 @@
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
 ; Older builds started at sign-in through this Run value
 #define RunValue "select-to-tts"
-; The app was called Select to TTS before 0.1.1. Setup replaces that install in place (same AppId).
+; The app was called Select to TTS before 0.5.0. Setup replaces that install in place (same AppId).
 #define OldExe "SelectToTTS.exe"
 #ifndef AppVersion
   #define AppVersion "0.0.0"

@@ -1,6 +1,6 @@
 # select-to-tts: implementation plan
 
-> The app was renamed from Select to TTS (`select-to-tts`) to Codex Speak (`codex-speak`) in 0.1.1. This plan keeps the old names as history.
+> The app was renamed from Select to TTS (`select-to-tts`) to Codex Speak (`codex-speak`) in 0.5.0. This plan keeps the old names as history.
 
 ## Objective
 
