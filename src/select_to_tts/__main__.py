@@ -140,7 +140,7 @@ class App:
             return
         units = sentences.split(self.popup.text)
         if units:
-            self.chain.prepare(tag or lang.detect(self.popup.text), units[0])
+            self.chain.prepare(tag, units[0], fallback_tag=lang.detect(self.popup.text))
 
     def test_voice(self, text):
         self.stop()  # a popup read in progress is replaced by the test
@@ -170,7 +170,7 @@ class App:
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
         self._units, self._unit_index, self._pending_next = sentences.split(text), 0, False
-        self._read_options = (lang_tag or lang.detect(text), self.cfg["engine"], self.cfg["speed"])
+        self._read_options = (lang_tag, self.cfg["engine"], self.cfg["speed"], lang.detect(text))
         self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.popup.set_caption("")
         if self._units:
@@ -183,7 +183,8 @@ class App:
         heard = self._read_heard
         self.chain.speak(self._units[index], self._read_options[0],
                          lambda err: self.events.put(("sentence_done", err, rid, index)),
-                         lambda: (heard(), self.events.put(("audio", rid, index))))
+                         lambda: (heard(), self.events.put(("audio", rid, index))),
+                         fallback_tag=self._read_options[3])
 
     def _restore_speech_options(self):
         self._read_options = None

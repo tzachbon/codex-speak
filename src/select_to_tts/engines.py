@@ -196,15 +196,16 @@ class Chain:
         # Auto skips engines that cannot reach the chosen speed (Codex cannot read faster)
         return [e for e in self.engines if e.speed <= getattr(e, "max_speed", e.speed)] or self.engines
 
-    def prepare(self, lang_tag, text=None):
+    def prepare(self, lang_tag, text=None, *, fallback_tag=None):
         first = self.order()[0]
         for e in self.engines:
             if e is not first and hasattr(e, "discard"):
                 e.discard()  # a speed or engine change can hand the read to another engine
         if hasattr(first, "prepare"):
-            first.prepare(lang_tag, text if self.prefetch else None)
+            tag = lang_tag if first.name == "Codex" else lang_tag or fallback_tag
+            first.prepare(tag, text if self.prefetch else None)
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None):
         self._gen += 1
         self._paused = False
         gen, order = self._gen, self.order()
@@ -225,7 +226,8 @@ class Chain:
                 self.last = engine.name
                 on_done(err)
 
-            engine.speak(text, lang_tag, done, lambda: gen == self._gen and on_audio())
+            tag = lang_tag if engine.name == "Codex" else lang_tag or fallback_tag
+            engine.speak(text, tag, done, lambda: gen == self._gen and on_audio())
             if gen == self._gen and self._paused:
                 engine.pause()  # a pause made before a fallback carries over to the next engine
 

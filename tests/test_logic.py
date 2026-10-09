@@ -38,9 +38,11 @@ class Fake:
 
     def __init__(self, name, err=None):
         self.name, self.err, self.calls = name, err, 0
+        self.tags = []
 
     def speak(self, text, tag, on_done, on_audio):
         self.calls += 1
+        self.tags.append(tag)
         if not self.err:
             on_audio()
         on_done(self.err)
@@ -56,6 +58,15 @@ class Fake:
 
 
 class ChainTest(unittest.TestCase):
+    def test_auto_language_inference_is_preserved_for_codex_and_detected_for_fallbacks(self):
+        for requested in (None, "es-ES"):
+            with self.subTest(requested=requested):
+                codex, edge = Fake("Codex", NoAudioError("offline")), Fake("Edge")
+                chain = Chain([codex, edge])
+                chain.speak("Hello.", requested, lambda err: None, fallback_tag="he-IL")
+                self.assertEqual(codex.tags, [requested])
+                self.assertEqual(edge.tags, [requested or "he-IL"])
+
     def run_chain(self, *engines, only=None):
         chain, result = Chain(list(engines)), []
         chain.only = only

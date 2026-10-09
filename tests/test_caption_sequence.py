@@ -56,14 +56,17 @@ class Popup:
 class Chain:
     def __init__(self):
         self.calls, self.prepared = [], []
+        self.fallback_tags = []
         self.only, self.last, self.prefetch = None, "Codex", False
         self.engines = [SimpleNamespace(speed=1.0)]
 
-    def speak(self, text, tag, done, heard=lambda: None):
+    def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None):
         self.calls.append((text, tag, done, heard, self.only, self.engines[0].speed))
+        self.fallback_tags.append(fallback_tag)
 
-    def prepare(self, tag, text=None):
+    def prepare(self, tag, text=None, *, fallback_tag=None):
         self.prepared.append((tag, text if self.prefetch else None))
+        self.prepare_fallback = fallback_tag
 
     def stop(self):
         pass
@@ -125,9 +128,22 @@ class Sequence(unittest.TestCase):
         a.popup.text = "Hello. שלום עולם!"
         a.cfg["prefetch"] = a.chain.prefetch = True
         a.change("speed", 0.5, save=False)
-        self.assertEqual(a.chain.prepared, [("he-IL", "Hello.")])
+        self.assertEqual(a.chain.prepared, [(None, "Hello.")])
+        self.assertEqual(a.chain.prepare_fallback, "he-IL")
         a.play(a.popup.text, None)
-        self.assertEqual(a.chain.calls[0][:2], ("Hello.", "he-IL"))
+        self.assertEqual(a.chain.calls[0][:2], ("Hello.", None))
+        self.assertEqual(a.chain.fallback_tags, ["he-IL"])
+
+    def test_auto_preserves_codex_inference_and_full_selection_fallback_language(self):
+        for text, detected in (("Bonjour le monde. Bonne journée!", "en-US"),
+                               ("Hello. שלום עולם!", "he-IL")):
+            with self.subTest(text=text):
+                a = app()
+                a.play(text, None)
+                a.chain.calls[0][2](None)
+                pump(a)
+                self.assertEqual([call[1] for call in a.chain.calls], [None, None])
+                self.assertEqual(a.chain.fallback_tags, [detected, detected])
 
     def test_hidden_selection_is_not_prepared_when_speech_settings_change(self):
         for key, value in (("speed", 0.5), ("engine", "Edge"), ("prefetch", True)):
@@ -195,10 +211,10 @@ class Sequence(unittest.TestCase):
         a = app()
         a.popup.playing = False
         a._handle("show", "First selection. More.", 1, 1)
-        self.assertEqual(a.chain.prepared, [("en-US", None)])
+        self.assertEqual(a.chain.prepared, [(None, None)])
         a.cfg["prefetch"] = a.chain.prefetch = True
         a._handle("show", "Different selection! Again.", 1, 1)
-        self.assertEqual(a.chain.prepared[-1], ("en-US", "Different selection!"))
+        self.assertEqual(a.chain.prepared[-1], (None, "Different selection!"))
         a.play(a.popup.text, None)
         self.assertEqual(a.chain.calls[-1][0], "Different selection!")
 

@@ -394,6 +394,18 @@ class Prep:
 
 
 class ChainPrefetch(unittest.TestCase):
+    def test_auto_preparation_preserves_codex_inference_and_fallback_language(self):
+        codex, edge = Prep(), Prep()
+        codex.name, edge.name = "Codex", "Edge"
+        chain = Chain([codex, edge])
+        chain.prefetch = True
+        chain.prepare(None, "Hello.", fallback_tag="he-IL")
+        chain.only = "Edge"
+        chain.prepare(None, "Hello.", fallback_tag="he-IL")
+        chain.prepare("es-ES", "Hola.", fallback_tag="en-US")
+        self.assertEqual(codex.prepared, [(None, "Hello.")])
+        self.assertEqual(edge.prepared, [("he-IL", "Hello."), ("es-ES", "Hola.")])
+
     def test_text_reaches_the_first_engine_only_when_prefetch_is_on(self):
         a = Prep()
         chain = Chain([a])
