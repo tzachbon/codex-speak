@@ -66,6 +66,18 @@ def restore(saved: list[tuple[int, bytes]]) -> None:
             u32.SetClipboardData(fmt, h)
 
 
+def html() -> str:
+    """The "HTML Format" flavor (CF_HTML, UTF-8), which keeps ordered-list numbers."""
+    with _Open():
+        h = u32.GetClipboardData(u32.RegisterClipboardFormatW("HTML Format"))
+        if not h or not (p := k32.GlobalLock(h)):
+            return ""
+        try:
+            return ctypes.string_at(p, k32.GlobalSize(h)).split(b"\0", 1)[0].decode("utf-8", "replace")
+        finally:
+            k32.GlobalUnlock(h)
+
+
 def text() -> str:
     with _Open():
         h = u32.GetClipboardData(13)  # CF_UNICODETEXT

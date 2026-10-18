@@ -7,6 +7,7 @@ from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreat
                                  AXUIElementCreateSystemWide, AXUIElementSetAttributeValue,
                                  AXUIElementSetMessagingTimeout, kAXErrorSuccess)
 
+from .. import richtext
 from . import pasteboard, permission
 
 MAX_CHARS = 4000
@@ -35,19 +36,33 @@ def _expose(pid):
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility", True)
 
 
-def _via_ax(pid):
+def _via_ax(pid, need_web=False):
+    """(selected text, whether it is in a web page), checking the page only for multi-line text when asked."""
     # The system-wide element often fails with kAXErrorCannotComplete. Asking the app works.
     element = _attr(AXUIElementCreateApplication(pid), "AXFocusedUIElement")
     for _ in range(6):
         if element is None:
-            return ""
+            return "", False
         if SECURE in (_attr(element, "AXRole"), _attr(element, "AXSubrole")):
-            return None
+            return None, False
         text = _attr(element, "AXSelectedText")
         if text:
-            return str(text)
+            text = str(text)
+            return text, need_web and "\n" in text and _in_web(element)
         element = _attr(element, "AXParent")
-    return ""
+    return "", False
+
+
+def _in_web(element):
+    """Browser and Electron pages nest deeper than the text search walks."""
+    for _ in range(25):
+        role = _attr(element, "AXRole") if element is not None else None
+        if role == "AXWebArea":
+            return True
+        if role in (None, "AXWindow", "AXApplication"):
+            return False
+        element = _attr(element, "AXParent")
+    return False
 
 
 def _frontmost_pid():
@@ -62,11 +77,18 @@ def read(clipboard_fallback: bool = True) -> str:
     if pid is None or pid == os.getpid():
         return ""
     _expose(pid)
-    text = _via_ax(pid)
+    text, in_web = _via_ax(pid, clipboard_fallback)
     if text is None or _frontmost_pid() != pid:
         return ""  # a password field, or the user switched apps while we read
     if not text.strip() and clipboard_fallback and not secure_input():
         text = pasteboard.copy_selection()
         if _frontmost_pid() != pid:
             return ""  # the switch came during the copy, so Cmd+C reached the other app
+    elif in_web and clipboard_fallback and not richtext.has_numbers(text) and not secure_input():
+        # web pages draw list numbers with CSS: the selected text drops them, the copied HTML keeps them
+        _, html = pasteboard.copy_selection(html=True)
+        if _frontmost_pid() != pid:
+            return ""
+        if html and "<ol" in html:
+            text = richtext.html_to_text(html)
     return text.strip()[:MAX_CHARS]
