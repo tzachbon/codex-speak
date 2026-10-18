@@ -29,9 +29,12 @@ def _check():
             row = con.execute("SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'").fetchone()
         finally:
             con.close()
-    except sqlite3.Error:
+    except (sqlite3.Error, ValueError):  # ValueError: a relative path when %APPDATA% is unset
         return "missing", None
-    token = (row[0] or "").strip('"') if row else ""
+    value = row[0] if row else None
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    token = value.strip('"') if isinstance(value, str) else ""
     if not token:
         return "signed_out", None
     return ("ready" if _expires(token) > time.time() + 60 else "expired"), token

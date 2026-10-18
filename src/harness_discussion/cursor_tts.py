@@ -15,6 +15,14 @@ VOICES = tuple((v, v.capitalize()) for v in (
     "liora lumen luna lux naksh orion perseus rex rigel sal sirius ursa zagan zenith").split())
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None  # a redirect would carry the sign-in to another URL; it surfaces as an HTTP 30x error
+
+
+_open = urllib.request.build_opener(_NoRedirect()).open
+
+
 def _varint(n):
     out = bytearray()
     while n > 0x7F:
@@ -35,6 +43,8 @@ def encode(text, voice, speed):
 def _read_varint(data, i):
     value = shift = 0
     while True:
+        if i >= len(data):
+            raise ValueError("truncated")
         byte = data[i]
         i += 1
         value |= (byte & 0x7F) << shift
@@ -58,6 +68,8 @@ def decode(data):
                 size = {1: 8, 5: 4}.get(wire)
                 if size is None:
                     raise ValueError(f"wire type {wire}")
+            if i + size > len(data):
+                raise ValueError("truncated")
             value, i = data[i:i + size], i + size
         fields.setdefault(key >> 3, value)
     return fields
@@ -69,11 +81,11 @@ def synthesize(text, voice, speed):
         "Content-Type": "application/proto", "Connect-Protocol-Version": "1",
         "Authorization": f"Bearer {cursor_auth.token()}"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _open(req, timeout=30) as resp:
             fields = decode(resp.read())
     except urllib.error.HTTPError as e:
         raise NoAudioError(f"HTTP {e.code}") from e
-    except (OSError, http.client.HTTPException, ValueError, IndexError) as e:
+    except (OSError, http.client.HTTPException, ValueError) as e:
         raise NoAudioError(f"{type(e).__name__}") from e  # the name only: messages never carry request data
     audio, mime = fields.get(1, b""), fields.get(2, b"")
     if not audio or mime != b"audio/mpeg":
