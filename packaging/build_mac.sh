@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds dist/CodexSpeak.dmg: an ad-hoc signed arm64 "Codex Speak.app" for macOS 13+.
+# Builds dist/CodexSpeak.dmg: an arm64 "Codex Speak.app" for macOS 13+, signed ad hoc or with the local identity.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 uv sync --locked
@@ -29,7 +29,15 @@ plutil -replace CFBundleVersion -string "$version" "$plist"
 plutil -replace LSUIElement -bool true "$plist"
 plutil -replace LSMinimumSystemVersion -string 13.0 "$plist"
 plutil -replace CodexSpeakBuild -string "$version+$commit" "$plist"
-codesign --force --deep --sign - "$app"
+# The local identity from setup_signing_mac.sh keeps the Accessibility grant across rebuilds. CI signs ad hoc.
+keychain="$HOME/Library/Keychains/codex-speak-signing.keychain-db"
+if [[ -f "$keychain" ]] && password=$(security find-generic-password -s codex-speak-signing -a "$USER" -w); then
+    security unlock-keychain -p "$password" "$keychain"
+    codesign --force --deep --keychain "$keychain" --sign "Codex Speak Local Signing" "$app"
+    security lock-keychain "$keychain"
+else
+    codesign --force --deep --sign - "$app"
+fi
 codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/Codex Speak" --self-test
 mkdir -p build/dmg

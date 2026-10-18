@@ -10,7 +10,7 @@ Thanks for helping. Bug reports, fixes, docs, and new language voices are all we
 
 ## Set up
 
-You need Windows 11. The app uses Windows-only APIs (UI Automation, COM, the mouse hook), so it does not run on macOS or Linux.
+You need Windows 11 or macOS 13 or later. The app does not run on Linux.
 
 1. Install [uv](https://docs.astral.sh/uv/). It installs the Python version from `.python-version`.
 2. Clone the repo and run:
@@ -47,6 +47,15 @@ Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isin
 ```powershell
 .\packaging\build.ps1           # PyInstaller app folder, then dist\CodexSpeak-Setup.exe
 ```
+
+## Build the macOS app
+
+```bash
+./packaging/setup_signing_mac.sh    # once per Mac: a local signing identity
+./packaging/build_mac.sh            # dist/CodexSpeak.dmg
+```
+
+With the local identity, a rebuilt app keeps its Accessibility grant. Without it, the build is signed ad hoc, as in CI, and macOS asks for Accessibility again after every rebuild.
 
 ## Code map
 
