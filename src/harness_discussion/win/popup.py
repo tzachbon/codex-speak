@@ -266,6 +266,7 @@ class Popup:
         """Built on each click: the ready sources change as statuses refresh and Settings reorders."""
         menu = self.sources_menu
         menu.delete(0, "end")
+        self.source.set(self.source_btn.parts[1]["text"])  # a pick mid-read must not move the check off the label
         for name in self.sources():
             menu.add_radiobutton(label=name, value=name, variable=self.source,
                                  command=lambda name=name: self.on_source(name))
