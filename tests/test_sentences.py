@@ -34,6 +34,12 @@ class Chunks(unittest.TestCase):
         self.assertTrue(all(len(p) <= 60 for p in pieces))
         self.assertEqual(letters("".join(pieces)), letters(text))
 
+    def test_a_sentence_over_the_limit_is_cut_at_spaces(self):
+        text = "word " * 30 + "x" * 70
+        pieces = sentences.chunks(text, 50)
+        self.assertTrue(all(len(p) <= 50 for p in pieces))
+        self.assertEqual(letters("".join(pieces)), letters(text))
+
     def test_nothing_is_lost_or_reordered(self):
         text = "One.\n\n" + "Two is long. " * 20 + "\n\nThree."
         self.assertEqual(letters("".join(sentences.chunks(text, 50))), letters(text))

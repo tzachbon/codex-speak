@@ -35,9 +35,20 @@ def chunks(text, limit):
                 pieces.append([part, joiner])
 
     for paragraph in filter(None, (p.strip() for p in _PARAGRAPH.split(text))):
-        pack(split(paragraph) if len(paragraph) > limit else [paragraph],
+        pack([cut for unit in split(paragraph) for cut in _fit(unit, limit)] if len(paragraph) > limit else [paragraph],
              " " if len(paragraph) > limit else "\n\n")
     return [piece for piece, _ in pieces]
+
+
+def _fit(unit, limit):
+    """A unit longer than `limit` cut at spaces, or mid-word when one word is longer."""
+    while len(unit) > limit:
+        cut = unit.rfind(" ", 0, limit + 1)
+        cut = cut if cut > 0 else limit
+        yield unit[:cut]
+        unit = unit[cut:].lstrip()
+    if unit:
+        yield unit
 
 
 def current(text):

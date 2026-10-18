@@ -32,6 +32,8 @@ class Speakable(unittest.TestCase):
         cases = [
             ("See https://github.com/tzachbon/codex-speak/pull/11 now.", "See github.com now."),
             ("Pushed to https://www.example.com/a.", "Pushed to example.com."),
+            ("Open https://example.com?token=abc now.", "Open example.com now."),
+            ("Open https://example.com#top now.", "Open example.com now."),
             ("Open packaging/setup_signing_mac.sh and check.", "Open setup signing mac.sh and check."),
             ("See src/codex_speak/audio.py for it.", "See audio.py for it."),
             ("Dirty audio (67aa9fd): gaps.", "Dirty audio: gaps."),
@@ -52,6 +54,8 @@ class HtmlToText(unittest.TestCase):
         cases = [
             ("<p>Please:</p><ol><li>A</li><li>B</li></ol>", "Please:\n1. A\n2. B"),
             ('<ol start="3"><li>C</li><li>D</li></ol>', "3. C\n4. D"),
+            ('<ol reversed start="3"><li>C</li><li>D</li></ol>', "3. C\n2. D"),
+            ('<ol reversed><li>C</li></ol>', "C"),
             ("<ul><li>x<ol><li>y</li></ol></li><li>z</li></ul>", "x\n1. y\nz"),
             ("<p>a &amp; b</p><script>alert(1)</script>", "a & b"),
             ("<ol><li><b>Bold</b> item</li></ol>", "1. Bold item"),
