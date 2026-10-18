@@ -67,4 +67,6 @@ def read(clipboard_fallback: bool = True) -> str:
         return ""  # a password field, or the user switched apps while we read
     if not text.strip() and clipboard_fallback and not secure_input():
         text = pasteboard.copy_selection()
+        if _frontmost_pid() != pid:
+            return ""  # the switch came during the copy, so Cmd+C reached the other app
     return text.strip()[:MAX_CHARS]

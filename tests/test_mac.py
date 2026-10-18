@@ -101,11 +101,13 @@ class PasteboardTest(unittest.TestCase):
 
 
 class SelectionTest(unittest.TestCase):
-    def read(self, *pids):
+    def read(self, *pids, ax=" hello "):
         with mock.patch.object(selection.permission, "trusted", return_value=True), \
                 mock.patch.object(selection, "_frontmost_pid", side_effect=pids), \
                 mock.patch.object(selection, "_expose"), \
-                mock.patch.object(selection, "_via_ax", return_value=" hello "):
+                mock.patch.object(selection, "_via_ax", return_value=ax), \
+                mock.patch.object(selection, "secure_input", return_value=False), \
+                mock.patch.object(selection.pasteboard, "copy_selection", return_value="copied"):
             return selection.read()
 
     def test_reads_the_app_that_stays_frontmost(self):
@@ -113,6 +115,12 @@ class SelectionTest(unittest.TestCase):
 
     def test_drops_the_selection_when_the_user_switches_apps(self):
         self.assertEqual(self.read(111, 222), "")
+
+    def test_clipboard_fallback_reads_the_app_that_stays_frontmost(self):
+        self.assertEqual(self.read(111, 111, 111, ax=""), "copied")
+
+    def test_drops_the_copy_when_the_user_switches_apps_during_it(self):
+        self.assertEqual(self.read(111, 111, 222, ax=""), "")
 
 
 class CodexPathTest(unittest.TestCase):
