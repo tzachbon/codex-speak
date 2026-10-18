@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from harness_discussion import core, settings
+from harness_discussion.audio import NoAudioError
 from harness_discussion.win import host as win_host, settings_ui
 
 
@@ -40,6 +41,13 @@ class Speech:
     close = stop
 
 
+class SignedOut(Speech):
+    """Cursor with no sign-in, as on CI: it fails before audio and the chain moves on."""
+
+    def speak(self, text, tag, done, heard, on_caption=None):
+        done(NoAudioError("signed out"))
+
+
 class PopupSettings(unittest.TestCase):
     def setUp(self):
         self.boundaries = ExitStack()
@@ -54,6 +62,7 @@ class PopupSettings(unittest.TestCase):
         self.boundaries.enter_context(patch.object(core, "CAPTION_DELAY_S", 0))
         for factory, name in (("CodexEngine", "Codex"), ("EdgeEngine", "Edge"), ("SapiEngine", "Windows")):
             self.boundaries.enter_context(patch.object(win_host, factory, return_value=Speech(name)))
+        self.boundaries.enter_context(patch.object(win_host, "CursorEngine", return_value=SignedOut("Cursor")))
         self.host = win_host.TkHost()
         self.app = core.App(self.host)
         self.app.popup.show("A sentence to read.", 140, 140)
@@ -69,6 +78,10 @@ class PopupSettings(unittest.TestCase):
         self.host.root.destroy()
         self.app = None
         gc.collect()
+
+    def speaking(self):
+        self.assertEqual(self.app.chain.active_name, "Codex")
+        return self.app.chain._active
 
     def click(self, button):
         label = button.parts[1]
@@ -88,7 +101,7 @@ class PopupSettings(unittest.TestCase):
         window = self.app.settings_win
         self.assertTrue(window.win.winfo_viewable())
         self.assertTrue(popup.paused)
-        self.assertTrue(self.app.chain.engines[0].paused.is_set())
+        self.assertTrue(self.speaking().paused.is_set())
         self.assertEqual(popup.caption.text, "A sentence to read.")
         self.assertEqual(self.app._read_id, read_id)
         self.click(popup.settings_btn)
@@ -98,7 +111,7 @@ class PopupSettings(unittest.TestCase):
         self.assertTrue(popup.paused)
         self.click(popup.btn)
         self.assertFalse(popup.paused)
-        self.assertFalse(self.app.chain.engines[0].paused.is_set())
+        self.assertFalse(self.speaking().paused.is_set())
         self.assertEqual(self.app._read_id, read_id)
 
     def test_idle_settings_does_not_start_speech_and_closed_window_reopens(self):
@@ -122,7 +135,7 @@ class PopupSettings(unittest.TestCase):
         self.click(popup.settings_btn)
         self.assertTrue(self.app.settings_win.win.winfo_viewable())
         self.assertTrue(popup.paused)
-        self.assertTrue(self.app.chain.engines[0].paused.is_set())
+        self.assertTrue(self.speaking().paused.is_set())
 
 
 if __name__ == "__main__":
