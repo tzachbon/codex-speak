@@ -39,4 +39,4 @@ class Sources:
 
     def _popup_source(self, name):
         sources = self.cfg["sources"]
-        self.change("sources", [s for s in sources if s[0] == name] + [s for s in sources if s[0] != name])
+        self.change("sources", [[name, True]] + [s for s in sources if s[0] != name])

@@ -129,8 +129,8 @@ class SettingsWindow(SourcesSection):
         ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
                         variable=self.prefetch,
                         command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
-        ttk.Label(card, text="Sends the selected text to Microsoft's speech service before you press play. "
-                  "Applies when Edge is the first source that reads.", style="Sub.Card.TLabel",
+        ttk.Label(card, text="Sends the first sentence to Cursor or Microsoft before you press play. "
+                  "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 
         card = self._card("Speech-to-text · OpenAI-compatible")

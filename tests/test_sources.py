@@ -280,6 +280,12 @@ class Bar(unittest.TestCase):
         self.assertEqual((app.cfg["sources"], seen, app.popup.source), (moved, [moved], "Edge"))
         settings.save.assert_called_once()
 
+    def test_picking_a_turned_off_source_turns_it_on(self):
+        app = self.make(Engine("Cursor"), Engine("Codex"))
+        app.change("sources", [["Cursor", False], ["Codex", False]])
+        app.popup.callbacks["on_source"]("Codex")
+        self.assertEqual(app.cfg["sources"], [["Codex", True], ["Cursor", False]])
+
     def test_first_run_opens_settings_with_the_welcome_and_a_second_start_does_not(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
