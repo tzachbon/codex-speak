@@ -74,7 +74,7 @@ class PcmPlayer:
             out[:] = bytes(n)
             return
         with self._lock:
-            more = time.monotonic() - self._last_write < JITTER  # else the writes ended: play the tail
+            more = not self._last_write or time.monotonic() - self._last_write < JITTER  # else play the tail
             if len(self._buf) >= self._hold or not more:
                 self._holding = False
             elif not self._buf:
