@@ -83,6 +83,9 @@ class Chain:
         self.prepared.append((tag, text if self.prefetch else None))
         self.prepare_fallback = fallback_tag
 
+    def prepare_next(self, text, tag, *, fallback_tag=None):
+        self.next_pieces = getattr(self, "next_pieces", []) + [text]
+
     def stop(self):
         pass
 
@@ -222,7 +225,18 @@ class Sequence(unittest.TestCase):
         old[3]()
         old[2](RuntimeError("late"))
         pump(a)
-        self.assertEqual((a.popup.caption, len(a.chain.calls), a.notifications), ("Two.", 2, []))
+        self.assertEqual((a.popup.caption, len(a.chain.calls), a.notifications), ("Two. Three.", 2, []))
+
+    def test_the_first_sentence_reads_alone_and_the_rest_as_one_piece_fetched_early(self):
+        a = app()
+        a.play("One. Two.\n\nThree. Four.", None)
+        self.assertEqual(a._units, ["One.", "Two.\n\nThree. Four."])
+        a.chain.calls[0][3]()
+        pump(a)
+        self.assertEqual(a.chain.next_pieces, ["Two.\n\nThree. Four."])  # fetched while "One." plays
+        long = "A. " + "Word word word. " * 600
+        self.assertEqual([len(u) <= 5000 for u in a._units_for(long)], [True, True, True])
+        self.assertEqual(a._units_for("  \n "), [])
 
     def test_prepare_is_opt_in_and_new_selection_replaces_exact_first_text(self):
         a = app()

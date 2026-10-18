@@ -86,8 +86,19 @@ class CaptionSettingsUi(unittest.TestCase):
         finally:
             self.window.close()
 
+    def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
+        self.make_window(dict(settings.DEFAULTS), lambda *args: None, statuses=lambda: {"Cursor": "signed_out"})
+        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages], [True, False, False, False, False])
+        self.assertEqual(str(self.window.nav[0]["image"]), str(self.window._tiles["Voices"][1]))
+        self.window.nav[3].invoke()
+        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages], [False, False, False, True, False])
+        self.assertEqual(self.window.title["text"], "Speech to Text")
+        self.window.statuses = lambda: {"Cursor": "ready"}
+        self.window.refresh_sources()
+        self.assertEqual(str(self.window.nav[0]["image"]), str(self.window._tiles["Voices"][0]))
+
     def test_settings_scroll_to_fit_small_work_area(self):
-        area = SimpleNamespace(left=0, top=0, right=1920, bottom=1032)
+        area = SimpleNamespace(left=0, top=0, right=1920, bottom=480)
         with patch.object(settings_ui, "work_area", return_value=area):
             self.make_window(dict(settings.DEFAULTS), lambda *args: None)
         self.window.win.deiconify()
@@ -98,6 +109,7 @@ class CaptionSettingsUi(unittest.TestCase):
         self.assertLess(self.window._scroll_canvas.winfo_height(), self.window.content.winfo_reqheight())
         self.assertTrue(self.window.close_button.winfo_viewable())
 
+        self.window.show_page(3)  # the tallest content sits at the end of Speech to Text
         self.window._scroll_canvas.yview_moveto(1)
         self.root.update_idletasks()
         content_bottom = self.window.stt_status.winfo_rooty() + self.window.stt_status.winfo_height()
@@ -169,10 +181,10 @@ class CaptionSettingsUi(unittest.TestCase):
     def test_each_status_renders_its_text(self):
         rows, _, _ = self.sources_window({"Cursor": "signed_out", "Codex": "missing", "Edge": "ready"})
         self.assertEqual([rows[n][1]["text"] for n in ("Cursor", "Codex", "Edge", "Windows")],
-                         ["Signed out — open Cursor and sign in", "Not installed", "Ready", "Checking…"])
+                         ["Not signed in", "Not installed", "Ready", "Checking…"])
         self.window.statuses = lambda: {"Cursor": "expired"}
         self.window.refresh_sources()
-        self.assertEqual(rows["Cursor"][1]["text"], "Sign-in expired — open Cursor")
+        self.assertEqual(rows["Cursor"][1]["text"], "Sign-in expired")
         self.assertEqual((rows["Codex"][3][2]["text"], rows["Edge"][2]), ("Default voice", None))
 
     def test_up_down_and_enable_save_the_sources(self):

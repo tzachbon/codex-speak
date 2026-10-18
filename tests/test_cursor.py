@@ -214,6 +214,28 @@ class Engine(TempDb):
             self.assertTrue(done.wait(5))
         self.assertEqual(call.call_count, 1)
 
+    def test_the_next_piece_is_fetched_while_one_plays_and_then_joined(self):
+        e = CursorEngine()
+        e.Player = FakePlayer
+        chain, done = Chain([e]), threading.Event()
+        sent = []
+        def answer(req, timeout):
+            sent.append(cursor_tts.decode(req.data)[1].decode())
+            return reply(tone_mp3())
+        with mock.patch.object(cursor_tts, "_open", side_effect=answer):
+            chain.speak("One.", "en-US", lambda err: done.set(),
+                        lambda: chain.prepare_next("Two. Three.", "en-US"))
+            self.assertTrue(done.wait(5))
+            for _ in range(200):
+                if len(sent) == 2:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(sent, ["One.", "Two. Three."])  # started once "One." was heard
+            done.clear()
+            chain.speak("Two. Three.", "en-US", lambda err: done.set())
+            self.assertTrue(done.wait(5))
+        self.assertEqual(sent, ["One.", "Two. Three."])  # the read joined the fetch, no second request
+
     def test_a_failed_read_moves_to_the_next_engine_without_leaking_the_token(self):
         class Next:
             name, speed, paused = "Next", 1.0, threading.Event()

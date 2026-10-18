@@ -1,28 +1,39 @@
-"""The Settings window: native ttk controls laid out like Windows 11 Settings. Changes apply at once."""
+"""The Settings window: native ttk controls laid out like Windows 11 Settings, a sidebar of pages. Changes apply at once."""
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox, ttk
 
-from PIL import ImageTk
+from PIL import ImageDraw, ImageTk
 
-from .. import settings, updates
+from .. import icons, settings, updates
+from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
 from .sources_ui import CARD, SourcesSection
 
-PAGE, BORDER, SUBTLE = "#f3f3f3", "#e5e5e5", "#5f5f5f"
+PAGE, BORDER, SUBTLE, SELECTED = "#f3f3f3", "#e5e5e5", "#5f5f5f", "#e6e6e6"
+PAGES = ("Voices", "Captions", "Reading", "Speech to Text", "General")
+
+
+def _badged(image):
+    """The sidebar mark with an orange dot, for a page that needs attention."""
+    image = image.copy()
+    size = image.width
+    ImageDraw.Draw(image).ellipse((size * 0.62, 0, size - 1, size * 0.38), fill="#f7630c", outline="white")
+    return image
 
 
 class SettingsWindow(SourcesSection):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
                  update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
-                 statuses=dict, on_play=lambda name: None, welcome=False):
+                 statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
         self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
+        self.on_fix = on_fix
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
-        w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
+        w = self.win = tk.Toplevel(root, bg=PAGE)
         w.title("Harness Discussion settings")
         w.resizable(False, False)
         self._icon = ImageTk.PhotoImage(icon, master=w)
@@ -35,11 +46,28 @@ class SettingsWindow(SourcesSection):
         st.configure("Sub.Card.TLabel", foreground=SUBTLE, font=(text, 9))
         st.configure("TButton", font=(text, 10), padding=(12, 4))
 
-        self.footer = tk.Frame(w, bg=PAGE)
+        sidebar = tk.Frame(w, bg=PAGE, padx=10, pady=16)
+        sidebar.pack(side="left", fill="y")
+        self._app_icon = ImageTk.PhotoImage(icon.resize((28, 28)), master=w)
+        tk.Label(sidebar, image=self._app_icon, text="  Harness Discussion", compound="left", bg=PAGE,
+                 font=(text, 11, "bold"), anchor="w").pack(fill="x", padx=6, pady=(0, 14))
+        self._tiles = {name: (ImageTk.PhotoImage(icons.page_image(name, 20), master=w),
+                              ImageTk.PhotoImage(_badged(icons.page_image(name, 20)), master=w)) for name in PAGES}
+        self.nav = [tk.Button(sidebar, text="   " + name, image=self._tiles[name][0], compound="left", anchor="w",
+                              relief="flat", bd=0, bg=PAGE, activebackground=SELECTED, font=(text, 10),
+                              width=190, padx=10, pady=7, cursor="hand2", command=lambda i=i: self.show_page(i))
+                    for i, name in enumerate(PAGES)]
+        for button in self.nav:
+            button.pack(fill="x", pady=1)
+        self._page = 0
+        main = tk.Frame(w, bg=PAGE, padx=24, pady=20)
+        main.pack(side="left", fill="both", expand=True)
+
+        self.footer = tk.Frame(main, bg=PAGE)
         self.close_button = ttk.Button(self.footer, text="Close", command=self.close)
         self.close_button.pack(anchor="e", pady=(16, 0))
         self.footer.pack(side="bottom", fill="x")
-        self._scroll_frame = tk.Frame(w, bg=PAGE)
+        self._scroll_frame = tk.Frame(main, bg=PAGE)
         self._scroll_canvas = tk.Canvas(self._scroll_frame, bg=PAGE, bd=0, highlightthickness=0)
         self._scrollbar = ttk.Scrollbar(self._scroll_frame, orient="vertical",
                                         command=self._scroll_canvas.yview)
@@ -53,43 +81,51 @@ class SettingsWindow(SourcesSection):
         self._scroll_canvas.pack(side="left", fill="both", expand=True)
         self._scroll_frame.pack(fill="both", expand=True)
 
-        tk.Label(self.content, text="Settings", bg=PAGE, font=(text.replace("Text", "Display"), 20, "bold"),
-                 anchor="w").pack(fill="x", pady=(0, 12))
+        self.title = tk.Label(self.content, bg=PAGE, font=(text.replace("Text", "Display"), 20, "bold"), anchor="w")
+        self.title.pack(fill="x", pady=(0, 8))
+        self.pages = [tk.Frame(self.content, bg=PAGE) for _ in PAGES]
+        voices, captions, reading, stt, general = self.pages
+
+        card = self._card(voices, "Sources")
+        self._sources_section(card, text, welcome)
+        ttk.Label(voices, text="Sources read top to bottom. If one can't read, the next one does. Codex uses your "
+                  "ChatGPT sign-in and can read slower but not faster, so above 1× the next source reads. Edge "
+                  "sends the text to Microsoft. Windows voices stay on this PC.", background=PAGE,
+                  foreground=SUBTLE, font=(text, 9), wraplength=470).pack(anchor="w", pady=(6, 0))
+        card = self._card(voices, "Speed")
+        row = tk.Frame(card, bg=CARD)
+        row.pack(fill="x")
+        self.speed = tk.DoubleVar(w, cfg["speed"])
+        ttk.Scale(row, from_=settings.SPEEDS[0], to=settings.SPEEDS[1], variable=self.speed, length=260,
+                  style="Card.Horizontal.TScale", command=self._speed_changed).pack(side="left")
+        self.speed_lbl = ttk.Label(row, style="Card.TLabel", width=6, font=(text, 10, "bold"))
+        self.speed_lbl.pack(side="left", padx=8)
+        self._show_speed()
+        ttk.Button(row, text="Test voice", command=self._test).pack(side="right")
 
         self.startup = tk.BooleanVar(w, settings.startup_enabled())
-        card = self._card("General")
-        ttk.Checkbutton(card, text="Start Harness Discussion when I sign in to Windows", style="Card.TCheckbutton",
-                        variable=self.startup, command=self._startup_changed).pack(anchor="w")
+        card = self._card(general)
         row = tk.Frame(card, bg=CARD)
-        row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=f"Harness Discussion {updates.current_version()}", style="Card.TLabel").pack(side="left")
+        row.pack(fill="x")
+        self._about_icon = ImageTk.PhotoImage(icon.resize((40, 40)), master=w)
+        tk.Label(row, image=self._about_icon, bg=CARD).pack(side="left", padx=(0, 12))
+        about = tk.Frame(row, bg=CARD)
+        about.pack(side="left")
+        ttk.Label(about, text="Harness Discussion", style="Card.TLabel", font=(text, 11, "bold")).pack(anchor="w")
+        ttk.Label(about, text=f"Version {updates.current_version()}", style="Sub.Card.TLabel").pack(anchor="w")
         self.update_button = ttk.Button(row, text="Check and install update", command=on_update)
         self.update_button.pack(side="right")
+        self.update_status = ttk.Label(card, style="Sub.Card.TLabel", wraplength=440)
+        self.update_status.pack(anchor="w", pady=(10, 0))
+        card = self._card(general, "Startup and updates")
+        ttk.Checkbutton(card, text="Start Harness Discussion when I sign in to Windows", style="Card.TCheckbutton",
+                        variable=self.startup, command=self._startup_changed).pack(anchor="w")
         self.auto_update = tk.BooleanVar(w, cfg.get("auto_update", False))
         self.auto_update_button = ttk.Checkbutton(card, text="Install updates automatically", style="Card.TCheckbutton",
             variable=self.auto_update, command=lambda: self._set("auto_update", self.auto_update.get()))
-        self.auto_update_button.pack(anchor="w", pady=(8, 0))
-        self.update_status = ttk.Label(card, style="Sub.Card.TLabel", wraplength=420)
-        self.update_status.pack(anchor="w", pady=(4, 0))
+        self.auto_update_button.pack(anchor="w", pady=(10, 0))
 
-        card = self._card("Reading")
-        row = tk.Frame(card, bg=CARD)
-        row.pack(fill="x")
-        ttk.Label(row, text="Speed", style="Card.TLabel", width=8).pack(side="left")
-        self.speed = tk.DoubleVar(w, cfg["speed"])
-        ttk.Scale(row, from_=settings.SPEEDS[0], to=settings.SPEEDS[1], variable=self.speed, length=260,
-                  style="Card.Horizontal.TScale", command=self._speed_changed).pack(side="left", padx=8)
-        self.speed_lbl = ttk.Label(row, style="Card.TLabel", width=6)
-        self.speed_lbl.pack(side="left")
-        self._show_speed()
-        self._sources_section(card, text, welcome)
-        ttk.Label(card, text="Voice sources read in this order. If one can't read, the next one does. "
-                  "Codex uses your ChatGPT sign-in and can read slower but not faster, so above 1× the next "
-                  "source reads. Edge sends the text to Microsoft. Windows voices stay on this PC.",
-                  style="Sub.Card.TLabel", wraplength=420).pack(anchor="w", pady=(8, 0))
-        ttk.Button(card, text="Test voice", command=self._test).pack(anchor="w", pady=(12, 0))
-
-        card = self._card("Captions")
+        card = self._card(captions, "Appearance")
         row = tk.Frame(card, bg=CARD)
         row.pack(fill="x")
         ttk.Label(row, text="Font size", style="Card.TLabel", width=12).pack(side="left")
@@ -118,7 +154,7 @@ class SettingsWindow(SourcesSection):
         self._caption_opacity_changed()
         self._caption_opacity_state()
 
-        card = self._card("Selection")
+        card = self._card(reading, "Selection")
         self.clip = tk.BooleanVar(w, cfg["clipboard_fallback"])
         ttk.Checkbutton(card, text="Read apps that hide their selection, such as VS Code",
                         style="Card.TCheckbutton", variable=self.clip,
@@ -133,7 +169,7 @@ class SettingsWindow(SourcesSection):
                   "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 
-        card = self._card("Speech-to-text · OpenAI-compatible")
+        card = self._card(stt, "OpenAI-compatible server")
         self.stt_on = tk.BooleanVar(w, cfg.get("stt_server", False))
         ttk.Checkbutton(card, text="Run the speech-to-text server for other apps, such as OpenWhispr",
                         style="Card.TCheckbutton", variable=self.stt_on,
@@ -159,20 +195,47 @@ class SettingsWindow(SourcesSection):
 
         w.protocol("WM_DELETE_WINDOW", self.close)
         self._fit_work_area(root)
+        self.show_page(0)
         self.focus()
 
-    def _card(self, title):
-        tk.Label(self.content, text=title, bg=PAGE, anchor="w",
-                 font=tkfont.Font(family=fonts(self.win)[1], size=10, weight="bold")
-                 ).pack(fill="x", pady=(8, 4))
-        card = tk.Frame(self.content, bg=CARD, padx=16, pady=14, highlightthickness=1,
+    def show_page(self, index):
+        self._page = index
+        for i, page in enumerate(self.pages):
+            page.pack_forget()
+        self.pages[index].pack(fill="x")
+        self.title["text"] = PAGES[index]
+        self._scroll_canvas.yview_moveto(0)
+        self._refresh_nav()
+
+    def _refresh_nav(self):
+        """The selected page is shaded and bold; Voices carries a dot while an enabled source needs a fix."""
+        if not hasattr(self, "nav"):
+            return
+        statuses = self.statuses()
+        attention = any(on and source_fix(name, statuses.get(name)) for name, on in self.cfg["sources"])
+        for i, (button, name) in enumerate(zip(self.nav, PAGES)):
+            selected = i == self._page
+            button.configure(bg=SELECTED if selected else PAGE, image=self._tiles[name][attention and i == 0],
+                             font=(fonts(self.win)[1], 10, "bold" if selected else "normal"))
+
+    def _card(self, page, title=None):
+        if title:
+            tk.Label(page, text=title, bg=PAGE, anchor="w",
+                     font=tkfont.Font(family=fonts(self.win)[1], size=10, weight="bold")
+                     ).pack(fill="x", pady=(12, 4))
+        card = tk.Frame(page, bg=CARD, padx=16, pady=14, highlightthickness=1,
                         highlightbackground=BORDER, highlightcolor=BORDER)
-        card.pack(fill="x")
+        card.pack(fill="x", pady=(0 if title else 4, 0))
         return card
 
     def _fit_work_area(self, root):
-        self.win.update_idletasks()
-        width, content_height = self.content.winfo_reqwidth(), self.content.winfo_reqheight()
+        """Sized for the tallest page, so switching pages never resizes the window; scrolls on a short screen."""
+        width = content_height = 0
+        for i in range(len(self.pages)):
+            self.show_page(i)
+            self.win.update_idletasks()
+            width = max(width, self.content.winfo_reqwidth())
+            content_height = max(content_height, self.content.winfo_reqheight())
         self._scroll_canvas.configure(width=width, height=content_height)
         self.win.update_idletasks()
         area = work_area(root.winfo_pointerx(), root.winfo_pointery())

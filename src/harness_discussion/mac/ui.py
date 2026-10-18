@@ -1,7 +1,12 @@
-"""Small AppKit helpers: Python callables as button targets, labels, stacks and windows."""
+"""Small AppKit helpers: Python callables as button targets, labels, stacks, cards, images and windows."""
+import functools
+import io
+
 import AppKit
 import objc
-from Foundation import NSObject
+from Foundation import NSData, NSObject
+
+from .. import icons
 
 _keep = []  # AppKit holds targets weakly
 
@@ -93,3 +98,92 @@ def timer(seconds, fn, repeats=False):
 
 def symbol(name, description=""):
     return AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(name, description)
+
+
+def pil_image(img, points):
+    """A PIL image as an NSImage `points` wide, its pixels kept for Retina screens."""
+    data = io.BytesIO()
+    img.save(data, "PNG")
+    raw = data.getvalue()
+    image = AppKit.NSImage.alloc().initWithData_(NSData.dataWithBytes_length_(raw, len(raw)))
+    image.setSize_((points, points))
+    return image
+
+
+@functools.lru_cache(maxsize=None)
+def source_icon(name, points=16):
+    return pil_image(icons.source_image(name, points * 2), points)
+
+
+def image_view(image, points):
+    view = AppKit.NSImageView.imageViewWithImage_(image)
+    for anchor in (view.widthAnchor(), view.heightAnchor()):
+        anchor.constraintEqualToConstant_(points).setActive_(True)
+    return view
+
+
+def card(views, spacing=10, width=None):
+    """A rounded panel that groups a section's rows, as System Settings does."""
+    box = AppKit.NSBox.alloc().init()
+    if width:
+        box.widthAnchor().constraintEqualToConstant_(width).setActive_(True)
+    box.setBoxType_(AppKit.NSBoxCustom)
+    box.setTitlePosition_(AppKit.NSNoTitle)
+    box.setCornerRadius_(10)
+    box.setBorderWidth_(0.5)
+    box.setBorderColor_(AppKit.NSColor.separatorColor())
+    box.setFillColor_(AppKit.NSColor.controlBackgroundColor())
+    box.setContentViewMargins_((0, 0))
+    inner = stack(views, spacing=spacing)
+    inner.setTranslatesAutoresizingMaskIntoConstraints_(False)
+    content = box.contentView()
+    content.addSubview_(inner)
+    for a, inset in (("leadingAnchor", 14), ("trailingAnchor", -14), ("topAnchor", 12), ("bottomAnchor", -12)):
+        getattr(inner, a)().constraintEqualToAnchor_constant_(getattr(content, a)(), inset).setActive_(True)
+    return box
+
+
+def switch(value, fn):
+    s = bind(AppKit.NSSwitch.alloc().init(), lambda s: fn(bool(s.state())))
+    s.setState_(1 if value else 0)
+    s.setControlSize_(AppKit.NSControlSizeSmall)
+    return s
+
+
+def symbol_button(name, description, fn, size=13):
+    """A borderless SF Symbol button for small row actions."""
+    b = bind(AppKit.NSButton.buttonWithImage_target_action_(symbol(name, description), None, None), lambda _s: fn())
+    b.setBordered_(False)
+    b.setSymbolConfiguration_(AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_(
+        size, AppKit.NSFontWeightSemibold))
+    b.setContentTintColor_(AppKit.NSColor.secondaryLabelColor())
+    b.setAccessibilityLabel_(description)
+    return b
+
+
+def option(title, detail, value, fn, width):
+    """A System Settings row: a title with a line of detail on the left, a switch on the right. (row, switch)."""
+    toggle = switch(value, fn)
+    toggle.setAccessibilityLabel_(title)
+    text = stack([label(title, 13), label(detail, 11, secondary=True, width=width - 70)], spacing=2)
+    filler = AppKit.NSView.alloc().init()
+    filler.setContentHuggingPriority_forOrientation_(1, AppKit.NSLayoutConstraintOrientationHorizontal)
+    row = stack([text, filler, toggle], vertical=False)
+    row.widthAnchor().constraintEqualToConstant_(width).setActive_(True)
+    return row, toggle
+
+
+def tile(name, color, points=22):
+    """An SF Symbol in white on a colored rounded square, as System Settings marks its panes."""
+    glyph = symbol(name).imageWithSymbolConfiguration_(
+        AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_(points * 0.5, AppKit.NSFontWeightSemibold)
+        .configurationByApplyingConfiguration_(
+            AppKit.NSImageSymbolConfiguration.configurationWithHierarchicalColor_(AppKit.NSColor.whiteColor())))
+
+    def draw(rect):
+        color.setFill()
+        AppKit.NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, points * 0.24, points * 0.24).fill()
+        w, h = glyph.size()
+        glyph.drawInRect_((((rect.size.width - w) / 2, (rect.size.height - h) / 2), (w, h)))
+        return True
+    return AppKit.NSImage.imageWithSize_flipped_drawingHandler_((points, points), False, draw)

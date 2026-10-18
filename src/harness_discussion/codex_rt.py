@@ -247,12 +247,17 @@ class CodexEngine:
         if self._srv:
             self._srv.close()
 
-    def status(self):  # the sign-in is not checked: a signed-out Codex fails the read and the next source reads
+    def status(self):
         try:
-            codex_exe()
+            exe = codex_exe()
         except FileNotFoundError:
             return "missing"
-        return "ready"
+        try:  # exits 0 only when a ChatGPT or API key sign-in is saved
+            done = subprocess.run([exe, "login", "status"], capture_output=True, timeout=5,
+                                  stdin=subprocess.DEVNULL, **SPAWN)
+        except (OSError, subprocess.SubprocessError):
+            return "ready"  # unknown: the read tries it, and the next source reads if it fails
+        return "ready" if done.returncode == 0 else "signed_out"
 
     async def _next_event(self, srv, want, timeout, session=None):
         """The params of the next `want` event; with a tuple of methods, (method, params) of the first."""

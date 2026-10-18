@@ -136,8 +136,9 @@ class PopupSettings(unittest.TestCase):
         with patch.object(popup, "_post_menu"):
             popup._source_menu()
         menu = popup.sources_menu
-        self.assertEqual([menu.entrycget(i, "label") for i in range(menu.index("end") + 1)],
-                         ["Codex", "Edge", "Windows"])
+        self.assertEqual([menu.type(i) == "separator" or menu.entrycget(i, "label")
+                          for i in range(menu.index("end") + 1)],
+                         ["Codex", "Edge", "Windows", True, "Cursor: Sign in…"])
         with patch.object(settings, "save") as save:  # its default path is the real profile
             menu.invoke(2)
         save.assert_called_once()

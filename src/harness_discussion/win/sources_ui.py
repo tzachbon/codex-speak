@@ -2,13 +2,16 @@
 import tkinter as tk
 from tkinter import ttk
 
-from .. import settings
+from PIL import ImageTk
+
+from .. import icons, settings
+from ..sources import fix as source_fix
 
 CARD = "#ffffff"
 
 
 class SourcesSection:
-    """Mixed into SettingsWindow, which owns win, cfg, statuses, _engines, _set, _flush_pending and on_play."""
+    """Mixed into SettingsWindow, which owns win, cfg, statuses, _engines, _set, _flush_pending, on_play and on_fix."""
 
     def _sources_section(self, card, font, welcome):
         self.welcome = None
@@ -17,6 +20,7 @@ class SourcesSection:
             self.welcome.pack(anchor="w", pady=(12, 0))
         self.sources_frame = tk.Frame(card, bg=CARD)
         self.sources_frame.pack(fill="x", pady=(12, 0))
+        self.source_icons = {}  # Tk drops an image nothing in Python refers to
         self.source_rows = {name: self._source_row(name, font) for name, _ in self.cfg["sources"]}
         self.refresh_sources()
 
@@ -28,14 +32,17 @@ class SourcesSection:
                              values=[label for _, label in choices]) if choices else None
         if voice:
             voice.bind("<<ComboboxSelected>>", lambda _e: self._voice_changed(name))
+        self.source_icons[name] = ImageTk.PhotoImage(icons.source_image(name, 20), master=self.win)
         widgets = [
-            ttk.Checkbutton(f, text=name, style="Card.TCheckbutton", variable=on, width=8,
+            ttk.Checkbutton(f, text=f" {name}", style="Card.TCheckbutton", variable=on, width=9,
+                            image=self.source_icons[name], compound="left",
                             command=lambda: self._source_toggled(name)),
             ttk.Label(f, style="Sub.Card.TLabel", width=20, wraplength=140),
             voice or ttk.Label(f, text="Default voice" if name == "Codex" else "", style="Sub.Card.TLabel"),
             ttk.Button(f, text="Test", width=5, command=lambda: self._test_source(name)),
             ttk.Button(f, text="↑", width=2, command=lambda: self._move(name, -1)),
-            ttk.Button(f, text="↓", width=2, command=lambda: self._move(name, 1))]
+            ttk.Button(f, text="↓", width=2, command=lambda: self._move(name, 1)),
+            ttk.Button(f, width=9, command=lambda: self.on_fix(name))]  # Install… or Sign in…, when needed
         return on, widgets[1], voice, widgets
 
     def refresh_sources(self):
@@ -53,8 +60,13 @@ class SourcesSection:
                 voice.current(ids.index(chosen))
             for column, widget in enumerate(widgets):
                 widget.grid(row=i, column=column, sticky="w", padx=(0, 6), pady=2)
+            found = source_fix(name, statuses.get(name))
+            widgets[6]["text"] = found[0] if found else ""
+            if not found:
+                widgets[6].grid_remove()
             widgets[4]["state"] = "normal" if i else "disabled"
             widgets[5]["state"] = "normal" if i < len(sources) - 1 else "disabled"
+        self._refresh_nav()
 
     def set_sources(self, sources):
         """Mirrors an order changed elsewhere, without saving it again."""

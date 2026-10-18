@@ -42,7 +42,8 @@ class TkHost:
         return SettingsWindow(self.root, dict(a.cfg), icon_image(256), a.change, a.test_voice,
                               lambda: a.stt_error, a.update_state, a.check_update, engines=a.chain.engines,
                               statuses=lambda: a.statuses,
-                              on_play=lambda name: a.play(f"This is {name}.", None, only=name), welcome=welcome)
+                              on_play=lambda name: a.play(f"This is {name}.", None, only=name), welcome=welcome,
+                              on_fix=a.fix_source)
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)
