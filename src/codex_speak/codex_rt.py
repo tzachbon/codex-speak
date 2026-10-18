@@ -274,7 +274,7 @@ class CodexEngine:
         if self._srv:
             self._srv.close()
 
-    async def _next_event(self, srv, want, timeout):
+    async def _next_event(self, srv, want, timeout, session=None):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if not srv.alive:
@@ -288,7 +288,7 @@ class CodexEngine:
                 continue  # a late notice for the session we stopped before this one
             if m in ("thread/realtime/error", "thread/realtime/closed"):
                 raise RuntimeError(p.get("message") or f"realtime closed: {p.get('reason')}")
-            if m == want:
+            if m == want and p.get("realtimeSessionId", session) == session:
                 return p
         raise TimeoutError(want)
 
@@ -339,13 +339,15 @@ class CodexEngine:
             while not srv.events.empty():
                 srv.events.get_nowait()
             await pc.setLocalDescription(await pc.createOffer())
+            session = str(uuid.uuid4())  # else earlier reads stay in context and get reread
             await call("thread/realtime/start", {
                 "threadId": tid, "outputModality": "audio", "version": "v3",
-                "includeStartupContext": False, "clientManagedHandoffs": True,
-                "realtimeSessionId": str(uuid.uuid4()),  # else earlier reads stay in context and get reread
+                "includeStartupContext": False, "clientManagedHandoffs": True, "realtimeSessionId": session,
                 "prompt": (CUE_PROMPT if cue else PROMPT).format(
                     lang=lang.name(lang_tag) or "the language it is written in"),
                 "transport": {"type": "webrtc", "sdp": pc.localDescription.sdp}})
+            # a session cancelled while starting still starts, and its answer arrives after this start
+            await self._next_event(srv, "thread/realtime/started", 10, session)
             answer = await self._next_event(srv, "thread/realtime/sdp", 10)
             await pc.setRemoteDescription(RTCSessionDescription(answer["sdp"], "answer"))
             for _ in range(100):

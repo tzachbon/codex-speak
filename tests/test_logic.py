@@ -2,6 +2,7 @@ import array
 import asyncio
 import math
 import os
+import queue
 import tempfile
 import threading
 import unittest
@@ -264,6 +265,22 @@ class CodexRetry(unittest.TestCase):
         count, err = self.read(_no_audio(RuntimeError("thread/start failed")))
         self.assertEqual(count, 1)
         self.assertIsInstance(err.__cause__, RuntimeError)
+
+
+class CodexSessionEvents(unittest.TestCase):
+    def test_a_cancelled_session_that_starts_late_does_not_answer_for_the_next(self):
+        engine = CodexEngine()
+        self.addCleanup(engine.close)
+        srv = mock.Mock(alive=True, events=queue.Queue())
+        for session in ("old", "new"):  # the old one was stopped while starting
+            for method, params in [("started", {"realtimeSessionId": session}), ("sdp", {"sdp": session}),
+                                   ("closed", {"reason": "requested"})]:
+                srv.events.put({"method": "thread/realtime/" + method, "params": params})
+
+        async def answer():
+            await engine._next_event(srv, "thread/realtime/started", 5, "new")
+            return (await engine._next_event(srv, "thread/realtime/sdp", 5))["sdp"]
+        self.assertEqual(asyncio.run_coroutine_threadsafe(answer(), engine._loop).result(10), "new")
 
 
 class StopClearsPause(unittest.TestCase):
