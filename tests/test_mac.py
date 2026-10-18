@@ -2,6 +2,8 @@ import os
 import plistlib
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -77,6 +79,24 @@ class PasteboardTest(unittest.TestCase):
         self.assertFalse(pasteboard.safe_to_borrow({"public.utf8-plain-text", "org.nspasteboard.ConcealedType"}))
         self.assertFalse(pasteboard.safe_to_borrow({"com.agilebits.onepassword"}))
         self.assertFalse(pasteboard.safe_to_borrow({"com.apple.pasteboard.promised-file-url"}))
+
+    def test_overlapping_reads_borrow_the_pasteboard_one_at_a_time(self):
+        state = {"inside": 0, "most": 0}
+
+        def borrow():
+            state["inside"] += 1
+            state["most"] = max(state["most"], state["inside"])
+            time.sleep(0.05)
+            state["inside"] -= 1
+            return ""
+
+        with mock.patch.object(pasteboard, "_copy_selection", side_effect=borrow):
+            reads = [threading.Thread(target=pasteboard.copy_selection) for _ in range(3)]
+            for t in reads:
+                t.start()
+            for t in reads:
+                t.join()
+        self.assertEqual(state["most"], 1)
 
 
 class CodexPathTest(unittest.TestCase):
