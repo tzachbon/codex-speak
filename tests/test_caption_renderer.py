@@ -105,6 +105,17 @@ class CaptionWindow(unittest.TestCase):
         self.assertEqual(self.caption.offset, 0)
         self.assertFalse(self.caption.win.winfo_viewable())
 
+    def test_a_growing_sentence_keeps_scrolling_and_a_new_one_starts_over(self):
+        words = "A long sentence with enough words to overflow the small caption line. " * 4
+        self.caption.show_text(words)
+        self.pump(100)
+        held = self.caption.offset
+        self.assertGreater(held, 0)
+        self.caption.show_text(words + "More words")
+        self.assertEqual(self.caption.offset, held)
+        self.caption.show_text("Another sentence")
+        self.assertEqual(self.caption.offset, 0)
+
     def test_new_rtl_sentence_starts_at_its_right_edge(self):
         self.caption.show_text("English sentence")
         self.caption.show_text("משפט ארוך עם הרבה מילים לקריאה. " * 8)

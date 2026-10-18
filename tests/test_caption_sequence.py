@@ -66,7 +66,10 @@ class Chain:
         self.only, self.last, self.prefetch = None, "Codex", False
         self.engines = [SimpleNamespace(speed=1.0)]
 
-    def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None):
+    def continuous(self):
+        return False
+
+    def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None, on_caption=None):
         self.calls.append((text, tag, done, heard, self.only, self.engines[0].speed))
         self.fallback_tags.append(fallback_tag)
 
@@ -88,10 +91,11 @@ def app():
     a = App.__new__(App)
     a.events, a._read_id = queue.Queue(), 0
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
+    a._continuous, a._last_caption, a._held_caption = False, "", ""
     a.cfg = {"engine": None, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
     a.notifications = []
-    a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args))
+    a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args), after=lambda ms, fn: fn())
     return a
 
 

@@ -234,6 +234,20 @@ class CodexSessionEvents(unittest.TestCase):
             return (await engine._next_event(srv, "thread/realtime/sdp", 5))["sdp"]
         self.assertEqual(asyncio.run_coroutine_threadsafe(answer(), engine._loop).result(10), "new")
 
+    def test_captions_follow_the_voice_transcript_only(self):
+        engine = CodexEngine()
+        self.addCleanup(engine.close)
+        srv = mock.Mock(alive=True, events=queue.Queue())
+        for method, params in [("delta", {"role": "user", "delta": "Read it."}),
+                               ("delta", {"role": "assistant", "delta": "Hel"}),
+                               ("delta", {"role": "assistant", "delta": "lo"}),
+                               ("done", {"role": "user", "text": "Read it."}),
+                               ("done", {"role": "assistant", "text": "Hello"})]:
+            srv.events.put({"method": "thread/realtime/transcript/" + method, "params": params})
+        seen = []
+        asyncio.run_coroutine_threadsafe(engine._follow_transcript(srv, seen.append), engine._loop).result(10)
+        self.assertEqual(seen, ["Hel", "Hello"])
+
 
 class StopClearsPause(unittest.TestCase):
     def test_a_stopped_paused_engine_starts_unpaused(self):
