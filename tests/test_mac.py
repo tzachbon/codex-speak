@@ -11,7 +11,7 @@ if sys.platform != "darwin":
     raise unittest.SkipTest("macOS only")
 
 from codex_speak import codex_rt  # noqa: E402
-from codex_speak.mac import pasteboard, permission, startup, voice  # noqa: E402
+from codex_speak.mac import pasteboard, permission, selection, startup, voice  # noqa: E402
 
 
 class AvRateTest(unittest.TestCase):
@@ -97,6 +97,22 @@ class PasteboardTest(unittest.TestCase):
             for t in reads:
                 t.join()
         self.assertEqual(state["most"], 1)
+
+
+
+class SelectionTest(unittest.TestCase):
+    def read(self, *pids):
+        with mock.patch.object(selection.permission, "trusted", return_value=True), \
+                mock.patch.object(selection, "_frontmost_pid", side_effect=pids), \
+                mock.patch.object(selection, "_expose"), \
+                mock.patch.object(selection, "_via_ax", return_value=" hello "):
+            return selection.read()
+
+    def test_reads_the_app_that_stays_frontmost(self):
+        self.assertEqual(self.read(111, 111), "hello")
+
+    def test_drops_the_selection_when_the_user_switches_apps(self):
+        self.assertEqual(self.read(111, 222), "")
 
 
 class CodexPathTest(unittest.TestCase):

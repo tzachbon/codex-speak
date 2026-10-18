@@ -50,17 +50,21 @@ def _via_ax(pid):
     return ""
 
 
+def _frontmost_pid():
+    app = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+    return app.processIdentifier() if app is not None else None
+
+
 def read(clipboard_fallback: bool = True) -> str:
     if not permission.trusted():
         return ""
-    app = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
-    if app is None or app.processIdentifier() == os.getpid():
+    pid = _frontmost_pid()
+    if pid is None or pid == os.getpid():
         return ""
-    pid = app.processIdentifier()
     _expose(pid)
     text = _via_ax(pid)
-    if text is None:
-        return ""  # a password field
+    if text is None or _frontmost_pid() != pid:
+        return ""  # a password field, or the user switched apps while we read
     if not text.strip() and clipboard_fallback and not secure_input():
         text = pasteboard.copy_selection()
     return text.strip()[:MAX_CHARS]
