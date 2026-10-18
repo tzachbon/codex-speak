@@ -45,5 +45,5 @@ def status():
 def token():
     state, tok = _check()
     if state != "ready":
-        raise NoAudioError(f"Cursor: {state}")
+        raise NoAudioError(f"{state}")
     return tok

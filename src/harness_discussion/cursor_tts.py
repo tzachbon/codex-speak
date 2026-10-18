@@ -72,12 +72,12 @@ def synthesize(text, voice, speed):
         with urllib.request.urlopen(req, timeout=30) as resp:
             fields = decode(resp.read())
     except urllib.error.HTTPError as e:
-        raise NoAudioError(f"Cursor: HTTP {e.code}") from e
+        raise NoAudioError(f"HTTP {e.code}") from e
     except (OSError, http.client.HTTPException, ValueError, IndexError) as e:
-        raise NoAudioError(f"Cursor: {type(e).__name__}") from e  # the name only: messages never carry request data
+        raise NoAudioError(f"{type(e).__name__}") from e  # the name only: messages never carry request data
     audio, mime = fields.get(1, b""), fields.get(2, b"")
     if not audio or mime != b"audio/mpeg":
-        raise NoAudioError(f"Cursor: no audio ({mime!r})")
+        raise NoAudioError(f"no audio ({mime!r})")
     return audio
 
 
