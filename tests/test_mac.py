@@ -220,5 +220,59 @@ class CodexPathTest(unittest.TestCase):
             self.assertEqual(codex_rt._native_darwin(exe), os.path.realpath(exe))
 
 
+
+class SourcesSettingsTest(unittest.TestCase):
+    def setUp(self):
+        import AppKit
+        from types import SimpleNamespace
+        from harness_discussion import settings
+        from harness_discussion.mac import settings_ui, ui
+        AppKit.NSApplication.sharedApplication()
+        self.changes, self.played = [], []
+        engines = [SimpleNamespace(name="Cursor", voices=(("ara", "Ara"), ("eve", "Eve")), default_voice="ara"),
+                   SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
+        self.app = SimpleNamespace(
+            cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"},
+            chain=SimpleNamespace(engines=engines), stt_error=None, check_update=lambda: None,
+            update_state=lambda: ("", False), available_version=lambda: None,
+            change=lambda key, value, save=True: self.changes.append((key, value)),
+            play=lambda text, tag, only=None: self.played.append((text, only)))
+        for p in (mock.patch.object(ui, "show"), mock.patch.object(settings_ui.startup, "enabled", return_value=False),
+                  mock.patch.object(settings_ui, "stt_connection", return_value=("", ""))):
+            p.start()
+            self.addCleanup(p.stop)
+        self.win = settings_ui.SettingsWindow(self.app, lambda: None)
+        self.addCleanup(self.win.win.close)
+        self.rows = self.win.source_rows
+
+    def test_each_status_renders_its_text(self):
+        self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "Codex", "macOS")],
+                         ["Signed out — open Cursor and sign in", "Not installed", "Checking…"])
+        self.app.statuses = {"Cursor": "expired", "macOS": "ready"}
+        self.win.refresh_sources()
+        self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "macOS")],
+                         ["Sign-in expired — open Cursor", "Ready"])
+        self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
+
+    def test_up_down_and_enable_save_the_sources(self):
+        self.assertFalse(self.rows["Cursor"][4][1].isEnabled())  # already first
+        self.rows["Codex"][4][1].performClick_(None)
+        self.assertEqual(self.changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["macOS", True]]))
+        self.assertEqual(self.win.sources.arrangedSubviews()[0], self.rows["Codex"][3])
+        self.rows["Codex"][4][2].performClick_(None)
+        self.assertEqual([n for n, _ in self.changes[-1][1]], ["Cursor", "Codex", "macOS"])
+        self.rows["macOS"][0].performClick_(None)
+        self.assertEqual(self.changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["macOS", False]]))
+
+    def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
+        voice = self.rows["Cursor"][2]
+        self.assertEqual(voice.titleOfSelectedItem(), "Ara")  # Cursor's default before a choice
+        voice.selectItemAtIndex_(1)
+        voice.sendAction_to_(voice.action(), voice.target())
+        self.assertEqual(self.changes[-1], ("voices", {"Cursor": "eve"}))
+        self.rows["Codex"][4][0].performClick_(None)
+        self.assertEqual(self.played, [("This is Codex.", "Codex")])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -48,7 +48,7 @@ class MacHost:
         self._add("Settings…", put("settings"))
         self.permission_item = self._add("Permission needed…", lambda _s: self.watcher and self.watcher.show_guide())
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self.engine_item = self._add("Last engine: -", None)
+        self.engine_item = self._add("Last voice source: -", None)
         self.error_item = self._add("", None)
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
         self._add("Quit Harness Discussion", put("quit"))
@@ -70,7 +70,7 @@ class MacHost:
         self.item.button().setToolTip_("Harness Discussion needs Accessibility permission" if self._missing
                                        else "Harness Discussion")
         self.permission_item.setHidden_(not self._missing)
-        self.engine_item.setTitle_(f"Last engine: {(self.app and self.app.chain.last) or '-'}")
+        self.engine_item.setTitle_(f"Last voice source: {(self.app and self.app.chain.last) or '-'}")
         self.error_item.setHidden_(self._error is None)
         self.error_item.setTitle_(f"Last error: {self._error or ''}")
 

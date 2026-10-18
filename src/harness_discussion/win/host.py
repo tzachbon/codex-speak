@@ -27,7 +27,7 @@ class TkHost:
         put = lambda *event: lambda: self.app.events.put(event)
         return pystray.Menu(
             pystray.MenuItem("Settings", put("settings"), default=True),
-            pystray.MenuItem(lambda _: f"Last engine: {self.app.chain.last or '-'}", None, enabled=False),
+            pystray.MenuItem(lambda _: f"Last voice source: {self.app.chain.last or '-'}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", put("quit")))
 
@@ -40,7 +40,9 @@ class TkHost:
     def open_settings(self):
         a = self.app
         return SettingsWindow(self.root, dict(a.cfg), icon_image(256), a.change, a.test_voice,
-                              lambda: a.stt_error, a.update_state, a.check_update)
+                              lambda: a.stt_error, a.update_state, a.check_update, engines=a.chain.engines,
+                              statuses=lambda: a.statuses,
+                              on_play=lambda name: a.play(f"This is {name}.", None, only=name))
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)

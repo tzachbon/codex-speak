@@ -4,13 +4,13 @@ Drives `codex app-server` (experimental thread/realtime API) over stdio JSON-RPC
 over WebRTC v3 because the websocket transport requires an API key (see PLAN.md, T1).
 Over 80 lines on purpose: the JSON-RPC client and the call sequence share one process handle.
 """
-import asyncio, concurrent.futures, glob, json, os, queue, re, shutil, signal, subprocess, sys, tempfile, threading, time, uuid, wave
+import asyncio, concurrent.futures, glob, json, os, queue, re, shutil, signal, subprocess, sys, threading, time, uuid
 
 import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from . import lang, richtext, sentences
-from .prompts import CUE_PROMPT, PROMPT
+from .prompts import CUE_PROMPT, PROMPT, read_cue
 from .audio import NoAudioError, PcmPlayer, Stretcher, VOICED, peak
 
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
@@ -19,32 +19,10 @@ ATTEMPTS = 3
 # app-server splits appended text into 500-character items and the voice may read only the last of them,
 # so a longer text goes in piece by piece, each read before the next ("Text to read:\n" takes 14 more).
 PIECE_CHARS = 480
-_cue = []
 
 
 class Silent(TimeoutError):
     """The session connected, but the voice never started reading."""
-
-
-def read_cue() -> bytes:
-    """"Read it." as 8 kHz 16-bit mono PCM in this Mac's own voice, made on first use. Empty elsewhere."""
-    if not _cue:
-        pcm = b""
-        if sys.platform == "darwin":
-            with tempfile.TemporaryDirectory() as folder:
-                path = os.path.join(folder, "cue.wav")
-                for voice in (["-v", "Samantha"], []):  # the default voice may not speak English
-                    try:
-                        subprocess.run(["say", *voice, "-o", path, "--file-format=WAVE",
-                                        "--data-format=LEI16@8000", "Read it."],
-                                       check=True, capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
-                        with wave.open(path) as w:
-                            pcm = w.readframes(w.getnframes())
-                        break
-                    except (OSError, subprocess.SubprocessError, wave.Error):
-                        continue
-        _cue.append(pcm)
-    return _cue[0]
 
 
 class CueTrack(AudioStreamTrack):
@@ -268,6 +246,13 @@ class CodexEngine:
         self.stop()
         if self._srv:
             self._srv.close()
+
+    def status(self):  # the sign-in is not checked: a signed-out Codex fails the read and the next source reads
+        try:
+            codex_exe()
+        except FileNotFoundError:
+            return "missing"
+        return "ready"
 
     async def _next_event(self, srv, want, timeout, session=None):
         """The params of the next `want` event; with a tuple of methods, (method, params) of the first."""

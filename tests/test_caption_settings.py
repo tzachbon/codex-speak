@@ -64,12 +64,12 @@ class CaptionSettingsUi(unittest.TestCase):
         root = None
         gc.collect()  # Tk cycles must release their interpreter on its owning thread.
 
-    def make_window(self, cfg, on_change, on_test=lambda _text: None):
+    def make_window(self, cfg, on_change, on_test=lambda _text: None, **kw):
         with patch.object(settings_ui.settings, "startup_enabled", return_value=False), \
                 patch.object(settings_ui.SettingsWindow, "focus", lambda self: self._refresh_stt()), \
                 patch.object(settings_ui, "stt_connection", return_value=("", "")):
             self.window = settings_ui.SettingsWindow(self.root, cfg, Image.new("RGBA", (32, 32)),
-                                                    on_change, on_test)
+                                                    on_change, on_test, **kw)
             return self.window
 
     def test_background_controls_opacity_and_keeps_its_choice(self):
@@ -157,6 +157,46 @@ class CaptionSettingsUi(unittest.TestCase):
                 finally:
                     if self.window.alive:
                         self.window.close()
+
+    def sources_window(self, statuses=None):
+        changes, played = [], []
+        engines = [SimpleNamespace(name="Cursor", voices=(("ara", "Ara"), ("eve", "Eve")), default_voice="ara"),
+                   SimpleNamespace(name="Codex"), SimpleNamespace(name="Edge"), SimpleNamespace(name="Windows")]
+        self.make_window(dict(settings.DEFAULTS), lambda key, value, save=True: changes.append((key, value)),
+                         engines=engines, statuses=lambda: statuses or {}, on_play=played.append)
+        return self.window.source_rows, changes, played
+
+    def test_each_status_renders_its_text(self):
+        rows, _, _ = self.sources_window({"Cursor": "signed_out", "Codex": "missing", "Edge": "ready"})
+        self.assertEqual([rows[n][1]["text"] for n in ("Cursor", "Codex", "Edge", "Windows")],
+                         ["Signed out — open Cursor and sign in", "Not installed", "Ready", "Checking…"])
+        self.window.statuses = lambda: {"Cursor": "expired"}
+        self.window.refresh_sources()
+        self.assertEqual(rows["Cursor"][1]["text"], "Sign-in expired — open Cursor")
+        self.assertEqual((rows["Codex"][3][2]["text"], rows["Edge"][2]), ("Default voice", None))
+
+    def test_up_down_and_enable_save_the_sources(self):
+        rows, changes, _ = self.sources_window()
+        self.assertTrue(rows["Cursor"][3][4].instate(["disabled"]))  # already first
+        rows["Codex"][3][4].invoke()
+        self.assertEqual(changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["Edge", True], ["Windows", True]]))
+        self.assertEqual(int(rows["Codex"][3][0].grid_info()["row"]), 0)
+        rows["Codex"][3][5].invoke()
+        self.assertEqual([n for n, _ in changes[-1][1]], ["Cursor", "Codex", "Edge", "Windows"])
+        rows["Edge"][3][0].invoke()
+        self.assertEqual(changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["Edge", False], ["Windows", True]]))
+
+    def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
+        rows, changes, played = self.sources_window()
+        voice = rows["Cursor"][2]
+        self.assertEqual(voice.get(), "Ara")  # Cursor's default before a choice
+        self.window.win.deiconify()
+        self.root.update()
+        voice.current(1)
+        voice.event_generate("<<ComboboxSelected>>")
+        self.assertEqual(changes[-1], ("voices", {"Cursor": "eve"}))
+        rows["Edge"][3][3].invoke()
+        self.assertEqual(played, ["Edge"])
 
 
 if __name__ == "__main__":

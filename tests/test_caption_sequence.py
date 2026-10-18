@@ -92,7 +92,7 @@ def app():
     a.events, a._read_id = queue.Queue(), 0
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
     a._continuous, a._last_caption, a._held_caption = False, "", ""
-    a.cfg = {"engine": None, "speed": 1.0, "prefetch": False}
+    a.cfg = {"sources": [["Codex", True], ["Edge", True]], "voices": {}, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
     a.notifications = []
     a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args), after=lambda ms, fn: fn())
@@ -156,7 +156,7 @@ class Sequence(unittest.TestCase):
                 self.assertEqual(a.chain.fallback_tags, [detected, detected])
 
     def test_hidden_selection_is_not_prepared_when_speech_settings_change(self):
-        for key, value in (("speed", 0.5), ("engine", "Edge"), ("prefetch", True)):
+        for key, value in (("speed", 0.5), ("sources", [["Edge", True]]), ("prefetch", True)):
             with self.subTest(key=key):
                 a = app()
                 a.popup.show("Old selection. More text.", 1, 1)
@@ -192,7 +192,7 @@ class Sequence(unittest.TestCase):
         a = app()
         a.play("One. Two.", None)
         a.change("speed", 0.5, save=False)
-        a.change("engine", "Windows", save=False)
+        a.change("sources", [["Windows", True], ["Edge", False]], save=False)
         a._prepare_selection("ar-SA")
         self.assertEqual(a.chain.prepared, [])
         a.chain.last = "Edge"  # the first unit successfully fell back before speech
@@ -202,7 +202,7 @@ class Sequence(unittest.TestCase):
         self.assertEqual(a.chain.calls[1][4:], ("Edge", 1.0))
         a.chain.calls[1][2](None)
         pump(a)
-        self.assertEqual((a.chain.only, a.chain.engines[0].speed), ("Windows", 0.5))
+        self.assertEqual((a.chain.only, a.chain.enabled, a.chain.engines[0].speed), (None, ["Windows"], 0.5))
 
     def test_previous_unit_callbacks_cannot_advance_or_overwrite_current_unit(self):
         a = app()

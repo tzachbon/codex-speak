@@ -11,14 +11,14 @@ from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
 
 PAGE, CARD, BORDER, SUBTLE = "#f3f3f3", "#ffffff", "#e5e5e5", "#5f5f5f"
-ENGINES = [(None, "Auto: Codex, then Edge, then Windows"), ("Codex", "Codex only"),
-           ("Edge", "Edge only"), ("Windows", "Windows only (offline)")]
 
 
 class SettingsWindow:
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
-                 update_state=lambda: ("Ready to check.", False), on_update=lambda: None):
+                 update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
+                 statuses=dict, on_play=lambda name: None):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
+        self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
@@ -81,18 +81,14 @@ class SettingsWindow:
         self.speed_lbl = ttk.Label(row, style="Card.TLabel", width=6)
         self.speed_lbl.pack(side="left")
         self._show_speed()
-        row = tk.Frame(card, bg=CARD)
-        row.pack(fill="x", pady=(12, 0))
-        ttk.Label(row, text="Voice", style="Card.TLabel", width=8).pack(side="left")
-        self.engine = ttk.Combobox(row, state="readonly", width=36, font=(text, 10),
-                                   values=[label for _, label in ENGINES])
-        self.engine.current([e for e, _ in ENGINES].index(cfg["engine"]))
-        self.engine.bind("<<ComboboxSelected>>", self._engine_changed)
-        self.engine.pack(side="left", padx=8)
-        ttk.Label(card, text="Codex uses your ChatGPT sign-in and can read slower but not faster, "
-                  "so above 1× Auto starts with Edge. Edge sends the text to Microsoft. "
-                  "Windows voices stay on this PC.", style="Sub.Card.TLabel", wraplength=420
-                  ).pack(anchor="w", pady=(8, 0))
+        self.sources_frame = tk.Frame(card, bg=CARD)
+        self.sources_frame.pack(fill="x", pady=(12, 0))
+        self.source_rows = {name: self._source_row(name, text) for name, _ in cfg["sources"]}
+        self.refresh_sources()
+        ttk.Label(card, text="Voice sources read in this order. If one can't read, the next one does. "
+                  "Codex uses your ChatGPT sign-in and can read slower but not faster, so above 1× the next "
+                  "source reads. Edge sends the text to Microsoft. Windows voices stay on this PC.",
+                  style="Sub.Card.TLabel", wraplength=420).pack(anchor="w", pady=(8, 0))
         ttk.Button(card, text="Test voice", command=self._test).pack(anchor="w", pady=(12, 0))
 
         card = self._card("Captions")
@@ -136,7 +132,7 @@ class SettingsWindow:
                         variable=self.prefetch,
                         command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
         ttk.Label(card, text="Sends the selected text to Microsoft's speech service before you press play. "
-                  "Applies when Edge reads: Edge only, or Auto above 1×.", style="Sub.Card.TLabel",
+                  "Applies when Edge is the first source that reads.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 
         card = self._card("Speech-to-text · OpenAI-compatible")
@@ -320,9 +316,69 @@ class SettingsWindow:
         self.caption_opacity_scale.configure(
             state="normal" if self.caption_background.get() else "disabled")
 
-    def _engine_changed(self, _e):
-        self._set("engine", ENGINES[self.engine.current()][0])
-        self.engine.selection_clear()
+    def _source_row(self, name, font):
+        """(enabled, status, voice picker or None, widgets in column order) for one voice source."""
+        f, on = self.sources_frame, tk.BooleanVar(self.win)
+        choices = getattr(self._engines.get(name), "voices", ())
+        voice = ttk.Combobox(f, state="readonly", width=9, font=(font, 10),
+                             values=[label for _, label in choices]) if choices else None
+        if voice:
+            voice.bind("<<ComboboxSelected>>", lambda _e: self._voice_changed(name))
+        widgets = [
+            ttk.Checkbutton(f, text=name, style="Card.TCheckbutton", variable=on, width=8,
+                            command=lambda: self._source_toggled(name)),
+            ttk.Label(f, style="Sub.Card.TLabel", width=20, wraplength=140),
+            voice or ttk.Label(f, text="Default voice" if name == "Codex" else "", style="Sub.Card.TLabel"),
+            ttk.Button(f, text="Test", width=5, command=lambda: self._test_source(name)),
+            ttk.Button(f, text="↑", width=2, command=lambda: self._move(name, -1)),
+            ttk.Button(f, text="↓", width=2, command=lambda: self._move(name, 1))]
+        return on, widgets[1], voice, widgets
+
+    def refresh_sources(self):
+        """Shows the rows in the saved order, with the statuses core last checked."""
+        statuses, sources = self.statuses(), self.cfg["sources"]
+        for i, (name, enabled) in enumerate(sources):
+            on, status, voice, widgets = self.source_rows[name]
+            on.set(enabled)
+            status["text"] = settings.status_text(statuses.get(name))
+            if voice:
+                engine = self._engines[name]
+                ids = [v for v, _ in engine.voices]
+                chosen = self.cfg["voices"].get(name, getattr(engine, "default_voice", None))
+                voice.current(ids.index(chosen) if chosen in ids else 0)
+            for column, widget in enumerate(widgets):
+                widget.grid(row=i, column=column, sticky="w", padx=(0, 6), pady=2)
+            widgets[4]["state"] = "normal" if i else "disabled"
+            widgets[5]["state"] = "normal" if i < len(sources) - 1 else "disabled"
+
+    def set_sources(self, sources):
+        """Mirrors an order changed elsewhere, without saving it again."""
+        self.cfg["sources"] = sources
+        self.refresh_sources()
+
+    def _set_sources(self, sources):
+        self._set("sources", sources)
+        self.refresh_sources()
+
+    def _source_toggled(self, name):
+        on = self.source_rows[name][0].get()
+        self._set_sources([[n, on if n == name else was] for n, was in self.cfg["sources"]])
+
+    def _move(self, name, step):
+        sources = [list(s) for s in self.cfg["sources"]]
+        i = [n for n, _ in sources].index(name)
+        if 0 <= i + step < len(sources):
+            sources[i], sources[i + step] = sources[i + step], sources[i]
+            self._set_sources(sources)
+
+    def _voice_changed(self, name):
+        voice = self.source_rows[name][2]
+        self._set("voices", {**self.cfg["voices"], name: self._engines[name].voices[voice.current()][0]})
+        voice.selection_clear()
+
+    def _test_source(self, name):
+        self._flush_pending()
+        self.on_play(name)
 
     def _test(self):
         self._flush_pending()
