@@ -97,6 +97,24 @@ class Order(unittest.TestCase):
         chain.enabled = []
         self.assertEqual(self.names(chain), ["Cursor", "Codex"])
 
+    def test_a_source_known_not_ready_is_skipped_for_continuity_and_prepare(self):
+        class Prep(Fake):
+            def prepare(self, tag, text=None):
+                self.prepared = text or "connect"
+        cursor, codex = Prep("Cursor"), Prep("Codex")
+        chain = Chain([cursor, codex, Fake("Edge")])
+        self.assertEqual((self.names(chain)[0], chain.continuous()), ("Cursor", False))  # unknown: kept
+        chain.statuses = {"Cursor": "ready"}
+        self.assertEqual(self.names(chain)[0], "Cursor")
+        chain.statuses = {"Cursor": "signed_out", "Codex": "ready"}
+        self.assertEqual((self.names(chain), chain.continuous()), (["Codex", "Edge"], True))
+        chain.prepare(None)
+        self.assertEqual((getattr(cursor, "prepared", None), codex.prepared), (None, "connect"))
+        chain.only = "Cursor"  # a Test button still reaches it
+        self.assertEqual(self.names(chain), ["Cursor"])
+        chain.only, chain.enabled = None, ["Cursor"]  # nothing ready: the enabled ones still read
+        self.assertEqual(self.names(chain), ["Cursor"])
+
     def test_on_engine_fires_once_per_attempt_with_the_name(self):
         chain, started = Chain([Fake("Cursor", NoAudioError("x")), Fake("Codex")]), []
         chain.on_engine = started.append
@@ -178,6 +196,7 @@ class CoreSources(unittest.TestCase):
             threading.Event().wait(0.01)
         app.pump()
         self.assertEqual(app.statuses, {"Cursor": "signed_out", "Codex": "ready"})
+        self.assertIs(app.chain.statuses, app.statuses)
         self.assertEqual(refreshed, [1])
 
 

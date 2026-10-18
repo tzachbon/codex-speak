@@ -69,7 +69,7 @@ class App:
                 except Exception as err:
                     log.warning("%s status failed: %s", e.name, type(err).__name__)
                     statuses[e.name] = "missing"
-            self.statuses = statuses
+            self.statuses = self.chain.statuses = statuses
             self.events.put(("statuses",))
         threading.Thread(target=work, daemon=True).start()
 

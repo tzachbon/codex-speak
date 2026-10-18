@@ -146,6 +146,7 @@ class Chain:
         self.engines, self.only, self.last, self.prefetch = engines, None, None, False
         self.enabled = [e.name for e in engines]  # the user's order; disabled sources are left out
         self.on_engine = lambda name: None  # called on the reading thread as each attempt starts
+        self.statuses = {}  # core's cached status() per engine; order() never calls status(), which can block
         self._active, self._gen, self._paused = None, 0, False
         self._idle = threading.Event()
         self._idle.set()
@@ -166,9 +167,11 @@ class Chain:
         if self.only:
             return [e for e in self.engines if e.name == self.only] or self.engines
         on = [e for name in self.enabled for e in self.engines if e.name == name]
+        # a missing or signed-out source would fail every sentence; an unchecked one is still tried
+        ready = [e for e in on if self.statuses.get(e.name, "ready") == "ready"]
         # skips engines that cannot reach the chosen speed (Codex cannot read faster)
-        fit = [e for e in on if getattr(e, "min_speed", 0) <= e.speed <= getattr(e, "max_speed", math.inf)]
-        return fit or on or self.engines
+        fit = [e for e in ready if getattr(e, "min_speed", 0) <= e.speed <= getattr(e, "max_speed", math.inf)]
+        return fit or ready or on or self.engines
 
     def prepare(self, lang_tag, text=None, *, fallback_tag=None):
         first = self.order()[0]
