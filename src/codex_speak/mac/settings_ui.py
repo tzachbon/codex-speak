@@ -9,7 +9,7 @@ from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
 
 WIDTH = 440
-RELEASES = "https://github.com/tzachbon/codex-speak/releases/tag/v{}"
+RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
 ENGINES = [(None, "Auto: Codex, then the macOS voice"), ("Codex", "Codex only"),
            ("macOS", "macOS voice only (offline)")]
 

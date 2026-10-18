@@ -133,7 +133,7 @@ class Publication(unittest.TestCase):
         return {"name": path.name, "state": state,
                 "size": path.stat().st_size if state == "uploaded" else 0,
                 "digest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
-                "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/v0.2.0/{path.name}"}
+                "browser_download_url": f"https://github.com/tzachbon/harness-discussion/releases/download/v0.2.0/{path.name}"}
 
     def run_command(self, args, **kwargs):
         args = tuple(args)
