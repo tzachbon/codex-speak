@@ -15,7 +15,7 @@ from .host import TkHost
 k32 = ctypes.windll.kernel32
 for _f in (k32.CreateMutexW, k32.CreateEventW, k32.OpenEventW):
     _f.restype = wintypes.HANDLE
-SHOW_SETTINGS = "codex-speak-show-settings"  # a second launch sets this to open Settings
+SHOW_SETTINGS = "harness-discussion-show-settings"  # a second launch sets this to open Settings
 
 
 def _wait_show_settings(app, show_event):
@@ -25,7 +25,7 @@ def _wait_show_settings(app, show_event):
 
 def main():
     settings.migrate()  # before anything reads or creates the new folders
-    if sys.argv[1:2] == ["--startup"]:  # used by the installer: CodexSpeak.exe --startup on|off|refresh
+    if sys.argv[1:2] == ["--startup"]:  # used by the installer: HarnessDiscussion.exe --startup on|off|refresh
         try:
             if sys.argv[2:3] == ["refresh"]:
                 settings.refresh_startup()
@@ -34,7 +34,7 @@ def main():
         except Exception:
             sys.exit(1)  # a windowed exe would show a dialog that blocks setup; the user can retry in Settings
         return
-    mutex = k32.CreateMutexW(None, False, "codex-speak-single-instance")
+    mutex = k32.CreateMutexW(None, False, "harness-discussion-single-instance")
     if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS: ask the running copy to open Settings
         for _ in range(50):  # the running copy may still be starting up
             ev = k32.OpenEventW(0x0002, False, SHOW_SETTINGS)  # EVENT_MODIFY_STATE
@@ -46,7 +46,7 @@ def main():
         return
     show_event = k32.CreateEventW(None, False, False, SHOW_SETTINGS)  # before the slow start-up
     os.makedirs(settings.DIR, exist_ok=True)
-    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "codex-speak.log"),
+    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "harness-discussion.log"),
                                                    maxBytes=256_000, backupCount=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, handlers=[handler],  # libraries log IPs at INFO
                         format="%(asctime)s %(levelname)s %(message)s")

@@ -4,6 +4,7 @@ import objc
 from Foundation import NSObject
 
 from ..codex_rt import CodexEngine
+from ..cursor_tts import CursorEngine
 from . import selection, ui
 from .popup import Popup
 from .settings_ui import SettingsWindow
@@ -47,10 +48,10 @@ class MacHost:
         self._add("Settings…", put("settings"))
         self.permission_item = self._add("Permission needed…", lambda _s: self.watcher and self.watcher.show_guide())
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self.engine_item = self._add("Last engine: -", None)
+        self.engine_item = self._add("Last voice source: -", None)
         self.error_item = self._add("", None)
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self._add("Quit Codex Speak", put("quit"))
+        self._add("Quit Harness Discussion", put("quit"))
         self.item.setMenu_(self.menu)
         self.refresh_menu()
 
@@ -63,13 +64,13 @@ class MacHost:
 
     def refresh_menu(self):
         image = ui.symbol("exclamationmark.triangle.fill" if self._missing else "speaker.wave.2.fill",
-                          "Codex Speak")
+                          "Harness Discussion")
         image.setTemplate_(not self._missing)
         self.item.button().setImage_(image)
-        self.item.button().setToolTip_("Codex Speak needs Accessibility permission" if self._missing
-                                       else "Codex Speak")
+        self.item.button().setToolTip_("Harness Discussion needs Accessibility permission" if self._missing
+                                       else "Harness Discussion")
         self.permission_item.setHidden_(not self._missing)
-        self.engine_item.setTitle_(f"Last engine: {(self.app and self.app.chain.last) or '-'}")
+        self.engine_item.setTitle_(f"Last voice source: {(self.app and self.app.chain.last) or '-'}")
         self.error_item.setHidden_(self._error is None)
         self.error_item.setTitle_(f"Last error: {self._error or ''}")
 
@@ -81,13 +82,13 @@ class MacHost:
             win.refresh_permission()
 
     def engines(self):
-        return [CodexEngine(), MacVoiceEngine()]
+        return [CursorEngine(), CodexEngine(), MacVoiceEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(speed, **callbacks)
 
-    def open_settings(self):
-        return SettingsWindow(self.app, lambda: self.watcher and self.watcher.show_guide())
+    def open_settings(self, welcome=False):
+        return SettingsWindow(self.app, lambda: self.watcher and self.watcher.show_guide(), welcome)
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)

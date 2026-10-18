@@ -15,8 +15,8 @@ import wave
 
 import av
 
-from codex_speak import stt, stt_server
-from codex_speak.codex_rt import AppServer
+from harness_discussion import stt, stt_server
+from harness_discussion.codex_rt import AppServer
 
 from stt_helpers import FakePeer, multipart, receive, wav, words
 
@@ -182,7 +182,7 @@ class Module(unittest.TestCase):
             self.assertIsNotNone(diag["stream_end_ms"])
 
     def test_failed_init_reaps_process(self):
-        with patch("codex_speak.codex_rt.codex_exe", return_value="codex"), patch("codex_speak.codex_rt.subprocess.Popen") as popen, patch("codex_speak.codex_rt.subprocess.run"), patch("codex_speak.codex_rt.threading.Thread"), patch.object(AppServer, "call", side_effect=RuntimeError("init failed")), patch("codex_speak.codex_rt.os.killpg", create=True) as killpg:
+        with patch("harness_discussion.codex_rt.codex_exe", return_value="codex"), patch("harness_discussion.codex_rt.subprocess.Popen") as popen, patch("harness_discussion.codex_rt.subprocess.run"), patch("harness_discussion.codex_rt.threading.Thread"), patch.object(AppServer, "call", side_effect=RuntimeError("init failed")), patch("harness_discussion.codex_rt.os.killpg", create=True) as killpg:
             popen.return_value.poll.return_value = None
             with self.assertRaises(RuntimeError):
                 AppServer()

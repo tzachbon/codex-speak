@@ -1,12 +1,14 @@
 """Start at login through a per-user LaunchAgent. Works with any code signature, unlike SMAppService."""
 import os
 import plistlib
+import subprocess
 
-LABEL = "com.tzachbon.codexspeak"
+LABEL = "com.tzachbon.harnessdiscussion"
+OLD_LABEL = "com.tzachbon.codexspeak"  # Codex Speak, the app's earlier name
 
 
-def plist_path():
-    return os.path.expanduser(f"~/Library/LaunchAgents/{LABEL}.plist")
+def plist_path(label=LABEL):
+    return os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
 
 
 def bundle_path():
@@ -42,8 +44,17 @@ def set_enabled(on: bool, app=None) -> None:
 
 
 def refresh(app=None) -> None:
-    """Points an enabled login item at this copy of the app, which may have moved."""
+    """Points an enabled login item at this copy of the app, which may have moved. Replaces
+    Codex Speak's login item with this app's, so only one of them starts."""
     app = app or bundle_path()
+    old = plist_path(OLD_LABEL)
+    if app and os.path.exists(old):  # a source run leaves the installed copy's login item alone
+        try:
+            subprocess.run(["/bin/launchctl", "bootout", f"gui/{os.getuid()}", old], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass  # not loaded
+        os.remove(old)
+        set_enabled(True, app)
     if not app or not enabled():
         return
     try:

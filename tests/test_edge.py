@@ -5,10 +5,10 @@ import unittest
 
 import av
 
-from codex_speak.core import App
-from codex_speak.audio import NoAudioError
-from codex_speak.edge_stream import EdgeStream
-from codex_speak.engines import Chain, EdgeEngine
+from harness_discussion.core import App
+from harness_discussion.audio import NoAudioError
+from harness_discussion.edge_stream import EdgeStream
+from harness_discussion.engines import Chain, EdgeEngine
 
 
 def tone_mp3(seconds=1.0, rate=24000):
@@ -421,7 +421,7 @@ class ReadLog(unittest.TestCase):
         app.chain, app.cfg = Chain([]), {"speed": 1.25}
         app.chain.last = "Edge"
         done, heard = app._logged("secret words", lambda err: None)
-        with self.assertLogs("codex_speak", "INFO") as logs:
+        with self.assertLogs("harness_discussion", "INFO") as logs:
             hear and heard()
             done(None)
         return logs.output[0]

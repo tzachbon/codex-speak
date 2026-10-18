@@ -15,8 +15,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from . import settings
 
-API = "https://api.github.com/repos/tzachbon/codex-speak/releases/latest"
-ASSET = "CodexSpeak.dmg" if sys.platform == "darwin" else "CodexSpeak-Setup.exe"
+API = "https://api.github.com/repos/tzachbon/harness-discussion/releases/latest"
+ASSET = "HarnessDiscussion.dmg" if sys.platform == "darwin" else "HarnessDiscussion-Setup.exe"
 MAX_INSTALLER = 200 * 1024 * 1024
 CACHE = Path(settings.LOCAL_DIR) / "updates"
 
@@ -39,7 +39,7 @@ urlopen = build_opener(_HTTPSRedirect()).open
 
 
 def current_version():
-    return version("codex-speak")
+    return version("harness-discussion")
 
 
 def _version(value):
@@ -49,7 +49,7 @@ def _version(value):
 
 
 def check():
-    request = Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "CodexSpeak"})
+    request = Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "HarnessDiscussion"})
     with urlopen(request, timeout=15) as reply:
         if reply.geturl() != API:
             raise ValueError("Unexpected release metadata location")
@@ -72,7 +72,7 @@ def check():
     if len(matches) != 1:
         raise ValueError("Release must contain one installer")
     asset = matches[0]
-    expected = f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/{ASSET}"
+    expected = f"https://github.com/tzachbon/harness-discussion/releases/download/{tag}/{ASSET}"
     size, digest = asset.get("size"), asset.get("digest")
     if (asset.get("browser_download_url") != expected or asset.get("state") != "uploaded"
             or type(size) is not int or not 0 < size <= MAX_INSTALLER
@@ -88,7 +88,7 @@ def download(asset):
     try:
         digest, size = hashlib.sha256(), 0
         deadline = time.monotonic() + 300
-        request = Request(asset["browser_download_url"], headers={"User-Agent": "CodexSpeak"})
+        request = Request(asset["browser_download_url"], headers={"User-Agent": "HarnessDiscussion"})
         with urlopen(request, timeout=15) as reply, path.open("xb") as output:
             if not _trusted(reply.geturl()):
                 raise ValueError("Unexpected installer download location")
@@ -113,5 +113,5 @@ def install(path):
         raise ValueError("Updates install from the release page on this platform")
     if path.name != ASSET or not path.resolve().is_relative_to(CACHE.resolve()) or not path.is_file():
         raise ValueError("Invalid installer path")
-    subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART",
-                      f"/DIR={Path(sys.executable).parent}", f"/LOG={path.parent / 'setup.log'}"], shell=False)
+    # No /DIR: setup picks the folder, so a Codex Speak install moves to the new default.
+    subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART", f"/LOG={path.parent / 'setup.log'}"], shell=False)

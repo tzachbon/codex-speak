@@ -9,20 +9,21 @@ from PIL import ImageTk
 from .. import settings, updates
 from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
+from .sources_ui import CARD, SourcesSection
 
-PAGE, CARD, BORDER, SUBTLE = "#f3f3f3", "#ffffff", "#e5e5e5", "#5f5f5f"
-ENGINES = [(None, "Auto: Codex, then Edge, then Windows"), ("Codex", "Codex only"),
-           ("Edge", "Edge only"), ("Windows", "Windows only (offline)")]
+PAGE, BORDER, SUBTLE = "#f3f3f3", "#e5e5e5", "#5f5f5f"
 
 
-class SettingsWindow:
+class SettingsWindow(SourcesSection):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
-                 update_state=lambda: ("Ready to check.", False), on_update=lambda: None):
+                 update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
+                 statuses=dict, on_play=lambda name: None, welcome=False):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
+        self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
-        w.title("Codex Speak settings")
+        w.title("Harness Discussion settings")
         w.resizable(False, False)
         self._icon = ImageTk.PhotoImage(icon, master=w)
         w.iconphoto(False, self._icon)
@@ -57,11 +58,11 @@ class SettingsWindow:
 
         self.startup = tk.BooleanVar(w, settings.startup_enabled())
         card = self._card("General")
-        ttk.Checkbutton(card, text="Start Codex Speak when I sign in to Windows", style="Card.TCheckbutton",
+        ttk.Checkbutton(card, text="Start Harness Discussion when I sign in to Windows", style="Card.TCheckbutton",
                         variable=self.startup, command=self._startup_changed).pack(anchor="w")
         row = tk.Frame(card, bg=CARD)
         row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=f"Codex Speak {updates.current_version()}", style="Card.TLabel").pack(side="left")
+        ttk.Label(row, text=f"Harness Discussion {updates.current_version()}", style="Card.TLabel").pack(side="left")
         self.update_button = ttk.Button(row, text="Check and install update", command=on_update)
         self.update_button.pack(side="right")
         self.auto_update = tk.BooleanVar(w, cfg.get("auto_update", False))
@@ -81,18 +82,11 @@ class SettingsWindow:
         self.speed_lbl = ttk.Label(row, style="Card.TLabel", width=6)
         self.speed_lbl.pack(side="left")
         self._show_speed()
-        row = tk.Frame(card, bg=CARD)
-        row.pack(fill="x", pady=(12, 0))
-        ttk.Label(row, text="Voice", style="Card.TLabel", width=8).pack(side="left")
-        self.engine = ttk.Combobox(row, state="readonly", width=36, font=(text, 10),
-                                   values=[label for _, label in ENGINES])
-        self.engine.current([e for e, _ in ENGINES].index(cfg["engine"]))
-        self.engine.bind("<<ComboboxSelected>>", self._engine_changed)
-        self.engine.pack(side="left", padx=8)
-        ttk.Label(card, text="Codex uses your ChatGPT sign-in and can read slower but not faster, "
-                  "so above 1× Auto starts with Edge. Edge sends the text to Microsoft. "
-                  "Windows voices stay on this PC.", style="Sub.Card.TLabel", wraplength=420
-                  ).pack(anchor="w", pady=(8, 0))
+        self._sources_section(card, text, welcome)
+        ttk.Label(card, text="Voice sources read in this order. If one can't read, the next one does. "
+                  "Codex uses your ChatGPT sign-in and can read slower but not faster, so above 1× the next "
+                  "source reads. Edge sends the text to Microsoft. Windows voices stay on this PC.",
+                  style="Sub.Card.TLabel", wraplength=420).pack(anchor="w", pady=(8, 0))
         ttk.Button(card, text="Test voice", command=self._test).pack(anchor="w", pady=(12, 0))
 
         card = self._card("Captions")
@@ -135,8 +129,8 @@ class SettingsWindow:
         ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
                         variable=self.prefetch,
                         command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
-        ttk.Label(card, text="Sends the selected text to Microsoft's speech service before you press play. "
-                  "Applies when Edge reads: Edge only, or Auto above 1×.", style="Sub.Card.TLabel",
+        ttk.Label(card, text="Sends the first sentence to Cursor or Microsoft before you press play. "
+                  "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 
         card = self._card("Speech-to-text · OpenAI-compatible")
@@ -251,7 +245,7 @@ class SettingsWindow:
             settings.set_startup(self.startup.get())
         except OSError as e:
             self.startup.set(settings.startup_enabled())
-            messagebox.showerror("Codex Speak", f"Could not change sign-in startup: {e}", parent=self.win)
+            messagebox.showerror("Harness Discussion", f"Could not change sign-in startup: {e}", parent=self.win)
 
     def _show_speed(self):
         self.speed_lbl["text"] = settings.speed_label(self.speed.get())
@@ -320,10 +314,6 @@ class SettingsWindow:
         self.caption_opacity_scale.configure(
             state="normal" if self.caption_background.get() else "disabled")
 
-    def _engine_changed(self, _e):
-        self._set("engine", ENGINES[self.engine.current()][0])
-        self.engine.selection_clear()
-
     def _test(self):
         self._flush_pending()
-        self.on_test(f"This is how Codex Speak sounds at {self.speed_lbl['text']} speed.")
+        self.on_test(f"This is how Harness Discussion sounds at {self.speed_lbl['text']} speed.")

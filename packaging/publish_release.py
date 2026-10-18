@@ -58,7 +58,7 @@ def publish(version, commit, repository, artifacts):
                               encoding="utf-8")
     if existing.returncode:
         command("gh", "release", "create", tag, str(artifacts[0]), "--repo", repository,
-                "--verify-tag", "--draft", "--title", f"Codex Speak {tag}", "--generate-notes")
+                "--verify-tag", "--draft", "--title", f"Harness Discussion {tag}", "--generate-notes")
         release = read_release(repository, tag)
     else:
         release = json.loads(existing.stdout)

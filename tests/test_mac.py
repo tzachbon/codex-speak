@@ -10,8 +10,8 @@ from unittest import mock
 if sys.platform != "darwin":
     raise unittest.SkipTest("macOS only")
 
-from codex_speak import codex_rt  # noqa: E402
-from codex_speak.mac import pasteboard, permission, selection, startup, voice  # noqa: E402
+from harness_discussion import codex_rt  # noqa: E402
+from harness_discussion.mac import pasteboard, permission, selection, startup, voice  # noqa: E402
 
 
 class AvRateTest(unittest.TestCase):
@@ -35,11 +35,11 @@ class StartupTest(unittest.TestCase):
 
     def test_enable_writes_open_command_and_disable_removes_it(self):
         self.assertFalse(startup.enabled())
-        startup.set_enabled(True, "/Applications/Codex Speak.app")
+        startup.set_enabled(True, "/Applications/Harness Discussion.app")
         with open(startup.plist_path(), "rb") as f:
             data = plistlib.load(f)
         self.assertEqual(data["Label"], startup.LABEL)
-        self.assertEqual(data["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/Codex Speak.app"])
+        self.assertEqual(data["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/Harness Discussion.app"])
         self.assertTrue(data["RunAtLoad"])
         startup.set_enabled(False)
         self.assertFalse(startup.enabled())
@@ -52,10 +52,42 @@ class StartupTest(unittest.TestCase):
     def test_refresh_follows_a_moved_app_only_when_enabled(self):
         startup.refresh("/Applications/New.app")
         self.assertFalse(startup.enabled())
-        startup.set_enabled(True, "/Users/me/Downloads/Codex Speak.app")
-        startup.refresh("/Applications/Codex Speak.app")
+        startup.set_enabled(True, "/Users/me/Downloads/Harness Discussion.app")
+        startup.refresh("/Applications/Harness Discussion.app")
         with open(startup.plist_path(), "rb") as f:
-            self.assertEqual(plistlib.load(f)["ProgramArguments"][-1], "/Applications/Codex Speak.app")
+            self.assertEqual(plistlib.load(f)["ProgramArguments"][-1], "/Applications/Harness Discussion.app")
+
+    def old_plist(self):
+        return os.path.join(self.home.name, "Library/LaunchAgents/com.tzachbon.codexspeak.plist")
+
+    def test_codex_speak_login_item_carries_over(self):
+        self.assertEqual(startup.LABEL, "com.tzachbon.harnessdiscussion")
+        os.makedirs(os.path.dirname(self.old_plist()))
+        with open(self.old_plist(), "wb") as f:
+            plistlib.dump({"Label": "com.tzachbon.codexspeak", "ProgramArguments": ["/usr/bin/open", "-a", "/Applications/Codex Speak.app"]}, f)
+        with mock.patch.object(startup.subprocess, "run", side_effect=OSError) as run:  # errors are ignored
+            startup.refresh("/Applications/New.app")
+        self.assertEqual(run.call_args.args[0], ["/bin/launchctl", "bootout", f"gui/{os.getuid()}", self.old_plist()])
+        self.assertFalse(os.path.exists(self.old_plist()))
+        with open(startup.plist_path(), "rb") as f:
+            self.assertEqual(plistlib.load(f)["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/New.app"])
+
+    def test_source_run_leaves_the_codex_speak_login_item_alone(self):
+        os.makedirs(os.path.dirname(self.old_plist()))
+        with open(self.old_plist(), "wb") as f:
+            plistlib.dump({"Label": "com.tzachbon.codexspeak"}, f)
+        with mock.patch.object(startup, "bundle_path", return_value=None), \
+                mock.patch.object(startup.subprocess, "run") as run:
+            startup.refresh()
+        run.assert_not_called()
+        self.assertTrue(os.path.exists(self.old_plist()))
+        self.assertFalse(startup.enabled())
+
+    def test_no_codex_speak_login_item_adds_none(self):
+        with mock.patch.object(startup.subprocess, "run") as run:
+            startup.refresh("/Applications/New.app")
+        run.assert_not_called()
+        self.assertFalse(startup.enabled())
 
 
 class PermissionTest(unittest.TestCase):
@@ -186,6 +218,96 @@ class CodexPathTest(unittest.TestCase):
             with open(exe, "wb") as f:
                 f.write(b"\xcf\xfa\xed\xfe" + b"\0" * 12)
             self.assertEqual(codex_rt._native_darwin(exe), os.path.realpath(exe))
+
+
+
+class SourcesSettingsTest(unittest.TestCase):
+    def setUp(self):
+        import AppKit
+        from types import SimpleNamespace
+        from harness_discussion import settings
+        from harness_discussion.mac import settings_ui, ui
+        AppKit.NSApplication.sharedApplication()
+        self.changes, self.played = [], []
+        engines = [SimpleNamespace(name="Cursor", voices=(("eve", "Eve"), ("ara", "Ara")), default_voice="ara"),
+                   SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
+        self.app = SimpleNamespace(
+            cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"},
+            chain=SimpleNamespace(engines=engines), stt_error=None, check_update=lambda: None,
+            update_state=lambda: ("", False), available_version=lambda: None,
+            change=lambda key, value, save=True: self.changes.append((key, value)),
+            play=lambda text, tag, only=None: self.played.append((text, only)))
+        for p in (mock.patch.object(ui, "show"), mock.patch.object(settings_ui.startup, "enabled", return_value=False),
+                  mock.patch.object(settings_ui, "stt_connection", return_value=("", ""))):
+            p.start()
+            self.addCleanup(p.stop)
+        self.win = settings_ui.SettingsWindow(self.app, lambda: None)
+        self.addCleanup(self.win.win.close)
+        self.rows = self.win.source_rows
+
+    def test_each_status_renders_its_text(self):
+        self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "Codex", "macOS")],
+                         ["Signed out — open Cursor and sign in", "Not installed", "Checking…"])
+        self.app.statuses = {"Cursor": "expired", "macOS": "ready"}
+        self.win.refresh_sources()
+        self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "macOS")],
+                         ["Sign-in expired — open Cursor", "Ready"])
+        self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
+
+    def test_the_window_fits_a_status_that_wraps(self):
+        for statuses in ({}, {"Cursor": "signed_out", "Codex": "signed_out", "macOS": "signed_out"}):
+            self.app.statuses = statuses
+            self.win.refresh_sources()
+            self.assertEqual(self.win.win.contentView().frame().size.height, self.win.content.fittingSize().height)
+
+    def test_up_down_and_enable_save_the_sources(self):
+        self.assertFalse(self.rows["Cursor"][4][1].isEnabled())  # already first
+        self.rows["Codex"][4][1].performClick_(None)
+        self.assertEqual(self.changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["macOS", True]]))
+        self.assertEqual(self.win.sources.arrangedSubviews()[0], self.rows["Codex"][3])
+        self.rows["Codex"][4][2].performClick_(None)
+        self.assertEqual([n for n, _ in self.changes[-1][1]], ["Cursor", "Codex", "macOS"])
+        self.rows["macOS"][0].performClick_(None)
+        self.assertEqual(self.changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["macOS", False]]))
+
+    def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
+        voice = self.rows["Cursor"][2]
+        self.assertEqual(voice.titleOfSelectedItem(), "Ara")  # Cursor's default before a choice
+        voice.selectItemAtIndex_(0)
+        voice.sendAction_to_(voice.action(), voice.target())
+        self.assertEqual(self.changes[-1], ("voices", {"Cursor": "eve"}))
+        self.win.cfg["voices"] = {"Cursor": "gone"}  # a voice Cursor no longer offers
+        self.win.refresh_sources()
+        self.assertEqual(voice.titleOfSelectedItem(), "Ara")
+        self.rows["Codex"][4][0].performClick_(None)
+        self.assertEqual(self.played, [("This is Codex.", "Codex")])
+
+    def test_the_welcome_header_shows_above_sources_only_on_first_run(self):
+        from harness_discussion.mac import settings_ui
+        self.assertIsNone(self.win.welcome)
+        welcome = settings_ui.SettingsWindow(self.app, lambda: None, welcome=True)
+        self.addCleanup(welcome.win.close)
+        views = list(welcome.sources.superview().arrangedSubviews())
+        self.assertEqual(welcome.welcome.stringValue(), "Pick the voices Harness Discussion uses.")
+        self.assertEqual(views.index(welcome.welcome) + 1, views.index(welcome.sources))
+
+
+class PopupSourceTest(unittest.TestCase):
+    def test_label_follows_set_source_and_a_pick_reaches_on_source(self):
+        import AppKit
+        from harness_discussion.mac import popup
+        AppKit.NSApplication.sharedApplication()
+        picked = []
+        noop = lambda *a: None
+        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
+                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: ["Codex", "macOS"])
+        bar.set_source("Codex")
+        self.assertEqual(bar.source_btn.title(), "Codex ▾")
+        menus = []
+        with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
+                (choices, current)) or pick("macOS")):
+            bar.source_btn.performClick_(None)
+        self.assertEqual((menus, picked), ([([("Codex", "Codex"), ("macOS", "macOS")], "Codex")], ["macOS"]))
 
 
 if __name__ == "__main__":

@@ -17,10 +17,10 @@ You need Windows 11 or macOS 13 or later. The app does not run on Linux.
 
 ```powershell
 uv sync
-uv run codex-speak
+uv run harness-discussion
 ```
 
-The Codex CLI is optional. Without `codex login`, the app uses the Edge and Windows voices, which is enough for most work.
+Cursor and the Codex CLI are optional. Without a Cursor sign-in or `codex login`, the app uses the local voices, which is enough for most work.
 
 ## Test
 
@@ -28,14 +28,14 @@ The Codex CLI is optional. Without `codex login`, the app uses the Edge and Wind
 uv run python -m unittest discover -s tests
 ```
 
-CI runs the same command on `windows-latest` for every pull request. Add or update a test for the behavior you change. Tests that need a network or a Codex login must be opt-in, like the live speech-to-text check below.
+CI runs the same command on `windows-latest` and `macos-latest` for every pull request. Add or update a test for the behavior you change. Tests that need a network, a Cursor sign-in, or a Codex login must be opt-in, like the live speech-to-text check below.
 
 Installer cleanup tests run the shipped Pascal code in a temporary Inno Setup harness. Install Inno Setup 6 to run these locally. CI installs it before the suite.
 
 Some checks are manual:
 
 ```powershell
-uv run python -m codex_speak.codex_rt "Hello world" en-US    # hear the Codex engine directly
+uv run python -m harness_discussion.codex_rt "Hello world" en-US    # hear the Codex engine directly
 ```
 
 The live speech-to-text check needs a Codex login and uses subscription quota. It only runs when `STT_LIVE_CHECK=1` is set. See [STT.md](STT.md).
@@ -45,33 +45,43 @@ The live speech-to-text check needs a Codex login and uses subscription quota. I
 Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
 
 ```powershell
-.\packaging\build.ps1           # PyInstaller app folder, then dist\CodexSpeak-Setup.exe
+.\packaging\build.ps1           # PyInstaller app folder, then dist\HarnessDiscussion-Setup.exe
 ```
 
 ## Build the macOS app
 
 ```bash
 ./packaging/setup_signing_mac.sh    # once per Mac: a local signing identity
-./packaging/build_mac.sh            # dist/CodexSpeak.dmg
+./packaging/build_mac.sh            # dist/HarnessDiscussion.dmg
 ```
 
 With the local identity, a rebuilt app keeps its Accessibility grant. Without it, the build is signed ad hoc, as in CI, and macOS asks for Accessibility again after every rebuild.
 
 ## Code map
 
+Paths are under `src/harness_discussion/`. Windows-only code is in `win/`, macOS-only code in `mac/`.
+
 | Piece | File |
 | --- | --- |
-| Mouse hook. A drag or double-click means text may be selected | `trigger.py` |
-| Selected text via UI Automation, else a borrowed Ctrl+C with full clipboard restore. Password fields are never read | `selection.py`, `clipboard.py` |
-| Floating bar that never takes focus, with the language and speed menus | `popup.py` |
-| Sentence units and the caption line | `sentences.py`, `captions.py` |
-| Settings window and stored settings | `settings_ui.py`, `settings.py` |
-| Codex realtime over `codex app-server`, using WebRTC v3 (the only transport that works without an API key) | `codex_rt.py` |
-| Edge and Windows fallbacks, plus the ordered chain | `engines.py`, `edge_stream.py` |
+| Entry point, then the platform host: Tk and the tray on Windows, AppKit and the menu bar on macOS | `__main__.py`, `win/main.py`, `win/host.py`, `mac/main.py`, `mac/host.py` |
+| The shared app: reads selections sentence by sentence, owns settings, updates and speech-to-text | `core.py` |
+| Mouse hook. A drag or double-click means text may be selected | `clicks.py`, `win/trigger.py`, `mac/trigger.py` |
+| Selected text via UI Automation or Accessibility, else a borrowed Ctrl+C or ⌘C with full clipboard restore. Password fields are never read | `win/selection.py`, `win/clipboard.py`, `mac/selection.py`, `mac/pasteboard.py` |
+| Floating bar that never takes focus, with the language, speed and source menus | `win/popup.py`, `mac/popup.py` |
+| Sentence units, text cleanup and the caption line (Windows) | `sentences.py`, `richtext.py`, `win/captions.py` |
+| Settings window, its Sources rows, and stored settings | `win/settings_ui.py`, `win/sources_ui.py`, `mac/settings_ui.py`, `settings.py` |
+| Source statuses and the bar's source button | `sources.py` |
+| Cursor speech through `TextToSpeech`, with the token read from Cursor's desktop sign-in | `cursor_tts.py`, `cursor_auth.py` |
+| Codex realtime over `codex app-server`, using WebRTC v3 (the only transport that works without an API key) | `codex_rt.py`, `prompts.py` |
+| Edge, plus the ordered chain that tries sources in turn | `engines.py`, `edge_stream.py` |
+| Offline voices: SAPI on Windows, AVSpeechSynthesizer on macOS | `win/voice.py`, `mac/voice.py` |
 | Speaker output and the slow-down time stretch (ffmpeg `atempo`) | `audio.py` |
 | Update checks and installs | `updates.py` |
 | Speech-to-text adapter and local HTTP server | `stt.py`, `stt_server.py` |
-| Tray icon and wiring | `__main__.py` |
+| macOS Accessibility permission, its guide window, and start at login | `mac/permission.py`, `mac/guide.py`, `mac/startup.py` |
+| App icon, drawn in code for both builds | `icons.py` |
+| Language menu entries | `lang.py` |
+| Small AppKit helpers | `mac/ui.py` |
 
 Other files:
 
@@ -87,7 +97,7 @@ These protect users. Please keep them:
 
 - Never log selected text, transcripts, audio, or URLs with access tokens.
 - Never read password fields.
-- Never send text off the PC when the user picked "Windows only".
+- Never send text off the computer when the Windows or macOS voice is the only source turned on.
 - Restore the clipboard exactly after borrowing Ctrl+C.
 
 ## Releases

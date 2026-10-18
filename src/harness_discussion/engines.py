@@ -1,6 +1,7 @@
 """The Edge neural engine, the threaded engine base, and the chain that tries engines in order."""
 import contextlib
 import logging
+import math
 import threading
 import time
 
@@ -113,7 +114,7 @@ class EdgeEngine(_Threaded):
                     pcm = next(chunks, None)
                 except Exception as e:
                     if player is None:
-                        raise NoAudioError(f"Edge: {e}") from e
+                        raise NoAudioError(f"{self.name}: {e}") from e
                     raise  # speech already started: the chain must not restart it on another engine
                 if pcm is None:
                     break
@@ -123,13 +124,13 @@ class EdgeEngine(_Threaded):
                     try:
                         player = self.Player(24000, 1, self.paused)
                     except Exception as e:
-                        raise NoAudioError(f"Edge: {e}") from e
+                        raise NoAudioError(f"{self.name}: {e}") from e
                     player.arm(on_audio)
                 player.write(pcm)
             if stop.is_set():
                 return
             if player is None:
-                raise NoAudioError("Edge: no audio")
+                raise NoAudioError(f"{self.name}: no audio")
             while player.pending and player.active and not stop.wait(0.05):
                 pass  # the queue still holds speech after the download ends
         finally:
@@ -143,6 +144,9 @@ class Chain:
 
     def __init__(self, engines):
         self.engines, self.only, self.last, self.prefetch = engines, None, None, False
+        self.enabled = [e.name for e in engines]  # the user's order; disabled sources are left out
+        self.on_engine = lambda name: None  # called on the reading thread as each attempt starts
+        self.statuses = {}  # core's cached status() per engine; order() never calls status(), which can block
         self._active, self._gen, self._paused = None, 0, False
         self._idle = threading.Event()
         self._idle.set()
@@ -162,8 +166,12 @@ class Chain:
     def order(self):
         if self.only:
             return [e for e in self.engines if e.name == self.only] or self.engines
-        # Auto skips engines that cannot reach the chosen speed (Codex cannot read faster)
-        return [e for e in self.engines if e.speed <= getattr(e, "max_speed", e.speed)] or self.engines
+        on = [e for name in self.enabled for e in self.engines if e.name == name]
+        # a missing or signed-out source would fail every sentence; an unchecked one is still tried
+        ready = [e for e in on if self.statuses.get(e.name, "ready") == "ready"]
+        # skips engines that cannot reach the chosen speed (Codex cannot read faster)
+        fit = [e for e in ready if getattr(e, "min_speed", 0) <= e.speed <= getattr(e, "max_speed", math.inf)]
+        return fit or ready or on or self.engines
 
     def prepare(self, lang_tag, text=None, *, fallback_tag=None):
         first = self.order()[0]
@@ -185,6 +193,7 @@ class Chain:
 
         def attempt(i):
             engine = self._active = order[i]
+            self.on_engine(engine.name)
             if hasattr(engine, "paused"):
                 engine.paused.set() if self._paused else engine.paused.clear()
 

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import threading
 
-from codex_speak.core import App
-from codex_speak import sentences
+from harness_discussion.core import App
+from harness_discussion import sentences
 
 
 class Popup:
@@ -55,6 +55,9 @@ class Popup:
     def set_speed(self, speed):
         pass
 
+    def set_source(self, name):
+        pass
+
     def configure_captions(self, *appearance):
         self.appearance = appearance
 
@@ -63,11 +66,14 @@ class Chain:
     def __init__(self):
         self.calls, self.prepared = [], []
         self.fallback_tags = []
-        self.only, self.last, self.prefetch = None, "Codex", False
+        self.only, self.last, self.prefetch, self.busy = None, "Codex", False, False
         self.engines = [SimpleNamespace(speed=1.0)]
 
     def continuous(self):
         return False
+
+    def order(self):
+        return [SimpleNamespace(name="Codex")]
 
     def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None, on_caption=None):
         self.calls.append((text, tag, done, heard, self.only, self.engines[0].speed))
@@ -92,8 +98,9 @@ def app():
     a.events, a._read_id = queue.Queue(), 0
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
     a._continuous, a._last_caption, a._held_caption = False, "", ""
-    a.cfg = {"engine": None, "speed": 1.0, "prefetch": False}
+    a.cfg = {"sources": [["Codex", True], ["Edge", True]], "voices": {}, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
+    a.refresh_statuses = lambda: None  # the status check has its own tests
     a.notifications = []
     a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args), after=lambda ms, fn: fn())
     return a
@@ -156,7 +163,7 @@ class Sequence(unittest.TestCase):
                 self.assertEqual(a.chain.fallback_tags, [detected, detected])
 
     def test_hidden_selection_is_not_prepared_when_speech_settings_change(self):
-        for key, value in (("speed", 0.5), ("engine", "Edge"), ("prefetch", True)):
+        for key, value in (("speed", 0.5), ("sources", [["Edge", True]]), ("prefetch", True)):
             with self.subTest(key=key):
                 a = app()
                 a.popup.show("Old selection. More text.", 1, 1)
@@ -192,7 +199,7 @@ class Sequence(unittest.TestCase):
         a = app()
         a.play("One. Two.", None)
         a.change("speed", 0.5, save=False)
-        a.change("engine", "Windows", save=False)
+        a.change("sources", [["Windows", True], ["Edge", False]], save=False)
         a._prepare_selection("ar-SA")
         self.assertEqual(a.chain.prepared, [])
         a.chain.last = "Edge"  # the first unit successfully fell back before speech
@@ -202,7 +209,7 @@ class Sequence(unittest.TestCase):
         self.assertEqual(a.chain.calls[1][4:], ("Edge", 1.0))
         a.chain.calls[1][2](None)
         pump(a)
-        self.assertEqual((a.chain.only, a.chain.engines[0].speed), ("Windows", 0.5))
+        self.assertEqual((a.chain.only, a.chain.enabled, a.chain.engines[0].speed), (None, ["Windows"], 0.5))
 
     def test_previous_unit_callbacks_cannot_advance_or_overwrite_current_unit(self):
         a = app()
@@ -268,9 +275,9 @@ class WindowsPause(unittest.TestCase):
             made_voice.set()
             return voice
 
-        from codex_speak.win.voice import SapiEngine
+        from harness_discussion.win.voice import SapiEngine
         e = SapiEngine()
-        with patch("codex_speak.win.voice.comtypes.CoInitialize"), patch("codex_speak.win.voice.comtypes.client.CreateObject", side_effect=create):
+        with patch("harness_discussion.win.voice.comtypes.CoInitialize"), patch("harness_discussion.win.voice.comtypes.client.CreateObject", side_effect=create):
             e.speak("Never spoken", "en-US", lambda err: done.set())
             self.assertTrue(connecting.wait(2))
             e.pause()

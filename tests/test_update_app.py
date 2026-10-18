@@ -9,11 +9,12 @@ import queue
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from codex_speak.core import App
-from codex_speak import settings, updates
+from harness_discussion.core import App
+from harness_discussion import settings, updates
 
 
 class UpdateApp(unittest.TestCase):
@@ -26,6 +27,7 @@ class UpdateApp(unittest.TestCase):
         a = self.app
         a.host, a.chain = Mock(), Mock(busy=False)
         a.chain.engines = []
+        a.chain.order.return_value = [SimpleNamespace(name="Codex")]
         a.popup = Mock()
         a.cfg = {**settings.DEFAULTS, "auto_update": True}
         a.events, a.settings_win, a.stt = queue.Queue(), None, None
@@ -149,7 +151,7 @@ class UpdateApp(unittest.TestCase):
             self.assertTrue(draining.wait(1))
             self.assertIsNone(a.stt)
             new = Mock(busy=threading.Lock())
-            with patch("codex_speak.core.stt_server.start", return_value=new):
+            with patch("harness_discussion.core.stt_server.start", return_value=new):
                 a._run_stt(True)
             with patch.object(updates, "install") as install, patch.object(settings, "save"):
                 self.result()

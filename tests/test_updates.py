@@ -9,7 +9,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from codex_speak import updates
+from harness_discussion import updates
 
 
 class Response(io.BytesIO):
@@ -27,7 +27,7 @@ def release(tag="v0.10.0"):
     return {"tag_name": tag, "draft": False, "prerelease": False, "assets": [{
         "name": updates.ASSET, "state": "uploaded", "size": 3,
         "digest": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-        "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/{updates.ASSET}"}]}
+        "browser_download_url": f"https://github.com/tzachbon/harness-discussion/releases/download/{tag}/{updates.ASSET}"}]}
 
 
 class Releases(unittest.TestCase):
@@ -36,6 +36,13 @@ class Releases(unittest.TestCase):
             with patch.object(updates, "current_version", return_value=current), patch.object(
                     updates, "urlopen", return_value=response(json.dumps(release()).encode(), updates.API)):
                 self.assertEqual(updates.check() is not None, expected)
+
+    def test_feed_and_assets_use_the_renamed_repo(self):
+        self.assertEqual(updates.API, "https://api.github.com/repos/tzachbon/harness-discussion/releases/latest")
+        self.assertEqual(updates.ASSET, "HarnessDiscussion.dmg" if sys.platform == "darwin" else "HarnessDiscussion-Setup.exe")
+        with patch.object(updates, "current_version", return_value="0.9.0"), patch.object(
+                updates, "urlopen", return_value=response(json.dumps(release()).encode(), updates.API)):
+            self.assertEqual(updates.check()["version"], "0.10.0")
 
     def test_invalid_release_cannot_be_selected(self):
         for field, value in (("tag_name", "v0.11.0-beta"), ("draft", True), ("prerelease", True),
@@ -47,6 +54,8 @@ class Releases(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     updates.check()
         for field, value in (("browser_download_url", "https://evil.test/setup.exe"),
+                             ("browser_download_url",  # the repo before the rename
+                              f"https://github.com/tzachbon/codex-speak/releases/download/v0.10.0/{updates.ASSET}"),
                              ("digest", None), ("digest", "sha256:bad"), ("size", True),
                              ("size", 0), ("size", 2**40), ("state", "new")):
             data = release()
@@ -98,17 +107,16 @@ class Downloads(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "win32", "the installer runs only on Windows")
 class Installation(unittest.TestCase):
-    def test_installer_targets_running_install_without_a_shell_or_reboot(self):
+    def test_installer_uses_its_default_folder_without_a_shell_or_reboot(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(updates, "CACHE", Path(directory)), patch.object(
-                sys, "frozen", True, create=True), patch.object(sys, "executable", r"C:\Apps\Codex Speak\CodexSpeak.exe"), patch(
+                sys, "frozen", True, create=True), patch.object(sys, "executable", r"C:\Apps\Custom\HarnessDiscussion.exe"), patch(
                 "subprocess.Popen") as launch:
             path = Path(directory) / "update-123" / updates.ASSET
             path.parent.mkdir()
             path.write_bytes(b"abc")
             updates.install(path)
             args = launch.call_args.args[0]
-            self.assertEqual(args[:4], [str(path), "/SP-", "/SILENT", "/NORESTART"])
-            self.assertIn(r"/DIR=C:\Apps\Codex Speak", args)
+            self.assertEqual(args, [str(path), "/SP-", "/SILENT", "/NORESTART", f"/LOG={path.parent / 'setup.log'}"])
             self.assertEqual(launch.call_args.kwargs["shell"], False)
         with patch.object(sys, "frozen", False, create=True), patch("subprocess.Popen") as launch:
             with self.assertRaises(ValueError):
@@ -121,7 +129,7 @@ class Packaging(unittest.TestCase):
     def test_build_rejects_a_mismatched_tag_without_changing_workflow_permissions(self):
         script = Path(__file__).resolve().parents[1] / "packaging" / "build.ps1"
         command = r"""
-        $ast = [Management.Automation.Language.Parser]::ParseFile($env:CODEX_SPEAK_BUILD_SCRIPT, [ref]$null, [ref]$null)
+        $ast = [Management.Automation.Language.Parser]::ParseFile($env:HARNESS_DISCUSSION_BUILD_SCRIPT, [ref]$null, [ref]$null)
         $guard = $ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.IfStatementAst] } | Select-Object -First 1
         if (-not $guard) { throw 'Release guard missing' }
         $version = '0.1.1'
@@ -134,7 +142,7 @@ class Packaging(unittest.TestCase):
         """
         # Pass the path as data to avoid PowerShell interpolation.
         result = subprocess.run(["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True,
-                                env={**os.environ, "CODEX_SPEAK_BUILD_SCRIPT": str(script)})
+                                env={**os.environ, "HARNESS_DISCUSSION_BUILD_SCRIPT": str(script)})
         self.assertEqual(result.returncode, 0, result.stderr)
 
 

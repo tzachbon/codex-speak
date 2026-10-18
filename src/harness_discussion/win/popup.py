@@ -79,13 +79,16 @@ class _FlatButton(tk.Frame):
 
 
 class Popup:
-    def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings):
+    def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
+                 on_source, sources):
+        """sources: returns the source names the menu offers; on_source(name) picks one."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
-        self.on_lang, self.on_speed = on_lang, on_speed
+        self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
         self.on_settings = on_settings
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
         self.speed = tk.DoubleVar(master=root, value=speed)
+        self.source = tk.StringVar(master=root, value="")
         icons, text = fonts(root)
         w = self.win = tk.Toplevel(root, bg=BG)
         w.overrideredirect(True)
@@ -104,6 +107,8 @@ class Popup:
         self.speed_btn = _FlatButton(w, lambda: self._post_menu(self.speed_btn, self.speed_menu),
                                      (settings.speed_label(speed), (text, 10), FG), (CHEVRON, (icons, 7), FG))
         self.speed_btn.pack(side="left", padx=0, pady="2p")
+        self.source_btn = _FlatButton(w, self._source_menu, ("", (text, 10), FG), (CHEVRON, (icons, 7), FG))
+        self.source_btn.pack(side="left", padx=0, pady="2p")
         self.settings_btn = _FlatButton(w, self._open_settings, (SETTINGS, (icons, 11), FG))
         self.settings_btn.pack(side="left", padx=0, pady="2p")
         self.close_btn = _FlatButton(w, self.close, (CLOSE, (icons, 7), SUBTLE))
@@ -116,6 +121,7 @@ class Popup:
         for preset in settings.SPEED_PRESETS:
             self.speed_menu.add_radiobutton(label=settings.speed_label(preset), value=preset,
                                             variable=self.speed, command=self._speed_changed)
+        self.sources_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self.schedule_hide())
         w.withdraw()
@@ -251,6 +257,20 @@ class Popup:
     def set_speed(self, speed):
         self.speed.set(speed)
         self.speed_btn.parts[1]["text"] = settings.speed_label(speed)
+
+    def set_source(self, name):
+        self.source.set(name)
+        self.source_btn.parts[1]["text"] = name
+
+    def _source_menu(self):
+        """Built on each click: the ready sources change as statuses refresh and Settings reorders."""
+        menu = self.sources_menu
+        menu.delete(0, "end")
+        self.source.set(self.source_btn.parts[1]["text"])  # a pick mid-read must not move the check off the label
+        for name in self.sources():
+            menu.add_radiobutton(label=name, value=name, variable=self.source,
+                                 command=lambda name=name: self.on_source(name))
+        self._post_menu(self.source_btn, menu)
 
     def _speed_changed(self):
         self.set_speed(self.speed.get())

@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Codex Speak: hear any text on Windows in your ChatGPT voice</title>
-<meta name="description" content="A small, open-source Windows tray app. Select text in any app, press play, and hear it in your ChatGPT voice through Codex, with Edge and offline Windows voices as fallbacks. Unofficial.">
+<title>Harness Discussion: hear any text read aloud with your Cursor or Codex voice</title>
+<meta name="description" content="A small, open-source app for Windows and macOS. Select text in any app, press play, and hear it read with the voice from your Cursor or Codex sign-in, with local voices as fallbacks. Unofficial.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="icon.png">
-<link rel="canonical" href="https://tzachbon.github.io/codex-speak/">
+<link rel="canonical" href="https://tzachbon.github.io/harness-discussion/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Codex Speak">
-<meta property="og:title" content="Codex Speak: hear any text on Windows in your ChatGPT voice">
-<meta property="og:description" content="Select text in any Windows app and hear it in your ChatGPT voice through Codex. No API key. Edge and offline Windows voices as fallbacks. Free and open source.">
-<meta property="og:url" content="https://tzachbon.github.io/codex-speak/">
-<meta property="og:image" content="https://tzachbon.github.io/codex-speak/social.png">
+<meta property="og:site_name" content="Harness Discussion">
+<meta property="og:title" content="Harness Discussion: hear any text read aloud with your Cursor or Codex voice">
+<meta property="og:description" content="Select text in any Windows or Mac app and hear it read with the voice from your Cursor or Codex sign-in. No API key. Local voices as fallbacks. Free and open source.">
+<meta property="og:url" content="https://tzachbon.github.io/harness-discussion/">
+<meta property="og:image" content="https://tzachbon.github.io/harness-discussion/social.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Codex Speak: a small play bar above selected text in a Windows app">
+<meta property="og:image:alt" content="Harness Discussion: a small play bar above selected text">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://tzachbon.github.io/codex-speak/social.png">
+<meta name="twitter:image" content="https://tzachbon.github.io/harness-discussion/social.png">
 <style>
   :root { --accent: #005fb8; --accent-hover: #0067c0; --accent-text: #fff; --text: #1b1b1b; --muted: #5f5f5f;
           --page: #f3f3f3; --card: #ffffff; --card-alt: #fafafa; --border: #e5e5e5; --hero: #e8eef7;
@@ -121,23 +121,23 @@
 <body>
 <header>
   <div class="wrap">
-    <div class="brand"><img src="icon.png" alt=""><h1>Codex Speak</h1></div>
-    <p class="lead">Select text in any Windows or Mac app, press <strong>▶</strong>, and hear it in your ChatGPT voice.
-      Codex Speak runs the Codex realtime voice from your ChatGPT sign-in, with no API key. Built-in voices take over when Codex can't speak.</p>
+    <div class="brand"><img src="icon.png" alt=""><h1>Harness Discussion</h1></div>
+    <p class="lead">Select text in any Windows or Mac app, press <strong>▶</strong>, and hear it read aloud.
+      Harness Discussion reads with the voice from your Cursor or Codex sign-in, with no API key. Local voices take over when neither can speak.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe">
+      <a class="btn primary" href="https://github.com/tzachbon/harness-discussion/releases/latest/download/HarnessDiscussion-Setup.exe">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 11.5 3.5 7l1-1L7.3 8.8V1h1.4v7.8L11.5 6l1 1L8 11.5ZM2 13.5h12V15H2z"/></svg>
         Download for Windows</a>
-      <a class="btn primary" href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak.dmg">
+      <a class="btn primary" href="https://github.com/tzachbon/harness-discussion/releases/latest/download/HarnessDiscussion.dmg">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 11.5 3.5 7l1-1L7.3 8.8V1h1.4v7.8L11.5 6l1 1L8 11.5ZM2 13.5h12V15H2z"/></svg>
         Download for Mac</a>
-      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak">
+      <a class="btn secondary" href="https://github.com/tzachbon/harness-discussion">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
         Source on GitHub</a>
       <span class="note">Windows 11 64-bit · macOS 13+ on Apple silicon · free and open source (MIT) · unofficial</span>
     </div>
 
-    <figure class="demo" role="img" aria-label="Demo: a sentence is selected in a text editor, the Codex Speak bar appears above it, play turns to pause, and a caption shows the sentence being read">
+    <figure class="demo" role="img" aria-label="Demo: a sentence is selected in a text editor, the Harness Discussion bar appears above it, play turns to pause, and a caption shows the sentence being read">
       <div class="demo-bar" aria-hidden="true">notes.txt - Notepad</div>
       <div class="demo-body" aria-hidden="true">
         <p>Select any text in any Windows app. A small bar appears next to it.
@@ -152,6 +152,7 @@
               <span class="sep"></span>
               <span class="menu">Auto <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2 3.5 3 3 3-3"/></svg></span>
               <span class="menu">1× <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2 3.5 3 3 3-3"/></svg></span>
+              <span class="menu">Cursor <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2 3.5 3 3 3-3"/></svg></span>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m2.5 2.5 7 7m0-7-7 7"/></svg>
             </span>
@@ -168,13 +169,14 @@
     <h2>What it does</h2>
     <div class="grid">
       <div class="card"><h3>Works in most apps</h3><p>Drag or double-click to select text in a browser, Notepad, VS Code, and most other apps. The bar never takes focus from the app you're in.</p></div>
-      <div class="card"><h3>Your ChatGPT voice</h3><p>Reads with the Codex realtime voice from your ChatGPT sign-in. No API key. It uses your plan's Codex access and counts toward its limits.</p></div>
-      <div class="card"><h3>Always has a voice</h3><p>If Codex can't speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over. You can also pin one engine.</p></div>
+      <div class="card"><h3>The sign-in you already have</h3><p>Reads with Cursor's voices through the Cursor desktop sign-in, or with the Codex realtime voice from your ChatGPT sign-in. No API key. Codex uses your plan's Codex access and counts toward its limits.</p></div>
+      <div class="card"><h3>Always has a voice</h3><p>If Cursor and Codex can't speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over.</p></div>
+      <div class="card"><h3>You set the order</h3><p>Settings lists the sources in reading order. Turn each on or off, move it up or down, pick its voice, and test it. The bar's source menu moves a source to the top.</p></div>
       <div class="card"><h3>Pause, speed, stop</h3><p>Pause and continue from the same spot. Pick 0.5× to 2× from the bar. Your choice is saved.</p></div>
       <div class="card"><h3>Read-along captions</h3><p>The sentence being read appears above the bar. Long sentences pan across the line. Size and background are adjustable. Windows only for now.</p></div>
-      <div class="card"><h3>Six languages</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. In Auto, Codex infers the language, and Edge and Windows tell Hebrew, Arabic, and Russian apart by script. Or pick one from the menu.</p></div>
+      <div class="card"><h3>Six languages</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. In Auto, Cursor and Codex infer the language, and Edge and Windows tell Hebrew, Arabic, and Russian apart by script. Or pick one from the menu.</p></div>
       <div class="card"><h3>Optional automatic updates</h3><p>Installs new GitHub releases when the app is idle, after checking the installer's SHA-256 digest. Off by default. On a Mac, Settings shows new versions and links to the download.</p></div>
-      <div class="card"><h3>Speech-to-text too</h3><p>An optional local, OpenAI-compatible endpoint lets apps such as OpenWhispr transcribe with the same Codex sign-in. <a href="https://github.com/tzachbon/codex-speak/blob/master/STT.md">Details</a>.</p></div>
+      <div class="card"><h3>Speech-to-text too</h3><p>An optional local, OpenAI-compatible endpoint lets apps such as OpenWhispr transcribe with the same Codex sign-in. <a href="https://github.com/tzachbon/harness-discussion/blob/master/STT.md">Details</a>.</p></div>
     </div>
   </div>
 </section>
@@ -184,16 +186,16 @@
     <div>
       <h2>Get started</h2>
       <ol class="steps">
-        <li><a href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe">Download the installer</a> and run it. It installs for your user only and needs no admin rights.<br>
+        <li><a href="https://github.com/tzachbon/harness-discussion/releases/latest/download/HarnessDiscussion-Setup.exe">Download the installer</a> and run it. It installs for your user only and needs no admin rights.<br>
           <span class="note">The app isn't code-signed, so Windows SmartScreen may warn you. Choose <em>More info</em>, then <em>Run anyway</em>. You can read and build the source yourself.<br>
-          Coming from Select to TTS? It's the same app under a new name. The installer replaces it and keeps your settings.<br>
-          On a Mac, <a href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak.dmg">download the dmg</a>, drag the app to Applications, right-click it and choose <em>Open</em>, then grant Accessibility access when the guide asks.</span></li>
-        <li>For the ChatGPT voice, install the <a href="https://github.com/openai/codex">Codex CLI</a> and sign in once with <code>codex login</code>. Without it, the app uses the Edge and Windows voices, or the macOS voice on a Mac.</li>
+          Coming from Codex Speak or Select to TTS? It's the same app under a new name. The installer replaces it and keeps your settings.<br>
+          On a Mac, <a href="https://github.com/tzachbon/harness-discussion/releases/latest/download/HarnessDiscussion.dmg">download the dmg</a>, drag the app to Applications, right-click it and choose <em>Open</em>, then grant Accessibility access when the guide asks.</span></li>
+        <li>Sign in to the <a href="https://cursor.com">Cursor</a> desktop app, or install the <a href="https://github.com/openai/codex">Codex CLI</a> and sign in once with <code>codex login</code>. Without either, the app uses the Edge and Windows voices, or the macOS voice on a Mac. The first time it starts, the app opens Settings so you can check the voice sources.</li>
         <li>Select some text anywhere and press <strong>▶</strong>. <strong>⏸</strong> pauses and <strong>■</strong> stops.</li>
-        <li>Open Settings from ⚙ on the bar or from the tray or menu bar icon to set speed, voice, captions, start at sign-in, and updates.</li>
+        <li>Open Settings from ⚙ on the bar or from the tray or menu bar icon to set speed, the order of the voice sources, captions, start at sign-in, and updates.</li>
       </ol>
     </div>
-    <img src="settings.png" width="497" height="1185" loading="lazy" alt="The Settings window: start at sign-in, updates, speed, voice, captions, selection, and speech-to-text">
+    <img src="settings.png" width="484" height="732" loading="lazy" alt="The Settings window: start at login, updates, speed, the voice sources in order, selection, and speech-to-text">
   </div>
 </section>
 
@@ -203,13 +205,15 @@
     <div class="table">
     <table>
       <tr><th>Voice</th><th>Needs</th><th>Speed</th><th>Where your text goes</th></tr>
-      <tr><td>Codex realtime</td><td>Codex CLI signed in with ChatGPT</td><td>0.5× to 1×. Above 1×, Auto starts with Edge</td><td>OpenAI, through your Codex sign-in</td></tr>
-      <tr><td>Edge neural</td><td>Internet</td><td>0.5× to 2×</td><td>Microsoft's Edge read-aloud service</td></tr>
+      <tr><td>Cursor</td><td>Cursor desktop app, signed in</td><td>0.5× to 2×</td><td>Cursor, through your Cursor sign-in</td></tr>
+      <tr><td>Codex realtime</td><td>Codex CLI signed in with ChatGPT</td><td>0.5× to 1×. Above 1×, the next source reads</td><td>OpenAI, through your Codex sign-in</td></tr>
+      <tr><td>Edge neural (Windows)</td><td>Internet</td><td>0.5× to 2×</td><td>Microsoft's Edge read-aloud service</td></tr>
       <tr><td>Windows</td><td>Nothing. It's built in</td><td>0.5× to 2×</td><td>Stays on your PC</td></tr>
+      <tr><td>macOS</td><td>Nothing. It's built in</td><td>0.5× to 2×</td><td>Stays on your Mac</td></tr>
     </table>
     </div>
     <p class="after-table">Password fields are never read. The log records engines, timing, and errors, never your text.
-      "Windows only" keeps everything on your PC.</p>
+      Turn off every source except Windows or macOS to keep everything on your computer.</p>
   </div>
 </section>
 
@@ -217,10 +221,10 @@
   <div class="wrap">
     <h2>Good to know</h2>
     <div class="grid">
-      <div class="card"><h3>The Codex voice is experimental</h3><p>Codex's realtime API is marked experimental, and about 1 in 12 Codex reads in testing ended early or stayed silent. Silence falls back to Edge on its own.</p></div>
+      <div class="card"><h3>The Codex voice is experimental</h3><p>Codex's realtime API is marked experimental, and about 1 in 12 Codex reads in testing ended early or stayed silent. Silence moves the read to the next source on its own.</p></div>
       <div class="card"><h3>Your clipboard is restored</h3><p>Some apps, such as VS Code, hide their selection. For those the app borrows Ctrl+C and then puts back every clipboard format. You can turn this off. It's skipped in terminals.</p></div>
       <div class="card"><h3>Mouse selections only</h3><p>Drag or double-click shows the bar. Keyboard selections with Shift+arrows don't.</p></div>
-      <div class="card"><h3>Uninstall</h3><p>Use <em>Settings &gt; Apps</em>. This removes the app and its sign-in task. Your preferences stay in <code>%APPDATA%\codex-speak</code>.</p></div>
+      <div class="card"><h3>Uninstall</h3><p>Use <em>Settings &gt; Apps</em>. This removes the app and its sign-in task. Your preferences stay in <code>%APPDATA%\harness-discussion</code>.</p></div>
     </div>
   </div>
 </section>
@@ -228,17 +232,17 @@
 <section>
   <div class="wrap">
     <h2>Open source</h2>
-    <p>Codex Speak is written in Python and released under the MIT license. Bug reports, fixes, and new language voices are welcome.</p>
+    <p>Harness Discussion is written in Python and released under the MIT license. Bug reports, fixes, and new language voices are welcome.</p>
     <div class="cta">
-      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak/blob/master/CONTRIBUTING.md">Contributing guide</a>
-      <a class="btn secondary" href="https://github.com/tzachbon/codex-speak/issues/new/choose">Report a bug or request a feature</a>
+      <a class="btn secondary" href="https://github.com/tzachbon/harness-discussion/blob/master/CONTRIBUTING.md">Contributing guide</a>
+      <a class="btn secondary" href="https://github.com/tzachbon/harness-discussion/issues/new/choose">Report a bug or request a feature</a>
     </div>
   </div>
 </section>
 </main>
 
 <footer>
-  <div class="wrap">Codex Speak. Source on <a href="https://github.com/tzachbon/codex-speak">GitHub</a>. Not affiliated with OpenAI or Microsoft.</div>
+  <div class="wrap">Harness Discussion. Source on <a href="https://github.com/tzachbon/harness-discussion">GitHub</a>. Not affiliated with Cursor, OpenAI, Microsoft, or Apple.</div>
 </footer>
 </body>
 </html>

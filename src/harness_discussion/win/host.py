@@ -5,6 +5,7 @@ import tkinter as tk
 import pystray
 
 from ..codex_rt import CodexEngine
+from ..cursor_tts import CursorEngine
 from ..engines import EdgeEngine
 from ..icons import icon_image
 from . import selection
@@ -20,26 +21,28 @@ class TkHost:
         self.root = tk.Tk()
         self.root.withdraw()
         self.trigger = None
-        self.icon = pystray.Icon("codex-speak", icon_image(), "Codex Speak", self._menu())
+        self.icon = pystray.Icon("harness-discussion", icon_image(), "Harness Discussion", self._menu())
 
     def _menu(self):
         put = lambda *event: lambda: self.app.events.put(event)
         return pystray.Menu(
             pystray.MenuItem("Settings", put("settings"), default=True),
-            pystray.MenuItem(lambda _: f"Last engine: {self.app.chain.last or '-'}", None, enabled=False),
+            pystray.MenuItem(lambda _: f"Last voice source: {self.app.chain.last or '-'}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", put("quit")))
 
     def engines(self):
-        return [CodexEngine(), EdgeEngine(), SapiEngine()]
+        return [CursorEngine(), CodexEngine(), EdgeEngine(), SapiEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(self.root, speed, **callbacks)
 
-    def open_settings(self):
+    def open_settings(self, welcome=False):
         a = self.app
         return SettingsWindow(self.root, dict(a.cfg), icon_image(256), a.change, a.test_voice,
-                              lambda: a.stt_error, a.update_state, a.check_update)
+                              lambda: a.stt_error, a.update_state, a.check_update, engines=a.chain.engines,
+                              statuses=lambda: a.statuses,
+                              on_play=lambda name: a.play(f"This is {name}.", None, only=name), welcome=welcome)
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)
@@ -56,7 +59,7 @@ class TkHost:
         self.root.after(ms, fn)
 
     def notify(self, message):
-        self.icon.notify(message, "Codex Speak")
+        self.icon.notify(message, "Harness Discussion")
 
     def run(self, pump):
         def tick():

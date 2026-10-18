@@ -13,13 +13,15 @@ import threading
 import time
 
 from . import lang, sentences, settings, stt_server, updates
+from .sources import Sources
 
-log = logging.getLogger("codex_speak")
+log = logging.getLogger("harness_discussion")
 # Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
 CAPTION_DELAY_S = 0.6
+SPEECH_KEYS = ("sources", "voices", "speed", "prefetch")  # captured for the entire selection
 
 
-class App:
+class App(Sources):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -34,6 +36,9 @@ class App:
                              else "Checks at startup and daily when enabled. Updates restart this app.")
         from .engines import Chain
         self.chain = Chain(host.engines())
+        self.chain.on_engine = lambda name: self.events.put(("engine", name))
+        self.statuses = {}  # engine name -> status(), filled by refresh_statuses
+        self._checking = threading.Lock()  # one status check at a time, so an older slow one can't win
         first_run = not os.path.exists(settings.PATH)
         self.cfg = settings.load()
         if first_run:
@@ -41,19 +46,22 @@ class App:
                 settings.save(self.cfg)
             except OSError:
                 pass  # Settings just shows again on the next start
-            self.events.put(("settings",))  # show new users where the app lives
+            self.events.put(("settings", True))  # show new users where the app lives, with a welcome
         for key, value in self.cfg.items():
             self.apply(key, value)
         self.popup = host.make_popup(self.cfg["speed"], on_play=self.play, on_stop=self.stop,
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
-                                     on_settings=lambda: self.events.put(("settings",)))
+                                     on_settings=lambda: self.events.put(("settings",)),
+                                     on_source=self._popup_source, sources=self._source_choices)
         self._configure_captions()
+        self._show_source()
 
     def start(self):
         """Starts listening for selections and schedules the update check."""
         self.host.start_trigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
         self.host.after(30_000, self._auto_update)
+        self.refresh_statuses()
 
     def apply(self, key, value):
         """Called on the main thread. Engines read these attributes when the next read starts."""
@@ -61,10 +69,15 @@ class App:
             if hasattr(self, "popup"):
                 self._configure_captions()
             return
-        if self._read_options and key in ("engine", "speed", "prefetch"):
+        if self._read_options and key in SPEECH_KEYS:
             return  # speech options are captured for the entire selection
-        if key == "engine":
-            self.chain.only = value
+        if key == "sources":
+            self.chain.enabled = [name for name, on in value if on]
+            self.chain.only = None  # also ends the pin on the voice that read the selection's first sentence
+        elif key == "voices":
+            for e in self.chain.engines:
+                if hasattr(e, "voices"):  # an unknown id reads with the engine's default
+                    e.voice = value.get(e.name) if value.get(e.name) in dict(e.voices) else None
         elif key == "speed":
             for e in self.chain.engines:
                 e.speed = value
@@ -109,7 +122,11 @@ class App:
             self.popup.set_speed(value)
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.set_speed(value)
-        if key in ("engine", "speed", "prefetch") and not self._read_options and self.popup.text:
+        if key == "sources":
+            self._show_source()
+            if self.settings_win and self.settings_win.alive:
+                self.settings_win.set_sources(value)
+        if key in SPEECH_KEYS and not self._read_options and self.popup.text:
             self._prepare_selection(self.popup.lang_tag())
         if not save:
             return
@@ -238,15 +255,17 @@ class App:
             return [text.strip()] if text.strip() else []
         return sentences.split(text)
 
-    def play(self, text, lang_tag):
+    def play(self, text, lang_tag, only=None):
+        """only: read through that engine alone, as a Settings Test button does."""
         if self._read_options:
             self.stop()
+        self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
         self._continuous = self.chain.continuous()
         self._units, self._unit_index, self._pending_next = self._units_for(text), 0, False
         self._last_caption = self._held_caption = ""
-        self._read_options = (lang_tag, self.cfg["engine"], self.cfg["speed"], lang.detect(text))
+        self._read_options = (lang_tag, self.cfg["sources"], self.cfg["speed"], lang.detect(text))
         self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.popup.set_caption("")
         if self._units:
@@ -265,7 +284,7 @@ class App:
 
     def _restore_speech_options(self):
         self._read_options = None
-        for key in ("engine", "speed", "prefetch"):
+        for key in SPEECH_KEYS:
             self.apply(key, self.cfg[key])
 
     def stop(self):
@@ -274,6 +293,7 @@ class App:
         self.chain.stop()
         self._restore_speech_options()
         self.popup.set_playing(False)
+        self._show_source()
 
     def pause(self):
         self.popup.set_caption_paused(True)
@@ -350,6 +370,7 @@ class App:
                     self.stop()  # a new selection replaces the paused read
                 p.show(text, x, y)
                 self._prepare_selection()
+                self.refresh_statuses()  # a sign-in may have changed since the last check
         elif kind == "press":
             if p.contains(*args):
                 pass  # clicks on the popup itself (including opening the menu)
@@ -389,7 +410,15 @@ class App:
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.focus()
             else:
-                self.settings_win = self.host.open_settings()
+                self.settings_win = self.host.open_settings(welcome=bool(args))  # ("settings", True) on first run
+            self.refresh_statuses()
+        elif kind == "engine":
+            if self.chain.busy:  # an attempt that started before a stop is not shown
+                p.set_source(args[0])
+        elif kind == "statuses":
+            self._show_source()
+            if self.settings_win and self.settings_win.alive:
+                self.settings_win.refresh_sources()
         elif kind == "quit":
             self._closing = True
             self.stop()

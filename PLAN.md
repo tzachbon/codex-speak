@@ -1,6 +1,6 @@
-# select-to-tts: implementation plan
+# Harness Discussion: implementation plan
 
-> The app was renamed from Select to TTS (`select-to-tts`) to Codex Speak (`codex-speak`) in 0.5.0. This plan keeps the old names as history.
+> The app was renamed from Select to TTS (`select-to-tts`) to Codex Speak (`codex-speak`) in 0.5.0, then to Harness Discussion (`harness-discussion`). This plan keeps the old names as history.
 
 ## Objective
 
@@ -185,7 +185,7 @@ Constraints:
 
 - No new runtime outside what's installed (Python 3.11 + uv).
 - Production files should stay around 50 to 80 lines each. Any file above that records why.
-- Don't depend on undocumented ChatGPT HTTP endpoints directly. Only talk to `codex app-server`, so Codex owns auth, token refresh, and transport.
+- Speak only through a harness's own sign-in: Codex through `codex app-server`, so Codex owns auth, token refresh, and transport, and Cursor through the desktop sign-in's `TextToSpeech` call. The app reads the Cursor token and never refreshes or stores it.
 
 Vocabulary:
 

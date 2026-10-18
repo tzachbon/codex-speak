@@ -1,7 +1,7 @@
 """Accessibility permission: detection, the guide window, and recovery after an update.
 
 macOS ties the grant to the app's code signature. Ad-hoc signed builds get a new signature on
-every update, so System Settings can show Codex Speak as allowed while macOS no longer trusts it.
+every update, so System Settings can show Harness Discussion as allowed while macOS no longer trusts it.
 """
 import logging
 import subprocess
@@ -24,7 +24,7 @@ def trusted() -> bool:
 def current_build_id():
     """Version plus commit, stamped into Info.plist at build time. None for source runs."""
     info = NSBundle.mainBundle().infoDictionary() or {}
-    build = info.get("CodexSpeakBuild")
+    build = info.get("HarnessDiscussionBuild")
     return str(build) if build else None
 
 
@@ -35,7 +35,7 @@ def is_stale(granted_build, build):
 
 def open_settings(prompt=True):
     if prompt:
-        AXIsProcessTrustedWithOptions({PROMPT: True})  # adds Codex Speak to the list
+        AXIsProcessTrustedWithOptions({PROMPT: True})  # adds Harness Discussion to the list
     AppKit.NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(SETTINGS_URL))
 
 

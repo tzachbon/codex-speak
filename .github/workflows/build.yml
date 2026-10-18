@@ -41,8 +41,8 @@ jobs:
       - run: ./packaging/build.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: CodexSpeak-Setup
-          path: dist/CodexSpeak-Setup.exe
+          name: HarnessDiscussion-Setup
+          path: dist/HarnessDiscussion-Setup.exe
           if-no-files-found: error
 
   build-mac:
@@ -65,8 +65,8 @@ jobs:
         run: ./packaging/build_mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: CodexSpeak-mac
-          path: dist/CodexSpeak.dmg
+          name: HarnessDiscussion-mac
+          path: dist/HarnessDiscussion.dmg
           if-no-files-found: error
 
   release:
@@ -82,15 +82,15 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - uses: actions/download-artifact@v4
         with:
-          name: CodexSpeak-Setup
+          name: HarnessDiscussion-Setup
           path: dist
       - uses: actions/download-artifact@v4
         with:
-          name: CodexSpeak-mac
+          name: HarnessDiscussion-mac
           path: dist
       - name: Publish tested installers
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
           RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
-        run: uv run --no-project python packaging/publish_release.py dist/CodexSpeak-Setup.exe dist/CodexSpeak.dmg
+        run: uv run --no-project python packaging/publish_release.py dist/HarnessDiscussion-Setup.exe dist/HarnessDiscussion.dmg

@@ -30,20 +30,27 @@ class Installer(unittest.TestCase):
         cleanup = source.split("procedure CurStepChanged", 1)[1].split("procedure CurUninstallStepChanged", 1)[0]
         deletes = source.split("[InstallDelete]", 1)[1].split("[UninstallDelete]", 1)[0]
 
-        for case in ("default", "custom", "nested-default", "same-folder", "current-custom"):
+        old_key = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{FED44346-501C-414C-A557-8F7BDA1AC94A}_is1"
+        moved = ("default", "custom", "codex-default", "codex-custom")  # cases that leave the old folder
+        for case in (*moved, "nested-default", "same-folder", "current-custom"):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 scratch = Path(temporary).resolve()
                 programs = scratch / "programs"
-                old = programs / "Select to TTS" if case in ("default", "nested-default") else scratch / "custom"
-                app = old / "Codex Speak" if case == "nested-default" else (
-                    old if case in ("same-folder", "current-custom") else programs / "Codex Speak")
+                old = {"default": programs / "Select to TTS", "nested-default": programs / "Select to TTS",
+                       "codex-default": programs / "Codex Speak"}.get(case, scratch / "custom")
+                app = old / "Harness Discussion" if case == "nested-default" else (
+                    old if case in ("same-folder", "current-custom") else programs / "Harness Discussion")
                 self.assertTrue(old.is_relative_to(scratch) and app.is_relative_to(scratch))
                 (old / "_internal").mkdir(parents=True)
                 (old / "keep.txt").write_text("unrelated user data")
-                previous_exe = "CodexSpeak.exe" if case == "current-custom" else "SelectToTTS.exe"
+                previous_exe = {"current-custom": "HarnessDiscussion.exe", "codex-default": "CodexSpeak.exe",
+                                "codex-custom": "CodexSpeak.exe"}.get(case, "SelectToTTS.exe")
                 uninstaller = old / ("unins001.exe" if case == "custom" else "unins000.exe")
                 for path in (old / previous_exe, uninstaller, uninstaller.with_suffix(".dat"), old / "_internal/old.data"):
                     path.write_text("old app")
+                for shortcut in (scratch / "shortcuts/Codex Speak.lnk", scratch / "desktop/Codex Speak.lnk"):
+                    shortcut.parent.mkdir()
+                    shortcut.write_text("old shortcut")
                 if case == "custom":
                     (old / "unins000.exe").write_text("another app's uninstaller")
                     (old / "unins000.dat").write_text("another app's uninstall data")
@@ -66,11 +73,14 @@ class Installer(unittest.TestCase):
                     "RegQueryStringValue", "PreviousInstall").replace("{autopf}", str(programs))
                 isolated_prepare = "function PrepareToInstall" + prepare.replace(
                     "RegQueryStringValue", "PreviousInstall").replace("StopApp;", "")
+                isolated_cleanup = cleanup.replace("RegDeleteKeyIncludingSubkeys", "DeletePreviousKey")
+                deleted_keys = scratch / "deleted-keys.txt"
+                deleted_literal = str(deleted_keys).replace("'", "''")
                 old_literal = str(old).replace("'", "''")
                 uninstall_literal = str(uninstaller).replace("'", "''")
                 script = definitions + f'''
 [Setup]
-AppName=Codex Speak installer regression check
+AppName=Harness Discussion installer regression check
 AppVersion=1.0
 DefaultDirName={{code:DefaultDir}}
 UsePreviousAppDir=no
@@ -100,11 +110,17 @@ begin
   Result := True;
 end;
 
+function DeletePreviousKey(RootKey: Integer; const SubKeyName: String): Boolean;
+begin
+  SaveStringToFile('{deleted_literal}', SubKeyName + #13#10, True);
+  Result := True;
+end;
+
 {isolated_default}
 
 {isolated_prepare}
 
-procedure CurStepChanged{cleanup}
+procedure CurStepChanged{isolated_cleanup}
 '''
                 harness = scratch / "check.iss"
                 harness.write_text(script, encoding="utf-8")
@@ -117,11 +133,17 @@ procedure CurStepChanged{cleanup}
                 installed = subprocess.run(args, capture_output=True, text=True, timeout=60)
                 self.assertEqual(installed.returncode, 0, (scratch / "setup.log").read_text())
                 self.assertEqual((old / "keep.txt").read_text(), "unrelated user data")
-                self.assertEqual((app / "CodexSpeak.exe").read_text(), "new app")
+                self.assertEqual((app / "HarnessDiscussion.exe").read_text(), "new app")
                 self.assertEqual((app / "_internal/new.data").read_text(), "new runtime")
-                if case in ("default", "custom"):
-                    self.assertFalse((old / "SelectToTTS.exe").exists())
+                self.assertEqual(deleted_keys.read_text().splitlines(), [old_key])  # never the new AppId
+                self.assertFalse((scratch / "shortcuts/Codex Speak.lnk").exists())
+                self.assertFalse((scratch / "desktop/Codex Speak.lnk").exists())
+                if case in moved:
+                    self.assertFalse((old / previous_exe).exists())
                     self.assertFalse((old / "_internal").exists())
+                if case in ("codex-default", "codex-custom"):
+                    self.assertFalse(uninstaller.exists())
+                    self.assertFalse(uninstaller.with_suffix(".dat").exists())
                 if case == "nested-default":
                     self.assertEqual((old / "_internal/old.data").read_text(), "old app")
                 if case == "custom":
