@@ -32,7 +32,7 @@ class App(Captions, Sources):
         self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
         self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
         self._continuous, self._last_caption, self._held_caption = False, "", ""
-        self._caption_steps = None
+        self._caption_steps = self._caption_held = None
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -305,6 +305,7 @@ class App(Captions, Sources):
 
     def pause(self):
         self.popup.set_caption_paused(True)
+        self._hold_captions()
         self.chain.pause()
 
     def resume(self):
@@ -312,9 +313,7 @@ class App(Captions, Sources):
         held, self._held_caption = self._held_caption, ""
         if held:
             self._show_caption(held)
-        steps, self._caption_steps = self._caption_steps, None
-        if steps:
-            steps()
+        self._resume_captions()
         self.chain.resume()
         if self._pending_next:
             self._pending_next = False

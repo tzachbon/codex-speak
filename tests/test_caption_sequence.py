@@ -101,7 +101,7 @@ def app():
     a.events, a._read_id = queue.Queue(), 0
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
     a._continuous, a._last_caption, a._held_caption = False, "", ""
-    a._caption_steps = None
+    a._caption_steps = a._caption_held = None
     a.cfg = {"sources": [["Codex", True], ["Edge", True]], "voices": {}, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
     a.refresh_statuses = lambda: None  # the status check has its own tests
@@ -243,18 +243,21 @@ class Sequence(unittest.TestCase):
         a = app()
         timers = []
         a.host.after = lambda ms, fn: timers.append((ms, fn))
-        a.play("One. Twenty chars here. Three.", None)
+        a.play("One. Twenty chars here. Three. Four.", None)
         a.chain.calls[0][2](None)
         pump(a)
         a.chain.calls[1][3]()
         pump(a)
         self.assertEqual(a.popup.caption, "Twenty chars here.")
         self.assertEqual(timers[-1][0], 1200)  # 18 characters at 15 a second
-        a.popup.paused = True
-        timers[-1][1]()
+        a.cfg["speed"] = 2.0  # this read keeps the speed it started with
+        a.pause()
+        timers[-1][1]()  # the old timer fires during the pause
         self.assertEqual(a.popup.caption, "Twenty chars here.")
         a.resume()
-        self.assertEqual(a.popup.caption, "Three.")
+        self.assertTrue(1100 <= timers[-1][0] <= 1200, timers[-1][0])  # what was left, not a fresh delay
+        timers[-1][1]()
+        self.assertEqual((a.popup.caption, timers[-1][0]), ("Three.", 400))  # at 1×, not the new 2×
 
     def test_prepare_is_opt_in_and_new_selection_replaces_exact_first_text(self):
         a = app()
