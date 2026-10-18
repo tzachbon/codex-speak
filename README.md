@@ -129,9 +129,9 @@ Use *Settings > Apps > Codex Speak*. This removes the app, its sign-in task, and
 ## Known limitations
 
 - Codex's realtime API is marked experimental. A Codex update can break it, and the app then falls back to Edge.
-- Speech is submitted one sentence or paragraph at a time, so gaps and changes in prosody can occur. Abbreviations can create shorter units. After the first successful sentence, the same engine reads the rest. Voice, language, and speed changes apply to the next complete selection.
-- Roughly 1 in 12 Codex reads in testing ended early or stayed silent. Silence falls back automatically. An early stop does not.
-- Each popup shown pre-starts a short Codex voice session. Sentence handoffs may need another session.
+- Codex reads a whole selection in one session, in pieces of up to 480 characters, with a short pause between pieces. It reads in its own words: links become site names, file paths become file names, and commit hashes are skipped. Other voices read one sentence or paragraph at a time, so gaps can occur. Voice, language, and speed changes apply to the next complete selection.
+- In testing, 5 of 16 long Codex reads had a fault: 2 lost the connection, 1 stopped early, and 2 said "Read it." aloud between pieces. Silence falls back automatically. An early stop does not.
+- Each popup shown pre-starts a short Codex voice session.
 - Choosing a language from the menu moves keyboard focus away from the source app. The text is already captured.
 - Only mouse selections trigger the bar. Keyboard selections (Shift+arrows) don't.
 - Pausing the Windows voice takes effect after about a second, because SAPI keeps playing audio it has already buffered. Codex and Edge pause at once.
