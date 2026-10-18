@@ -8,7 +8,9 @@ if sys.platform != "win32":
 from pynput.mouse import Button
 
 from codex_speak import settings
-from codex_speak.win import clipboard
+from unittest import mock
+
+from codex_speak.win import clipboard, selection
 from codex_speak.win.trigger import SelectionTrigger
 from codex_speak.win.voice import sapi_rate
 
@@ -20,6 +22,26 @@ class Clipboard(unittest.TestCase):
         self.assertTrue(clipboard.safe_to_borrow({2, 8, 17}))  # bitmap backed by a DIB
         self.assertFalse(clipboard.safe_to_borrow({2}))  # bare HBITMAP
         self.assertFalse(clipboard.safe_to_borrow({14, 13}))  # enhanced metafile
+
+
+class ListNumbers(unittest.TestCase):
+    def read(self, uia, window="Chrome_WidgetWin_1", fallback=True,
+             html="<p>Please:</p><ol><li>A</li><li>B</li></ol>"):
+        with mock.patch.object(selection, "_via_uia", return_value=uia), \
+                mock.patch.object(selection, "_foreground_class", return_value=window), \
+                mock.patch.object(selection, "_via_clipboard", return_value=("copied", html)) as self.copy:
+            return selection.read(fallback)
+
+    def test_web_list_numbers_come_from_the_copied_html(self):
+        self.assertEqual(self.read("Please:\nA\nB"), "Please:\n1. A\n2. B")
+
+    def test_other_apps_settings_and_text_are_left_alone(self):
+        for kw in ({"window": "OpusApp"}, {"fallback": False}):
+            self.assertEqual(self.read("Please:\nA\nB", **kw), "Please:\nA\nB")
+            self.copy.assert_not_called()
+        self.assertEqual(self.read("Please:\n1. A"), "Please:\n1. A")
+        self.copy.assert_not_called()
+        self.assertEqual(self.read("A\nB", html="<ul><li>A</li></ul>"), "A\nB")
 
 
 class Trigger(unittest.TestCase):

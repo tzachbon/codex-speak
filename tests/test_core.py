@@ -18,8 +18,9 @@ class Engine:
         self.name, self.fail, self.paused = name, fail, threading.Event()
         self.spoken, self.done = [], []
 
-    def speak(self, text, tag, on_done, on_audio):
+    def speak(self, text, tag, on_done, on_audio, on_caption=None):
         self.spoken.append(text)
+        self.on_caption = on_caption
         if self.fail:
             return on_done(NoAudioError("offline"))
         on_audio()
@@ -125,7 +126,7 @@ class CoreTest(unittest.TestCase):
         return core.App(self.host)
 
     def test_two_sentences_play_in_order_and_pause_holds_the_boundary(self):
-        engine = Engine("Codex")
+        engine = Engine("macOS")
         app = self.make(engine)
         app.play("First one. Second one.", None)
         app.pump()
@@ -145,7 +146,7 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(self.host.notes, [])
 
     def test_stop_ignores_late_callbacks(self):
-        engine = Engine("Codex")
+        engine = Engine("macOS")
         app = self.make(engine)
         app.play("First one. Second one.", None)
         app.stop()
@@ -158,6 +159,57 @@ class CoreTest(unittest.TestCase):
         app = self.make(codex, voice)
         app.play("Hello there.", None)
         self.assertEqual((codex.spoken, voice.spoken), (["Hello there."], ["Hello there."]))
+
+    def captions(self, app, *transcripts):
+        """Feeds Codex transcript updates and runs the caption delay timers they schedule."""
+        for text in transcripts:
+            app.chain._active.on_caption(text)
+        app.pump()
+        timers = [t for t in self.host.timers if t[0] == int(core.CAPTION_DELAY_S * 1000)]
+        self.host.timers = [t for t in self.host.timers if t not in timers]
+        for _, fn in timers:
+            fn()
+
+    def test_codex_reads_the_whole_selection_in_one_session(self):
+        engine = Engine("Codex")
+        app = self.make(engine)
+        app.play("First one. Second one.", None)
+        app.pump()
+        self.assertEqual(engine.spoken, ["First one. Second one."])
+        self.assertEqual(app.popup.caption, "")  # the transcript sets it, not the selection
+        self.captions(app, "First one. Sec")
+        self.assertEqual(app.popup.caption, "Sec")
+        self.captions(app, "First one. Second one.")
+        self.assertEqual(app.popup.caption, "Second one.")
+
+    def test_codex_captions_from_an_old_read_are_ignored(self):
+        engine = Engine("Codex")
+        app = self.make(engine)
+        app.play("First one. Second one.", None)
+        app.stop()
+        self.captions(app, "First one.")
+        self.assertEqual(app.popup.caption, "")
+
+    def test_codex_captions_are_held_while_paused(self):
+        engine = Engine("Codex")
+        app = self.make(engine)
+        app.play("First one. Second one.", None)
+        self.captions(app, "First one.")
+        app.popup.paused = True
+        app.pause()
+        self.captions(app, "First one. Sec")
+        self.assertEqual(app.popup.caption, "First one.")
+        app.popup.paused = False
+        app.resume()
+        self.assertEqual(app.popup.caption, "Sec")
+
+    def test_codex_failover_shows_the_whole_selection(self):
+        codex, voice = Engine("Codex", fail=True), Engine("macOS")
+        app = self.make(codex, voice)
+        app.play("First one. Second one.", None)
+        app.pump()
+        self.assertEqual(voice.spoken, ["First one. Second one."])
+        self.assertEqual(app.popup.caption, "First one. Second one.")
 
     def test_start_arms_the_trigger_and_the_update_timer(self):
         app = self.make(Engine("Codex"))

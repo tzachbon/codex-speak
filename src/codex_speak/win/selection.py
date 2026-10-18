@@ -6,11 +6,12 @@ import time
 import uiautomation as uia
 from pynput.keyboard import Controller, Key
 
-from .. import settings
+from .. import richtext, settings
 from . import clipboard
 
 MAX_CHARS = 4000
 TERMINALS = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS"}  # Ctrl+C means "interrupt" there
+WEB = {"Chrome_WidgetWin_1", "MozillaWindowClass"}  # Chrome, Edge, Electron apps, Firefox
 PASSWORD = object()
 os.makedirs(settings.TEMP_DIR, exist_ok=True)
 uia.Logger.SetLogFile(os.path.join(settings.TEMP_DIR, "uia.log"))  # default: cwd
@@ -32,11 +33,21 @@ def _via_uia():
     return ""
 
 
-def _via_clipboard() -> str:
-    """Borrows the clipboard for one Ctrl+C and puts every format back afterwards."""
+def _foreground_class() -> str:
     cls = ctypes.create_unicode_buffer(64)
     ctypes.windll.user32.GetClassNameW(ctypes.windll.user32.GetForegroundWindow(), cls, 64)
-    if cls.value in TERMINALS or not clipboard.safe_to_borrow(clipboard.formats()):
+    return cls.value
+
+
+def _via_clipboard(html=False):
+    """Borrows the clipboard for one Ctrl+C and puts every format back afterwards. With `html`: (text, HTML)."""
+    if html:
+        return _copy(lambda: (clipboard.text(), clipboard.html())) or ("", "")
+    return _copy(clipboard.text)
+
+
+def _copy(read):
+    if _foreground_class() in TERMINALS or not clipboard.safe_to_borrow(clipboard.formats()):
         return ""
     saved, seq = clipboard.snapshot(), clipboard.sequence()
     kb = Controller()
@@ -49,7 +60,7 @@ def _via_clipboard() -> str:
         return ""  # nothing was selected, nothing was copied
     time.sleep(0.03)  # let the app finish writing every format
     try:
-        return clipboard.text()
+        return read()
     finally:
         clipboard.restore(saved)
 
@@ -60,4 +71,10 @@ def read(clipboard_fallback: bool = True) -> str:
         return ""
     if not text.strip() and clipboard_fallback:
         text = _via_clipboard()
+    elif ("\n" in text and clipboard_fallback and not richtext.has_numbers(text)
+          and _foreground_class() in WEB):
+        # web pages draw list numbers with CSS: the selected text drops them, the copied HTML keeps them
+        _, html = _via_clipboard(html=True)
+        if "<ol" in html:
+            text = richtext.html_to_text(html)
     return text.strip()[:MAX_CHARS]

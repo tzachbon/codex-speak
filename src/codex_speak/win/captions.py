@@ -183,8 +183,14 @@ class CaptionSurface:
         parent.bind("<Destroy>", self._parent_destroyed, add="+")
 
     def show_text(self, text):
+        text = " ".join(text.split())
+        if self.text and text.startswith(self.text):  # a Codex caption growing word by word keeps scrolling
+            self.text = text
+            self._redraw()
+            self._schedule()
+            return
         self._cancel()
-        self.text = " ".join(text.split())
+        self.text = text
         self.offset, self._last_tick, self._key = 0.0, None, None
         if self.text:
             self._redraw()

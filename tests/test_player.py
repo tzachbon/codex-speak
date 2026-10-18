@@ -82,6 +82,12 @@ class JitterCushion(unittest.TestCase):
         self.at(10.02, p.write, _pcm(1000))
         self.assertEqual(self.fill(p, 10.03), _pcm(1000))
 
+    def test_a_callback_before_the_first_write_keeps_the_cushion(self):
+        p = self.player(16, holding=True)
+        self.assertEqual(self.fill(p, 10.0), bytes(8))
+        self.at(10.01, p.write, _pcm(1000))
+        self.assertEqual(self.fill(p, 10.02), bytes(8))
+
     def test_plays_the_tail_once_the_writes_end(self):
         p = self.player(16, holding=True)
         self.at(10.0, p.write, _pcm(1000))

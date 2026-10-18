@@ -15,6 +15,8 @@ import time
 from . import lang, sentences, settings, stt_server, updates
 
 log = logging.getLogger("codex_speak")
+# Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
+CAPTION_DELAY_S = 0.6
 
 
 class App:
@@ -23,6 +25,7 @@ class App:
         host.app = self
         self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
         self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
+        self._continuous, self._last_caption, self._held_caption = False, "", ""
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -203,7 +206,7 @@ class App:
     def _prepare_selection(self, tag=None):
         if self._read_options or not self.popup.visible:
             return
-        units = sentences.split(self.popup.text)
+        units = self._units_for(self.popup.text)
         if units:
             self.chain.prepare(tag, units[0], fallback_tag=lang.detect(self.popup.text))
 
@@ -229,12 +232,20 @@ class App:
         if text and seq == self._seq:
             self.events.put(("show", text, x, y))
 
+    def _units_for(self, text):
+        """Codex reads the whole selection in one session; other engines go sentence by sentence."""
+        if self.chain.continuous():
+            return [text.strip()] if text.strip() else []
+        return sentences.split(text)
+
     def play(self, text, lang_tag):
         if self._read_options:
             self.stop()
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
-        self._units, self._unit_index, self._pending_next = sentences.split(text), 0, False
+        self._continuous = self.chain.continuous()
+        self._units, self._unit_index, self._pending_next = self._units_for(text), 0, False
+        self._last_caption = self._held_caption = ""
         self._read_options = (lang_tag, self.cfg["engine"], self.cfg["speed"], lang.detect(text))
         self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.popup.set_caption("")
@@ -249,7 +260,8 @@ class App:
         self.chain.speak(self._units[index], self._read_options[0],
                          lambda err: self.events.put(("sentence_done", err, rid, index)),
                          lambda: (heard(), self.events.put(("audio", rid, index))),
-                         fallback_tag=self._read_options[3])
+                         fallback_tag=self._read_options[3],
+                         on_caption=lambda text: self.events.put(("caption", rid, index, text)))
 
     def _restore_speech_options(self):
         self._read_options = None
@@ -269,10 +281,27 @@ class App:
 
     def resume(self):
         self.popup.set_caption_paused(False)
+        held, self._held_caption = self._held_caption, ""
+        if held:
+            self._show_caption(held)
         self.chain.resume()
         if self._pending_next:
             self._pending_next = False
             self._start_unit()
+
+    def _caption(self, rid, index, transcript):
+        """Shows the sentence Codex is speaking, held while paused because the transcript keeps arriving."""
+        if rid != self._read_id or index != self._unit_index or not self._read_options:
+            return
+        if self.popup.paused:
+            self._held_caption = sentences.current(transcript)
+        else:
+            self._show_caption(sentences.current(transcript))
+
+    def _show_caption(self, text):
+        if text != self._last_caption:
+            self._last_caption = text
+            self.popup.set_caption(text)
 
     def _logged(self, text, on_done):
         """(done, heard): done logs the read, heard marks the first audio, which ends the spinner."""
@@ -332,7 +361,10 @@ class App:
         elif kind == "audio":
             if args[0] == self._read_id and args[1] == self._unit_index and self._read_options:
                 p.set_loading(False)
-                p.set_caption(self._units[self._unit_index])
+                if not self._continuous or self.chain.active_name != "Codex":
+                    p.set_caption(self._units[self._unit_index])  # Codex captions follow its transcript
+        elif kind == "caption":
+            self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":
             err, rid, index = args
             if rid != self._read_id or index != self._unit_index or not self._read_options:

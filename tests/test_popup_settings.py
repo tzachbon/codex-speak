@@ -23,8 +23,10 @@ class Speech:
     def __init__(self, name):
         self.name, self.paused = name, threading.Event()
 
-    def speak(self, text, tag, done, heard):
+    def speak(self, text, tag, done, heard, on_caption=None):
         heard()
+        if on_caption:
+            on_caption(text)  # Codex captions follow its transcript
 
     def stop(self):
         self.paused.clear()
@@ -49,6 +51,7 @@ class PopupSettings(unittest.TestCase):
         self.boundaries.enter_context(patch.object(settings, "load", return_value=dict(settings.DEFAULTS)))
         self.boundaries.enter_context(patch.object(settings, "startup_enabled", return_value=False))
         self.boundaries.enter_context(patch.object(settings_ui, "stt_connection", return_value=("", "")))
+        self.boundaries.enter_context(patch.object(core, "CAPTION_DELAY_S", 0))
         for factory, name in (("CodexEngine", "Codex"), ("EdgeEngine", "Edge"), ("SapiEngine", "Windows")):
             self.boundaries.enter_context(patch.object(win_host, factory, return_value=Speech(name)))
         self.host = win_host.TkHost()

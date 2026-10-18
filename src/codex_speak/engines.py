@@ -151,6 +151,14 @@ class Chain:
     def busy(self):
         return not self._idle.is_set()
 
+    @property
+    def active_name(self):
+        return self._active.name if self._active else None
+
+    def continuous(self):
+        """Codex reads a whole selection in one session; other engines read sentence by sentence."""
+        return self.order()[0].name == "Codex"
+
     def order(self):
         if self.only:
             return [e for e in self.engines if e.name == self.only] or self.engines
@@ -166,7 +174,7 @@ class Chain:
             tag = lang_tag if first.name == "Codex" else lang_tag or fallback_tag
             first.prepare(tag, text if self.prefetch else None)
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None, on_caption=None):
         self._gen += 1
         self._idle = idle = threading.Event()
         self._paused = False
@@ -191,8 +199,10 @@ class Chain:
                 idle.set()  # a late completion cannot mark a newer read idle
                 on_done(err)
 
-            tag = lang_tag if engine.name == "Codex" else lang_tag or fallback_tag
-            engine.speak(text, tag, done, lambda: gen == self._gen and on_audio())
+            codex = engine.name == "Codex"
+            kw = {"on_caption": lambda t: gen == self._gen and on_caption(t)} if codex and on_caption else {}
+            engine.speak(text, lang_tag if codex else lang_tag or fallback_tag, done,
+                         lambda: gen == self._gen and on_audio(), **kw)
             if gen == self._gen and self._paused:
                 engine.pause()  # a pause made before a fallback carries over to the next engine
 

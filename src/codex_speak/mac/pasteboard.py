@@ -50,14 +50,16 @@ def _cmd_c():
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
-def copy_selection() -> str:
+def copy_selection(html=False):
+    """The copied text, or (text, HTML or None) when `html` is set."""
     with _borrow:
-        return _copy_selection()
+        text, markup = _copy_selection()
+    return (text, markup) if html else text
 
 
 def _copy_selection():
     if not safe_to_borrow(types()):
-        return ""
+        return "", None
     board = _board()
     saved, count = snapshot(), board.changeCount()
     _cmd_c()
@@ -65,11 +67,13 @@ def _copy_selection():
     while board.changeCount() == count and time.monotonic() < deadline:
         time.sleep(0.01)
     if board.changeCount() == count:
-        return ""  # nothing was selected, nothing was copied
+        return "", None  # nothing was selected, nothing was copied
     time.sleep(0.03)  # let the app finish writing every type
     try:
         if not safe_to_borrow(types()):
-            return ""  # the source marked what it copied as a secret
-        return str(board.stringForType_(AppKit.NSPasteboardTypeString) or "")
+            return "", None  # the source marked what it copied as a secret
+        html = board.dataForType_("public.html")
+        return (str(board.stringForType_(AppKit.NSPasteboardTypeString) or ""),
+                bytes(html).decode("utf-8", "replace") if html is not None else None)
     finally:
         restore(saved)

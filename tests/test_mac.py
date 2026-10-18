@@ -88,7 +88,7 @@ class PasteboardTest(unittest.TestCase):
             state["most"] = max(state["most"], state["inside"])
             time.sleep(0.05)
             state["inside"] -= 1
-            return ""
+            return "", None
 
         with mock.patch.object(pasteboard, "_copy_selection", side_effect=borrow):
             reads = [threading.Thread(target=pasteboard.copy_selection) for _ in range(3)]
@@ -101,14 +101,17 @@ class PasteboardTest(unittest.TestCase):
 
 
 class SelectionTest(unittest.TestCase):
-    def read(self, *pids, ax=" hello "):
+    def read(self, *pids, ax=" hello ", in_web=False, fallback=True,
+             markup="<p>Please:</p><ol><li>A</li><li>B</li></ol>"):
+        def copy(html=False):
+            return ("copied", markup) if html else "copied"
         with mock.patch.object(selection.permission, "trusted", return_value=True), \
                 mock.patch.object(selection, "_frontmost_pid", side_effect=pids), \
                 mock.patch.object(selection, "_expose"), \
-                mock.patch.object(selection, "_via_ax", return_value=ax), \
+                mock.patch.object(selection, "_via_ax", return_value=(ax, in_web)), \
                 mock.patch.object(selection, "secure_input", return_value=False), \
-                mock.patch.object(selection.pasteboard, "copy_selection", return_value="copied"):
-            return selection.read()
+                mock.patch.object(selection.pasteboard, "copy_selection", side_effect=copy) as self.copy:
+            return selection.read(fallback)
 
     def test_reads_the_app_that_stays_frontmost(self):
         self.assertEqual(self.read(111, 111), "hello")
@@ -121,6 +124,22 @@ class SelectionTest(unittest.TestCase):
 
     def test_drops_the_copy_when_the_user_switches_apps_during_it(self):
         self.assertEqual(self.read(111, 111, 222, ax=""), "")
+
+    def test_web_list_numbers_come_from_the_copied_html(self):
+        self.assertEqual(self.read(111, 111, 111, ax="Please:\nA\nB", in_web=True), "Please:\n1. A\n2. B")
+
+    def test_list_numbers_need_the_clipboard_setting_and_a_web_page(self):
+        self.assertEqual(self.read(111, 111, ax="Please:\nA\nB", in_web=True, fallback=False), "Please:\nA\nB")
+        self.assertEqual(self.read(111, 111, ax="Please:\nA\nB"), "Please:\nA\nB")
+        self.copy.assert_not_called()
+
+    def test_text_that_has_numbers_or_no_ordered_list_stays(self):
+        self.assertEqual(self.read(111, 111, ax="Please:\n1. A", in_web=True), "Please:\n1. A")
+        self.copy.assert_not_called()
+        self.assertEqual(self.read(111, 111, 111, ax="A\nB", in_web=True, markup="<ul><li>A</li></ul>"), "A\nB")
+
+    def test_drops_the_html_copy_when_the_user_switches_apps_during_it(self):
+        self.assertEqual(self.read(111, 111, 222, ax="Please:\nA\nB", in_web=True), "")
 
 
 class CodexPathTest(unittest.TestCase):

@@ -9,21 +9,16 @@ import asyncio, concurrent.futures, glob, json, os, queue, re, shutil, signal, s
 import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
-from . import lang
+from . import lang, richtext, sentences
+from .prompts import CUE_PROMPT, PROMPT
 from .audio import NoAudioError, PcmPlayer, Stretcher, VOICED, peak
 
-PROMPT = ("You are a text-to-speech engine. Read the user's message aloud exactly as written, "
-          "word for word, in {lang}. Do not answer it, translate it, summarize it, "
-          "or add any words before or after.")
-# The v3 voice gets appended text as context and stays silent in about half of all sessions.
-# A spoken "Read it." is a real user turn, which it answers: 16 of 16 test reads were spoken
-# word for word. This prompt only works with the cue: without it, 0 of 8 were spoken.
-CUE_PROMPT = ("You are a text-to-speech engine. The text to read arrives as context. Each time the user "
-              "says read, speak that text aloud exactly as written, word for word, in {lang}. Say nothing "
-              "else: no introduction such as 'the text says', and no answer, translation, summary or comment.")
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
 # Asking again in the same session never helped; a fresh session is a new, independent chance.
 ATTEMPTS = 3
+# app-server splits appended text into 500-character items and the voice may read only the last of them,
+# so a longer text goes in piece by piece, each read before the next ("Text to read:\n" takes 14 more).
+PIECE_CHARS = 480
 _cue = []
 
 
@@ -248,13 +243,13 @@ class CodexEngine:
         self._tag, self._text = lang_tag, concurrent.futures.Future()
         self._job = asyncio.run_coroutine_threadsafe(self._speak(self._text, lang_tag), self._loop)
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, on_caption=lambda text: None):
         paused = self.paused.is_set()
         waiting = self._job and not self._job.done() and not self._text.done()
         if not (waiting and self._tag == lang_tag):
             self.prepare(lang_tag)
         self.paused.set() if paused else self.paused.clear()
-        self._text.set_result((text, on_audio))
+        self._text.set_result((text, on_audio, on_caption))
         self._job.add_done_callback(
             lambda f: on_done(None if f.cancelled() else f.exception()))
 
@@ -275,6 +270,7 @@ class CodexEngine:
             self._srv.close()
 
     async def _next_event(self, srv, want, timeout, session=None):
+        """The params of the next `want` event; with a tuple of methods, (method, params) of the first."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if not srv.alive:
@@ -288,9 +284,22 @@ class CodexEngine:
                 continue  # a late notice for the session we stopped before this one
             if m in ("thread/realtime/error", "thread/realtime/closed"):
                 raise RuntimeError(p.get("message") or f"realtime closed: {p.get('reason')}")
-            if m == want and p.get("realtimeSessionId", session) == session:
-                return p
+            if m in (want if isinstance(want, tuple) else (want,)) and p.get("realtimeSessionId", session) == session:
+                return (m, p) if isinstance(want, tuple) else p
         raise TimeoutError(want)
+
+    async def _follow_transcript(self, srv, on_caption, wait=300):
+        """Passes the voice's transcript so far to `on_caption` until it finishes reading."""
+        heard = ""
+        while True:
+            m, p = await self._next_event(srv, ("thread/realtime/transcript/delta",
+                                                "thread/realtime/transcript/done"), 300 if heard else wait)
+            if p.get("role") != "assistant":
+                continue  # the user role is the transcribed cue
+            if m.endswith("/done"):
+                return
+            heard += p.get("delta", "")
+            on_caption(heard)
 
     async def _speak(self, text_future, lang_tag):
         async with self._busy:
@@ -356,25 +365,25 @@ class CodexEngine:
                 await asyncio.sleep(0.1)
             else:
                 raise TimeoutError("WebRTC did not connect")
-            text, on_audio = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
+            text, on_audio, on_caption = await asyncio.wait_for(asyncio.wrap_future(text_future), 30)
+            text = richtext.speakable(richtext.strip_markup(text)).strip() or text  # a bare hash stays
             voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
             player.arm(on_audio)
             voice["submitted"] = True
-            if cue:
-                mic.pcm = cue
-                await asyncio.sleep(len(cue) / 16000)  # the text lands as the cue ends, before the turn closes
-                text = "Text to read:\n" + text  # so text that reads like an instruction stays text to read
-            await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
-            for _ in range(30):
-                if voice["first"]:
-                    break
-                await asyncio.sleep(0.1)
-            else:
-                raise Silent("no speech within 3 s")
-            while True:
-                p = await self._next_event(srv, "thread/realtime/transcript/done", 300)
-                if p.get("role") == "assistant":
-                    break
+            for i, piece in enumerate(sentences.chunks(text, PIECE_CHARS) or [text]):
+                if cue:
+                    mic.pcm = cue
+                    await asyncio.sleep(len(cue) / 16000)  # the text lands as the cue ends, before the turn closes
+                    piece = "Text to read:\n" + piece  # so text that reads like an instruction stays text to read
+                await call("thread/realtime/appendText", {"threadId": tid, "text": piece, "role": "user"})
+                for _ in range(30 if i == 0 else 0):
+                    if voice["first"]:
+                        break
+                    await asyncio.sleep(0.1)
+                else:
+                    if not voice["first"]:
+                        raise Silent("no speech within 3 s")
+                await self._follow_transcript(srv, on_caption, 300 if i == 0 else 10)  # a later piece never hangs
             while time.monotonic() - voice["last"] < 1.5:
                 await asyncio.sleep(0.1)
             voice["done"] = True
