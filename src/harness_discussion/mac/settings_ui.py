@@ -95,8 +95,8 @@ class SettingsWindow:
                               "Copies the selection with ⌘C, then puts your clipboard back.",
                               self.cfg["clipboard_fallback"], lambda on: self._set("clipboard_fallback", on), WIDTH)
         early, _ = ui.option("Prepare speech when I select text",
-                             "Sends the first sentence to the first source before you press Play, so speech "
-                             "starts sooner.", self.cfg["prefetch"], lambda on: self._set("prefetch", on), WIDTH)
+                             "When Cursor reads first, sends the first sentence to Cursor before you press "
+                             "Play, so speech starts sooner.", self.cfg["prefetch"], lambda on: self._set("prefetch", on), WIDTH)
         reading = [_card([hidden, _divider(), early])]
 
         # Speech to Text

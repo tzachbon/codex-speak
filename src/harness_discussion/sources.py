@@ -1,4 +1,5 @@
 """App's voice-source state: the cached statuses, what makes a source usable, and the floating bar's source button."""
+import atexit
 import logging
 import subprocess
 import threading
@@ -14,7 +15,14 @@ def _codex_login():
     from .codex_rt import SPAWN, codex_exe
     p = subprocess.Popen([codex_exe(), "login"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, **SPAWN)
-    threading.Timer(600, p.kill).start()  # an abandoned sign-in must not keep its port forever
+    atexit.register(p.kill)  # quitting the app ends an unfinished sign-in
+
+    def wait():
+        try:
+            p.wait(600)
+        except subprocess.TimeoutExpired:
+            p.kill()  # an abandoned sign-in must not keep its port forever
+    threading.Thread(target=wait, daemon=True).start()
 
 
 def fix(name, status):

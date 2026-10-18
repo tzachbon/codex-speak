@@ -207,13 +207,13 @@ class CoreTest(unittest.TestCase):
         app.resume()
         self.assertEqual(app.popup.caption, "Sec")
 
-    def test_codex_failover_shows_the_whole_selection(self):
+    def test_codex_failover_reads_the_whole_selection_and_captions_its_first_sentence(self):
         codex, voice = Engine("Codex", fail=True), Engine("macOS")
         app = self.make(codex, voice)
         app.play("First one. Second one.", None)
         app.pump()
         self.assertEqual(voice.spoken, ["First one. Second one."])
-        self.assertEqual(app.popup.caption, "First one. Second one.")
+        self.assertEqual(app.popup.caption, "First one.")
 
     def test_start_arms_the_trigger_and_the_update_timer(self):
         app = self.make(Engine("Codex"))

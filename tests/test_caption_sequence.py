@@ -101,6 +101,7 @@ def app():
     a.events, a._read_id = queue.Queue(), 0
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
     a._continuous, a._last_caption, a._held_caption = False, "", ""
+    a._caption_steps = None
     a.cfg = {"sources": [["Codex", True], ["Edge", True]], "voices": {}, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
     a.refresh_statuses = lambda: None  # the status check has its own tests
@@ -225,7 +226,7 @@ class Sequence(unittest.TestCase):
         old[3]()
         old[2](RuntimeError("late"))
         pump(a)
-        self.assertEqual((a.popup.caption, len(a.chain.calls), a.notifications), ("Two. Three.", 2, []))
+        self.assertEqual((a.popup.caption, len(a.chain.calls), a.notifications), ("Three.", 2, []))  # after() runs at once here
 
     def test_the_first_sentence_reads_alone_and_the_rest_as_one_piece_fetched_early(self):
         a = app()
@@ -237,6 +238,23 @@ class Sequence(unittest.TestCase):
         long = "A. " + "Word word word. " * 600
         self.assertEqual([len(u) <= 5000 for u in a._units_for(long)], [True, True, True])
         self.assertEqual(a._units_for("  \n "), [])
+
+    def test_a_piece_captions_one_sentence_at_a_time_and_pause_holds_the_next(self):
+        a = app()
+        timers = []
+        a.host.after = lambda ms, fn: timers.append((ms, fn))
+        a.play("One. Twenty chars here. Three.", None)
+        a.chain.calls[0][2](None)
+        pump(a)
+        a.chain.calls[1][3]()
+        pump(a)
+        self.assertEqual(a.popup.caption, "Twenty chars here.")
+        self.assertEqual(timers[-1][0], 1200)  # 18 characters at 15 a second
+        a.popup.paused = True
+        timers[-1][1]()
+        self.assertEqual(a.popup.caption, "Twenty chars here.")
+        a.resume()
+        self.assertEqual(a.popup.caption, "Three.")
 
     def test_prepare_is_opt_in_and_new_selection_replaces_exact_first_text(self):
         a = app()
