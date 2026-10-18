@@ -9,6 +9,7 @@ import queue
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,7 @@ class UpdateApp(unittest.TestCase):
         a = self.app
         a.host, a.chain = Mock(), Mock(busy=False)
         a.chain.engines = []
+        a.chain.order.return_value = [SimpleNamespace(name="Codex")]
         a.popup = Mock()
         a.cfg = {**settings.DEFAULTS, "auto_update": True}
         a.events, a.settings_win, a.stt = queue.Queue(), None, None
