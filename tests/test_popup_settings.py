@@ -127,6 +127,23 @@ class PopupSettings(unittest.TestCase):
         self.assertTrue(self.app.settings_win.win.winfo_viewable())
         self.assertFalse(popup.playing)
 
+    def test_source_label_follows_set_source_and_the_menu_moves_a_pick_first(self):
+        popup = self.app.popup
+        self.assertEqual(popup.source_btn.parts[1]["text"], "Cursor")  # first enabled, not yet checked
+        popup.set_source("Edge")
+        self.assertEqual(popup.source_btn.parts[1]["text"], "Edge")
+        self.app.statuses = {"Cursor": "signed_out"}
+        with patch.object(popup, "_post_menu"):
+            popup._source_menu()
+        menu = popup.sources_menu
+        self.assertEqual([menu.entrycget(i, "label") for i in range(menu.index("end") + 1)],
+                         ["Codex", "Edge", "Windows"])
+        with patch.object(settings, "save") as save:  # its default path is the real profile
+            menu.invoke(2)
+        save.assert_called_once()
+        self.assertEqual([n for n, _ in self.app.cfg["sources"]], ["Windows", "Cursor", "Codex", "Edge"])
+        self.assertEqual(popup.source_btn.parts[1]["text"], "Windows")
+
     def test_opening_settings_while_already_paused_does_not_resume(self):
         popup = self.app.popup
         self.click(popup.btn)

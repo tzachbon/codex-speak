@@ -80,11 +80,14 @@ def _screen_at(x, y):
 
 
 class Popup:
-    def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings):
+    def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
+                 on_source, sources):
+        """sources: returns the source names the menu offers; on_source(name) picks one."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
         self.on_lang, self.on_speed, self.on_settings = on_lang, on_speed, on_settings
+        self.on_source, self.sources = on_source, sources
         self.text, self.playing, self.paused, self.menu_open, self.loading = "", False, False, False, False
-        self._lang, self._speed, self._hide_timer = None, speed, None
+        self._lang, self._speed, self._source, self._hide_timer = None, speed, None, None
 
         self.btn = _icon_button("play.fill", "Play", self._toggle)
         self.stop_btn = _icon_button("stop.fill", "Stop", self._stop)
@@ -93,12 +96,13 @@ class Popup:
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
         self.lang_btn = _text_button("Auto", self._lang_menu)
         self.speed_btn = _text_button(settings.speed_label(speed), self._speed_menu)
+        self.source_btn = _text_button("", self._source_menu)
         settings_btn = _icon_button("gearshape", "Settings", self._open_settings)
         close_btn = _icon_button("xmark", "Close", self.close)
         divider = AppKit.NSBox.alloc().init()
         divider.setBoxType_(AppKit.NSBoxSeparator)
         row = ui.stack([self.btn, self.spinner, self.stop_btn, divider, self.lang_btn, self.speed_btn,
-                        settings_btn, close_btn], vertical=False, spacing=2)
+                        self.source_btn, settings_btn, close_btn], vertical=False, spacing=2)
         row.setEdgeInsets_((3, 6, 3, 6))
         self.spinner.setHidden_(True)
         self.stop_btn.setHidden_(True)
@@ -202,6 +206,12 @@ class Popup:
         self._speed = speed
         self.speed_btn.setTitle_(settings.speed_label(speed) + " ▾")
 
+    def set_source(self, name):
+        self._source = name
+        self.source_btn.setTitle_(name + " ▾")
+        if self.visible:  # names differ in width; show() sizes the panel otherwise
+            self.win.setContentSize_(self.win.contentView().fittingSize())
+
     def schedule_hide(self):
         self.cancel_hide()
         if not (self.playing or self.menu_open) and self.visible:  # a hidden popup must not stop reads
@@ -257,6 +267,9 @@ class Popup:
     def _speed_menu(self, button):
         self._popup(button, [(s, settings.speed_label(s)) for s in settings.SPEED_PRESETS], self._speed,
                     self._speed_changed)
+
+    def _source_menu(self, button):
+        self._popup(button, [(n, n) for n in self.sources()], self._source, self.on_source)
 
     def _set_lang(self, tag):
         self._lang = tag

@@ -55,6 +55,9 @@ class Popup:
     def set_speed(self, speed):
         pass
 
+    def set_source(self, name):
+        pass
+
     def configure_captions(self, *appearance):
         self.appearance = appearance
 
@@ -63,11 +66,14 @@ class Chain:
     def __init__(self):
         self.calls, self.prepared = [], []
         self.fallback_tags = []
-        self.only, self.last, self.prefetch = None, "Codex", False
+        self.only, self.last, self.prefetch, self.busy = None, "Codex", False, False
         self.engines = [SimpleNamespace(speed=1.0)]
 
     def continuous(self):
         return False
+
+    def order(self):
+        return [SimpleNamespace(name="Codex")]
 
     def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None, on_caption=None):
         self.calls.append((text, tag, done, heard, self.only, self.engines[0].speed))

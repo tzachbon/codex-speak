@@ -17,7 +17,7 @@ def _section(title, views):
 
 
 class SettingsWindow:
-    def __init__(self, app, show_guide):
+    def __init__(self, app, show_guide, welcome=False):
         self.app, self.cfg = app, dict(app.cfg)
         self._save_timer = None
 
@@ -46,9 +46,10 @@ class SettingsWindow:
         self.source_rows = {name: self._source_row(name) for name, _ in self.cfg["sources"]}
         self.sources = ui.stack([], spacing=6)
         self.refresh_sources()
+        self.welcome = ui.label(settings.WELCOME, 13, bold=True) if welcome else None
         reading = _section("Reading", [
             ui.stack([ui.label("Speed"), self.speed, self.speed_label], vertical=False),
-            self.sources,
+            *([self.welcome] if welcome else []), self.sources,
             ui.label("Voice sources read in this order. If one can't read, the next one does. Codex uses your "
                      "ChatGPT sign-in and can read slower but not faster, so above 1× the next source reads. "
                      "macOS voices stay on this Mac. Add voices in System Settings > Accessibility > Spoken "

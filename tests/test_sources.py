@@ -6,11 +6,11 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from harness_discussion import codex_rt, settings
+from harness_discussion import codex_rt, core, settings
 from harness_discussion.audio import NoAudioError
 from harness_discussion.engines import Chain
 
-from test_core import CoreTest, Engine
+from test_core import CoreTest, Engine, FakeHost
 
 ALL = settings.DEFAULT_SOURCES
 
@@ -226,6 +226,77 @@ class CoreSources(unittest.TestCase):
         app.refresh_statuses()  # the first one finished, so this one runs
         self.wait_for_statuses(app)
         self.assertEqual((len(calls), app.statuses), (2, {"Cursor": "expired"}))
+
+
+def wait_for_event(app):
+    for _ in range(200):
+        if not app.events.empty():
+            break
+        threading.Event().wait(0.01)
+    app.pump()
+
+
+class Bar(unittest.TestCase):
+    """The floating bar's source button and the first-run welcome."""
+    make = CoreTest.make
+
+    def test_label_shows_the_engine_while_reading_then_the_first_ready_source(self):
+        app = self.make(Engine("Cursor", fail=True), Engine("Codex"))
+        self.assertEqual(app.popup.source, "Cursor")  # no status yet: the first enabled source
+        app.play("Hello.", None)
+        app.pump()
+        self.assertEqual(app.popup.source, "Codex")  # Cursor had no audio, Codex speaks
+        app.chain._active.done[0](None)
+        app.pump()
+        self.assertEqual(app.popup.source, "Cursor")
+
+    def test_a_source_not_ready_is_skipped_by_the_label_and_the_menu(self):
+        cursor, edge = Engine("Cursor"), Engine("Edge")
+        cursor.status = lambda: "signed_out"
+        app = self.make(cursor, Engine("Codex"), edge)
+        app.change("sources", [["Cursor", True], ["Codex", False], ["Edge", True]])
+        app.refresh_statuses()
+        wait_for_event(app)
+        self.assertEqual(app.popup.source, "Edge")
+        self.assertEqual(app.popup.callbacks["sources"](), ["Edge"])
+
+    def test_with_no_enabled_source_ready_the_menu_lists_what_a_read_would_use(self):
+        cursor, codex = Engine("Cursor"), Engine("Codex")
+        cursor.status = lambda: "signed_out"
+        app = self.make(cursor, codex, Engine("Edge"))
+        app.change("sources", [["Cursor", True], ["Codex", False], ["Edge", False]])
+        app.refresh_statuses()
+        wait_for_event(app)
+        self.assertEqual((app.popup.callbacks["sources"](), app.popup.source), (["Cursor"], "Cursor"))
+
+    def test_picking_a_source_moves_it_first_saves_and_mirrors_settings(self):
+        app = self.make(Engine("Cursor"), Engine("Codex"), Engine("Edge"))
+        app.change("sources", [["Cursor", True], ["Codex", False], ["Edge", True]])
+        seen = []
+        app.settings_win = type("Win", (), {"alive": True, "set_sources": lambda self, v: seen.append(v)})()
+        settings.save.reset_mock()
+        app.popup.callbacks["on_source"]("Edge")
+        moved = [["Edge", True], ["Cursor", True], ["Codex", False]]
+        self.assertEqual((app.cfg["sources"], seen, app.popup.source), (moved, [moved], "Edge"))
+        settings.save.assert_called_once()
+
+    def test_first_run_opens_settings_with_the_welcome_and_a_second_start_does_not(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = os.path.join(folder.name, "settings.json")
+        def write(cfg):
+            with open(path, "w") as f:
+                json.dump(cfg, f)
+        with patch.object(settings, "PATH", path), patch.object(settings, "save", side_effect=write):
+            first = core.App(FakeHost([Engine("Codex")]))
+            first.pump()
+            self.assertEqual(first.host.opened, [True])
+            first.popup.callbacks["on_settings"]()
+            first.pump()
+            self.assertEqual(first.host.opened, [True, False])  # opened from the bar: no welcome
+            second = core.App(FakeHost([Engine("Codex")]))
+            second.pump()
+            self.assertEqual(second.host.opened, [])
 
 
 del CoreTest  # imported for its helpers; its tests run in test_core

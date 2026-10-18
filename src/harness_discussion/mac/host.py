@@ -87,8 +87,8 @@ class MacHost:
     def make_popup(self, speed, **callbacks):
         return Popup(speed, **callbacks)
 
-    def open_settings(self):
-        return SettingsWindow(self.app, lambda: self.watcher and self.watcher.show_guide())
+    def open_settings(self, welcome=False):
+        return SettingsWindow(self.app, lambda: self.watcher and self.watcher.show_guide(), welcome)
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)
