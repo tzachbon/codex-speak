@@ -18,9 +18,11 @@ DIR = os.path.join(APPDATA, "harness-discussion")
 LOCAL_DIR = os.path.join(LOCALAPPDATA, "harness-discussion")  # the same folder on macOS
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "harness-discussion")  # uninstall deletes it
-ENGINES = ("Codex", "macOS") if sys.platform == "darwin" else ("Codex", "Edge", "Windows")
-DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
-            "prefetch": False, "auto_update": sys.platform == "darwin", "caption_font_size": 10,
+DEFAULT_SOURCES = ["Cursor", "Codex", "macOS"] if sys.platform == "darwin" else ["Cursor", "Codex", "Edge", "Windows"]
+# sources: [name, enabled] in reading order. voices: source name -> voice id, checked by core.
+DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "speed": 1.0,
+            "clipboard_fallback": True, "stt_server": False, "prefetch": False,
+            "auto_update": sys.platform == "darwin", "caption_font_size": 10,
             "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
@@ -48,8 +50,19 @@ def load(path=PATH) -> dict:
     except (OSError, ValueError):
         saved = {}
     s = {k: saved.get(k, v) for k, v in DEFAULTS.items()} if isinstance(saved, dict) else dict(DEFAULTS)
-    if s["engine"] not in (None, *ENGINES):
-        s["engine"] = None
+    sources, seen = [], set()
+    for item in s["sources"] if isinstance(s["sources"], list) else []:
+        if (isinstance(item, list) and len(item) == 2 and item[0] in DEFAULT_SOURCES
+                and item[0] not in seen and isinstance(item[1], bool)):
+            seen.add(item[0])
+            sources.append(list(item))
+    sources += [[n, True] for n in DEFAULT_SOURCES if n not in seen]
+    legacy = saved.get("engine") if isinstance(saved, dict) else None
+    if legacy in DEFAULT_SOURCES and "sources" not in saved:  # Codex Speak saved one engine, or None for Auto
+        sources = [[legacy, True]] + [[n, False] for n in DEFAULT_SOURCES if n != legacy]
+    s["sources"] = sources
+    voices = s["voices"]
+    s["voices"] = {k: v for k, v in voices.items() if isinstance(v, str)} if isinstance(voices, dict) else {}
     speed = s["speed"]
     try:
         ok = isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed)
@@ -114,6 +127,15 @@ def save(s: dict, path=PATH) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(s, f, indent=2)
     os.replace(tmp, path)  # never leaves a half-written file behind
+
+
+STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Signed out — open Cursor and sign in",
+               "expired": "Sign-in expired — open Cursor"}
+
+
+def status_text(status) -> str:
+    """A Settings row's status; None until core's first check finishes."""
+    return STATUS_TEXT.get(status, "Checking…")
 
 
 def speed_label(speed: float) -> str:

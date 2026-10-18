@@ -10,8 +10,6 @@ from . import permission, startup, ui
 
 WIDTH = 440
 RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
-ENGINES = [(None, "Auto: Codex, then the macOS voice"), ("Codex", "Codex only"),
-           ("macOS", "macOS voice only (offline)")]
 
 
 def _section(title, views):
@@ -44,16 +42,17 @@ class SettingsWindow:
         ui.bind(self.speed, lambda s: self._speed_changed(s.doubleValue()))
         self.speed.widthAnchor().constraintEqualToConstant_(260).setActive_(True)
         self.speed_label = ui.label(settings.speed_label(self.cfg["speed"]))
-        self.engine = AppKit.NSPopUpButton.alloc().init()
-        self.engine.addItemsWithTitles_([title for _, title in ENGINES])
-        self.engine.selectItemAtIndex_([e for e, _ in ENGINES].index(self.cfg["engine"]))
-        ui.bind(self.engine, lambda s: self._set("engine", ENGINES[s.indexOfSelectedItem()][0]))
+        self._engines = {e.name: e for e in app.chain.engines}
+        self.source_rows = {name: self._source_row(name) for name, _ in self.cfg["sources"]}
+        self.sources = ui.stack([], spacing=6)
+        self.refresh_sources()
         reading = _section("Reading", [
             ui.stack([ui.label("Speed"), self.speed, self.speed_label], vertical=False),
-            ui.stack([ui.label("Voice"), self.engine], vertical=False),
-            ui.label("Codex uses your ChatGPT sign-in and can read slower but not faster, so above 1× Auto "
-                     "uses the macOS voice. macOS voices stay on this Mac. Add voices in System Settings > "
-                     "Accessibility > Spoken Content.", 11, secondary=True, width=WIDTH),
+            self.sources,
+            ui.label("Voice sources read in this order. If one can't read, the next one does. Codex uses your "
+                     "ChatGPT sign-in and can read slower but not faster, so above 1× the next source reads. "
+                     "macOS voices stay on this Mac. Add voices in System Settings > Accessibility > Spoken "
+                     "Content.", 11, secondary=True, width=WIDTH),
             ui.button("Test voice", self._test)])
 
         selection = _section("Selection", [
@@ -62,7 +61,8 @@ class SettingsWindow:
             ui.label("Copies the selection with ⌘C, then restores your clipboard.", 11, secondary=True),
             ui.checkbox("Prepare speech as soon as I select text", self.cfg["prefetch"],
                         lambda on: self._set("prefetch", on)),
-            ui.label("Starts Codex before you press play, so speech begins sooner.", 11, secondary=True)])
+            ui.label("Starts the first source before you press play, so speech begins sooner.", 11,
+                     secondary=True)])
 
         self.stt_fields, self.stt_copy = {}, []
         rows = []
@@ -124,6 +124,68 @@ class SettingsWindow:
     def close(self):
         self._flush()
         self.win.close()
+
+    def _source_row(self, name):
+        """(enabled, status, voice picker or None, row, (test, up, down)) for one voice source."""
+        check = ui.checkbox(name, False, lambda on: self._set_sources(
+            [[n, on if n == name else was] for n, was in self.cfg["sources"]]))
+        status = ui.label("", 11, secondary=True, width=140)
+        choices = getattr(self._engines.get(name), "voices", ())
+        voice = AppKit.NSPopUpButton.alloc().init() if choices else None
+        if voice:
+            voice.addItemsWithTitles_([label for _, label in choices])
+            ui.bind(voice, lambda s: self._set("voices", {**self.cfg["voices"],
+                                                          name: choices[s.indexOfSelectedItem()][0]}))
+        slot = voice or ui.label("Default voice" if name == "Codex" else "", 12, secondary=True)
+        buttons = (ui.button("Test", lambda: self._test_source(name)),
+                   ui.button("↑", lambda: self._move(name, -1)), ui.button("↓", lambda: self._move(name, 1)))
+        buttons[1].setAccessibilityLabel_(f"Move {name} up")
+        buttons[2].setAccessibilityLabel_(f"Move {name} down")
+        for view, width in ((check, 80), (slot, 90)):
+            view.widthAnchor().constraintEqualToConstant_(width).setActive_(True)
+        return check, status, voice, ui.stack([check, status, slot, *buttons], vertical=False), buttons
+
+    def refresh_sources(self):
+        """Shows the rows in the saved order, with the statuses core last checked."""
+        sources = self.cfg["sources"]
+        for view in list(self.sources.arrangedSubviews()):
+            self.sources.removeArrangedSubview_(view)
+            view.removeFromSuperview()
+        for i, (name, enabled) in enumerate(sources):
+            check, status, voice, row, (_, up, down) = self.source_rows[name]
+            check.setState_(1 if enabled else 0)
+            status.setStringValue_(settings.status_text(self.app.statuses.get(name)))
+            if voice:
+                engine = self._engines[name]
+                ids = [v for v, _ in engine.voices]
+                chosen = self.cfg["voices"].get(name)
+                chosen = chosen if chosen in ids else getattr(engine, "default_voice", ids[0])
+                voice.selectItemAtIndex_(ids.index(chosen))
+            up.setEnabled_(i > 0)
+            down.setEnabled_(i < len(sources) - 1)
+            self.sources.addArrangedSubview_(row)
+        if hasattr(self, "win"):  # a status that wraps makes its row taller
+            self._fit()
+
+    def set_sources(self, sources):
+        """Mirrors an order changed elsewhere, without saving it again."""
+        self.cfg["sources"] = sources
+        self.refresh_sources()
+
+    def _set_sources(self, sources):
+        self._set("sources", sources)
+        self.refresh_sources()
+
+    def _move(self, name, step):
+        sources = [list(s) for s in self.cfg["sources"]]
+        i = [n for n, _ in sources].index(name)
+        if 0 <= i + step < len(sources):
+            sources[i], sources[i + step] = sources[i + step], sources[i]
+            self._set_sources(sources)
+
+    def _test_source(self, name):
+        self._flush()
+        self.app.play(f"This is {name}.", None, only=name)
 
     def _set(self, key, value):
         self.cfg[key] = value

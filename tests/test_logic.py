@@ -272,9 +272,8 @@ class Settings(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "sub", "settings.json")
             self.assertEqual(settings.load(path), settings.DEFAULTS)
-            engine = settings.ENGINES[-1]
-            settings.save({"engine": engine, "speed": 9, "clipboard_fallback": False}, path)
-            self.assertEqual(settings.load(path), {**settings.DEFAULTS, "engine": engine, "speed": 2.0,
+            settings.save({"voices": {"Cursor": "eve"}, "speed": 9, "clipboard_fallback": False}, path)
+            self.assertEqual(settings.load(path), {**settings.DEFAULTS, "voices": {"Cursor": "eve"}, "speed": 2.0,
                                                    "clipboard_fallback": False})
             for junk in ("{not json", "[1, 2]", "null", '{"engine": "Bogus", "speed": "fast"}',
                          '{"speed": NaN, "clipboard_fallback": "false"}', '{"speed": true, "engine": 3}', '{"speed": 1' + '0' * 400 + '}'):
@@ -282,12 +281,12 @@ class Settings(unittest.TestCase):
                     f.write(junk)
                 self.assertEqual(settings.load(path), settings.DEFAULTS)
 
-    def test_engine_values_are_per_platform(self):
+    def test_source_names_are_per_platform(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "settings.json")
             other = "Windows" if sys.platform == "darwin" else "macOS"
-            settings.save({"engine": other}, path)
-            self.assertIsNone(settings.load(path)["engine"])
+            settings.save({"engine": other, "sources": [[other, True]]}, path)
+            self.assertEqual(settings.load(path)["sources"], settings.DEFAULTS["sources"])
 
     def test_ax_granted_build_is_a_string_or_none(self):
         with tempfile.TemporaryDirectory() as d:

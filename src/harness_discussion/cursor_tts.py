@@ -94,11 +94,11 @@ def synthesize(text, voice, speed):
 
 
 class CursorEngine(EdgeEngine):
-    name, max_speed, voices = "Cursor", 2.0, VOICES
+    name, max_speed, voices, default_voice = "Cursor", 2.0, VOICES, "ara"
     voice = None  # set by core; None reads with Cursor's default
 
     def _request(self, text, tag):  # tag unused: Cursor detects the language itself
-        return text, self.voice or "ara", self.speed
+        return text, self.voice or self.default_voice, self.speed
 
     async def _source(self, text, voice, speed):
         yield await asyncio.to_thread(synthesize, text, voice, speed)  # one whole MP3; EdgeStream decodes it

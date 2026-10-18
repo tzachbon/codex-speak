@@ -118,7 +118,8 @@ class CoreTest(unittest.TestCase):
         path = Path(folder.name) / "settings.json"
         path.write_text(json.dumps(settings.DEFAULTS), encoding="utf-8")
         for p in (patch.object(settings, "PATH", str(path)),
-                  patch.object(settings, "load", return_value=dict(settings.DEFAULTS)),
+                  patch.object(settings, "load",  # the fake engines, not this platform's sources
+                               return_value={**settings.DEFAULTS, "sources": [[e.name, True] for e in engines]}),
                   patch.object(settings, "save")):
             p.start()
             self.addCleanup(p.stop)
