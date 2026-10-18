@@ -5,6 +5,7 @@ import tkinter as tk
 import pystray
 
 from ..codex_rt import CodexEngine
+from ..cursor_tts import CursorEngine
 from ..engines import EdgeEngine
 from ..icons import icon_image
 from . import selection
@@ -31,7 +32,7 @@ class TkHost:
             pystray.MenuItem("Quit", put("quit")))
 
     def engines(self):
-        return [CodexEngine(), EdgeEngine(), SapiEngine()]
+        return [CursorEngine(), CodexEngine(), EdgeEngine(), SapiEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(self.root, speed, **callbacks)

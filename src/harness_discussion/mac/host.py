@@ -4,6 +4,7 @@ import objc
 from Foundation import NSObject
 
 from ..codex_rt import CodexEngine
+from ..cursor_tts import CursorEngine
 from . import selection, ui
 from .popup import Popup
 from .settings_ui import SettingsWindow
@@ -81,7 +82,7 @@ class MacHost:
             win.refresh_permission()
 
     def engines(self):
-        return [CodexEngine(), MacVoiceEngine()]
+        return [CursorEngine(), CodexEngine(), MacVoiceEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(speed, **callbacks)

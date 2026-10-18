@@ -113,7 +113,7 @@ class EdgeEngine(_Threaded):
                     pcm = next(chunks, None)
                 except Exception as e:
                     if player is None:
-                        raise NoAudioError(f"Edge: {e}") from e
+                        raise NoAudioError(f"{self.name}: {e}") from e
                     raise  # speech already started: the chain must not restart it on another engine
                 if pcm is None:
                     break
@@ -123,13 +123,13 @@ class EdgeEngine(_Threaded):
                     try:
                         player = self.Player(24000, 1, self.paused)
                     except Exception as e:
-                        raise NoAudioError(f"Edge: {e}") from e
+                        raise NoAudioError(f"{self.name}: {e}") from e
                     player.arm(on_audio)
                 player.write(pcm)
             if stop.is_set():
                 return
             if player is None:
-                raise NoAudioError("Edge: no audio")
+                raise NoAudioError(f"{self.name}: no audio")
             while player.pending and player.active and not stop.wait(0.05):
                 pass  # the queue still holds speech after the download ends
         finally:
