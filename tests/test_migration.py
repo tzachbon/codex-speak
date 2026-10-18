@@ -98,11 +98,16 @@ class RenameMigration(unittest.TestCase):
 
     def test_legacy_dirs_include_codex_speak_once_per_data_folder(self):
         entries = [(o, n, k) for o, n, k in settings.LEGACY_DIRS if os.path.basename(o) == "codex-speak"]
-        expected = [(os.path.join(settings.APPDATA, "codex-speak"), settings.DIR, ("settings.json", "codex-speak.log"))]
-        if sys.platform != "darwin":  # macOS keeps both in one folder, so the first entry moves it whole
-            expected.append((os.path.join(settings.LOCALAPPDATA, "codex-speak"), settings.LOCAL_DIR, ("stt-connection.json",)))
+        if settings.APPDATA == settings.LOCALAPPDATA:  # macOS: one folder, so one entry moves it whole
+            expected = [(os.path.join(settings.APPDATA, "codex-speak"), settings.DIR,
+                         ("settings.json", "codex-speak.log", "stt-connection.json"))]
+        else:
+            expected = [(os.path.join(settings.APPDATA, "codex-speak"), settings.DIR, ("settings.json", "codex-speak.log")),
+                        (os.path.join(settings.LOCALAPPDATA, "codex-speak"), settings.LOCAL_DIR, ("stt-connection.json",))]
         self.assertEqual(entries, expected)
-        self.assertEqual([os.path.basename(o) for o, n, k in settings.LEGACY_DIRS][:2], ["select-to-tts"] * 2)
+        # newest app first, so an older folder cannot take the new name before it
+        self.assertEqual([os.path.basename(o) for o, n, k in settings.LEGACY_DIRS],
+                         ["codex-speak"] * len(expected) + ["select-to-tts"] * 2)
         self.assertEqual(os.path.basename(settings.DIR), "harness-discussion")
         self.assertEqual(os.path.basename(settings.LOCAL_DIR), "harness-discussion")
 
@@ -122,7 +127,8 @@ class RenameMigration(unittest.TestCase):
             old, new, dirs = self.codex_speak(d)
             with patch.object(settings.os, "rename", side_effect=PermissionError):
                 self.assertTrue(settings.migrate(dirs))
-            self.assertEqual(sorted(os.listdir(new)), [".migrated", "codex-speak.log", "settings.json"])
+            self.assertEqual(sorted(os.listdir(new)), sorted([".migrated", *dirs[0][2]]))
+            self.assertIn("codex-speak.log", dirs[0][2])
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
             self.assertTrue(os.path.exists(os.path.join(old, "settings.json")))
             with patch.object(settings.os, "rename", side_effect=PermissionError):
@@ -136,6 +142,23 @@ class RenameMigration(unittest.TestCase):
             self.assertFalse(settings.migrate(dirs))
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 0.75)
             self.assertTrue(os.path.isdir(old))
+
+    def test_codex_speak_wins_over_a_leftover_select_to_tts_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            # LEGACY_DIRS in its real order, with the data folders moved into the temp dir
+            roots = {settings.APPDATA: os.path.join(d, "roaming"), settings.LOCALAPPDATA: os.path.join(d, "local")}
+            moved = lambda p: os.path.join(roots[os.path.dirname(p)], os.path.basename(p))
+            dirs = [(moved(o), moved(n), k) for o, n, k in settings.LEGACY_DIRS]
+            for root in set(roots.values()):
+                for app, speed, token in (("select-to-tts", 0.5, "old"), ("codex-speak", 1.5, "new")):
+                    os.makedirs(os.path.join(root, app))
+                    settings.save({"speed": speed}, os.path.join(root, app, "settings.json"))
+                    with open(os.path.join(root, app, "stt-connection.json"), "w") as f:
+                        f.write(token)
+            self.assertTrue(settings.migrate(dirs))
+            self.assertEqual(settings.load(os.path.join(moved(settings.DIR), "settings.json"))["speed"], 1.5)
+            with open(os.path.join(moved(settings.LOCAL_DIR), "stt-connection.json")) as f:
+                self.assertEqual(f.read(), "new")
 
     def test_nothing_to_migrate_returns_false(self):
         with tempfile.TemporaryDirectory() as d:

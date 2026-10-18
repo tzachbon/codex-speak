@@ -72,6 +72,17 @@ class StartupTest(unittest.TestCase):
         with open(startup.plist_path(), "rb") as f:
             self.assertEqual(plistlib.load(f)["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/New.app"])
 
+    def test_source_run_leaves_the_codex_speak_login_item_alone(self):
+        os.makedirs(os.path.dirname(self.old_plist()))
+        with open(self.old_plist(), "wb") as f:
+            plistlib.dump({"Label": "com.tzachbon.codexspeak"}, f)
+        with mock.patch.object(startup, "bundle_path", return_value=None), \
+                mock.patch.object(startup.subprocess, "run") as run:
+            startup.refresh()
+        run.assert_not_called()
+        self.assertTrue(os.path.exists(self.old_plist()))
+        self.assertFalse(startup.enabled())
+
     def test_no_codex_speak_login_item_adds_none(self):
         with mock.patch.object(startup.subprocess, "run") as run:
             startup.refresh("/Applications/New.app")

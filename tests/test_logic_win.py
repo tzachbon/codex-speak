@@ -82,7 +82,7 @@ class SignInTask(unittest.TestCase):
 
     def test_legacy_task_names(self):
         self.assertEqual(settings.TASK, "Harness Discussion")
-        self.assertEqual(settings.LEGACY_TASKS, ("Select to TTS", "Codex Speak"))
+        self.assertEqual(settings.LEGACY_TASKS, ("Codex Speak", "Select to TTS"))  # newest first
 
     def test_installed_build_replaces_the_old_task(self):
         from unittest.mock import call, patch
@@ -110,6 +110,17 @@ class SignInTask(unittest.TestCase):
                     patch.object(settings.winreg, "OpenKey", side_effect=OSError):
                 settings.refresh_startup()
             self.assertEqual(set_startup.call_args_list, expected)
+
+    def test_disabled_select_to_tts_task_cannot_override_an_enabled_codex_speak_task(self):
+        from unittest.mock import call, patch
+        found = {"Codex Speak": True, "Select to TTS": False}
+        with patch.object(settings.sys, "frozen", True, create=True), \
+                patch.object(settings, "_task_enabled", side_effect=lambda name: found.get(name)), \
+                patch.object(settings, "set_startup") as set_startup, \
+                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+            settings.refresh_startup()
+        self.assertEqual(set_startup.call_args_list,
+                         [call(True), call(False, "Codex Speak"), call(False, "Select to TTS")])
 
     def test_current_task_state_wins_over_legacy_tasks(self):
         from unittest.mock import call, patch

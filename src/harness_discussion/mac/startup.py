@@ -48,14 +48,13 @@ def refresh(app=None) -> None:
     Codex Speak's login item with this app's, so only one of them starts."""
     app = app or bundle_path()
     old = plist_path(OLD_LABEL)
-    if os.path.exists(old):
+    if app and os.path.exists(old):  # a source run leaves the installed copy's login item alone
         try:
             subprocess.run(["/bin/launchctl", "bootout", f"gui/{os.getuid()}", old], capture_output=True, timeout=10)
         except (OSError, subprocess.SubprocessError):
             pass  # not loaded
         os.remove(old)
-        if app:
-            set_enabled(True, app)
+        set_enabled(True, app)
     if not app or not enabled():
         return
     try:

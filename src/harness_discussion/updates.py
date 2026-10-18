@@ -113,5 +113,5 @@ def install(path):
         raise ValueError("Updates install from the release page on this platform")
     if path.name != ASSET or not path.resolve().is_relative_to(CACHE.resolve()) or not path.is_file():
         raise ValueError("Invalid installer path")
-    subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART",
-                      f"/DIR={Path(sys.executable).parent}", f"/LOG={path.parent / 'setup.log'}"], shell=False)
+    # No /DIR: setup picks the folder, so a Codex Speak install moves to the new default.
+    subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART", f"/LOG={path.parent / 'setup.log'}"], shell=False)

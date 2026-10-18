@@ -26,15 +26,15 @@ SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Harness Discussion"  # the installer creates and removes it with `--startup on|off`
 # The app was called Select to TTS before 0.5.0, then Codex Speak. migrate() and refresh_startup()
-# move their folders and tasks.
-LEGACY_TASKS = ("Select to TTS", "Codex Speak")
-LEGACY_DIRS = ((os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
+# move their folders and tasks, newest app first, so an older leftover never wins.
+LEGACY_TASKS = ("Codex Speak", "Select to TTS")
+LEGACY_DIRS = (*(((os.path.join(APPDATA, "codex-speak"), DIR,  # macOS: one folder, so one entry moves it whole
+                   ("settings.json", "codex-speak.log", "stt-connection.json")),) if APPDATA == LOCALAPPDATA else
+                 ((os.path.join(APPDATA, "codex-speak"), DIR, ("settings.json", "codex-speak.log")),
+                  (os.path.join(LOCALAPPDATA, "codex-speak"), LOCAL_DIR, ("stt-connection.json",)))),
+               (os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
                (os.path.join(LOCALAPPDATA, "select-to-tts"), LOCAL_DIR,
-                ("stt-connection.json",)),  # the speech-to-text URL keeps its token
-               (os.path.join(APPDATA, "codex-speak"), DIR, ("settings.json", "codex-speak.log")),
-               # on macOS both are one folder, so the entry above moves it whole
-               *(() if APPDATA == LOCALAPPDATA else
-                 ((os.path.join(LOCALAPPDATA, "codex-speak"), LOCAL_DIR, ("stt-connection.json",)),)))
+                ("stt-connection.json",)))  # the speech-to-text URL keeps its token
 # Earlier builds used this Run value. Windows starts Run entries one at a time after sign-in,
 # waiting up to 30 s on each, which delayed the app by minutes.
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -191,7 +191,7 @@ def _drop_run_value():
 
 def refresh_startup() -> None:
     """Points an enabled sign-in task at this install (it may have moved) and moves an older
-    build's Run value or Select to TTS or Codex Speak task to the task. Source runs leave an installed
+    build's Run value or Codex Speak or Select to TTS task to the task. Source runs leave an installed
     copy's task alone."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
