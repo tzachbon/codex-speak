@@ -6,7 +6,8 @@ import time
 import uiautomation as uia
 from pynput.keyboard import Controller, Key
 
-from . import clipboard, settings
+from .. import settings
+from . import clipboard
 
 MAX_CHARS = 4000
 TERMINALS = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS"}  # Ctrl+C means "interrupt" there

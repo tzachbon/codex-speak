@@ -1,8 +1,12 @@
-"""Publish the tested installer without moving tags or replacing completed assets."""
+"""Publish the tested installers without moving tags or replacing completed assets.
+
+Usage: publish_release.py ARTIFACT... (env: RELEASE_VERSION, RELEASE_COMMIT, GITHUB_REPOSITORY)
+"""
 import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from release_version import parse_tag
@@ -31,13 +35,16 @@ def complete_asset(release, name):
     return asset is not None
 
 
-def publish(version, commit, repository, artifact):
+def publish(version, commit, repository, artifacts):
     tag = f"v{version}"
     if parse_tag(tag) is None or not re.fullmatch(r"[a-f0-9]{40}", commit):
         raise ValueError("Invalid release version or commit SHA")
-    artifact = Path(artifact)
-    if not artifact.is_file() or not artifact.stat().st_size:
-        raise ValueError("The tested installer is missing or empty")
+    artifacts = [Path(artifact) for artifact in artifacts]
+    if not artifacts:
+        raise ValueError("No installers to publish")
+    for artifact in artifacts:
+        if not artifact.is_file() or not artifact.stat().st_size:
+            raise ValueError(f"The tested installer {artifact.name} is missing or empty")
     tags = remote_tags()
     if tag not in tags:
         command("gh", "api", "--method", "POST", f"repos/{repository}/git/refs",
@@ -50,16 +57,17 @@ def publish(version, commit, repository, artifact):
                                "--json", "assets,isDraft"], capture_output=True, text=True,
                               encoding="utf-8")
     if existing.returncode:
-        command("gh", "release", "create", tag, str(artifact), "--repo", repository,
+        command("gh", "release", "create", tag, str(artifacts[0]), "--repo", repository,
                 "--verify-tag", "--draft", "--title", f"Codex Speak {tag}", "--generate-notes")
         release = read_release(repository, tag)
     else:
         release = json.loads(existing.stdout)
-    if not complete_asset(release, artifact.name):
-        command("gh", "release", "upload", tag, str(artifact), "--repo", repository)
-        release = read_release(repository, tag)
+    for artifact in artifacts:  # the release stays a draft until every installer is complete
         if not complete_asset(release, artifact.name):
-            raise ValueError("Installer upload did not complete; release remains unpublished")
+            command("gh", "release", "upload", tag, str(artifact), "--repo", repository)
+            release = read_release(repository, tag)
+            if not complete_asset(release, artifact.name):
+                raise ValueError(f"{artifact.name} upload did not complete; release remains unpublished")
     if release["isDraft"]:
         published = command("gh", "api", "--paginate", f"repos/{repository}/releases", "--jq",
                             ".[] | select(.draft == false and .prerelease == false) | .tag_name")
@@ -73,4 +81,4 @@ def publish(version, commit, repository, artifact):
 
 if __name__ == "__main__":
     publish(os.environ["RELEASE_VERSION"], os.environ["RELEASE_COMMIT"],
-            os.environ["GITHUB_REPOSITORY"], "dist/CodexSpeak-Setup.exe")
+            os.environ["GITHUB_REPOSITORY"], sys.argv[1:])

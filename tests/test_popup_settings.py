@@ -1,14 +1,20 @@
 """Native button-to-Settings checks without speech services or persistent changes."""
+import sys
+import unittest
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
 import gc
 import json
 import tempfile
 import threading
-import unittest
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_speak import __main__ as main, settings, settings_ui
+from codex_speak import core, settings
+from codex_speak.win import host as win_host, settings_ui
 
 
 class Speech:
@@ -44,19 +50,20 @@ class PopupSettings(unittest.TestCase):
         self.boundaries.enter_context(patch.object(settings, "startup_enabled", return_value=False))
         self.boundaries.enter_context(patch.object(settings_ui, "stt_connection", return_value=("", "")))
         for factory, name in (("CodexEngine", "Codex"), ("EdgeEngine", "Edge"), ("SapiEngine", "Windows")):
-            self.boundaries.enter_context(patch.object(main, factory, return_value=Speech(name)))
-        self.app = main.App()
+            self.boundaries.enter_context(patch.object(win_host, factory, return_value=Speech(name)))
+        self.host = win_host.TkHost()
+        self.app = core.App(self.host)
         self.app.popup.show("A sentence to read.", 140, 140)
-        self.app.root.update()
+        self.host.root.update()
 
     def tearDown(self):
         if self.app.settings_win and self.app.settings_win.alive:
             self.app.settings_win.close()
         self.app.chain.close()
         self.app.popup.hide()
-        self.app.icon.stop()
-        self.app.trigger.stop()
-        self.app.root.destroy()
+        self.host.icon.stop()
+        self.host.stop_trigger()
+        self.host.root.destroy()
         self.app = None
         gc.collect()
 
@@ -66,7 +73,7 @@ class PopupSettings(unittest.TestCase):
         label.event_generate("<ButtonRelease-1>", x=2, y=2)
         while not self.app.events.empty():
             self.app._handle(*self.app.events.get_nowait())
-        self.app.root.update()
+        self.host.root.update()
 
     def test_settings_pauses_speech_reuses_window_and_play_resumes_after_close(self):
         popup = self.app.popup

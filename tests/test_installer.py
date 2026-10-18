@@ -1,4 +1,10 @@
 """Runs the installer cleanup code in a scratch-only Inno harness, without app or registry actions."""
+import sys
+import unittest
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
 import os
 from pathlib import Path
 import re

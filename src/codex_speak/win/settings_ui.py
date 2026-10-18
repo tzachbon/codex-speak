@@ -1,33 +1,18 @@
 """The Settings window: native ttk controls laid out like Windows 11 Settings. Changes apply at once."""
-import json
-import os
 import sys
-from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox, ttk
-from urllib.parse import urlsplit
 
 from PIL import ImageTk
 
-from . import settings, updates
+from .. import settings, updates
+from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
 
 PAGE, CARD, BORDER, SUBTLE = "#f3f3f3", "#ffffff", "#e5e5e5", "#5f5f5f"
 ENGINES = [(None, "Auto: Codex, then Edge, then Windows"), ("Codex", "Codex only"),
            ("Edge", "Edge only"), ("Windows", "Windows only (offline)")]
-
-
-def stt_connection():
-    path = Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "stt-connection.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    url, model = data["base_url"], data["model"]
-    parsed = urlsplit(url)
-    if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port
-            or parsed.username or parsed.password or parsed.query or parsed.fragment
-            or not parsed.path.endswith("/v1") or model != "codex-realtime"):
-        raise ValueError("Invalid local STT connection")
-    return url, model
 
 
 class SettingsWindow:

@@ -7,7 +7,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from ctypes import wintypes
 
-from . import lang, settings
+from .. import lang, settings
 from .captions import CaptionSurface, _get_parent, _get_style, _set_style
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
@@ -117,7 +117,7 @@ class Popup:
             self.speed_menu.add_radiobutton(label=settings.speed_label(preset), value=preset,
                                             variable=self.speed, command=self._speed_changed)
         w.bind("<Enter>", lambda _e: self._cancel_hide())
-        w.bind("<Leave>", lambda _e: self._schedule_hide())
+        w.bind("<Leave>", lambda _e: self.schedule_hide())
         w.withdraw()
         w.update_idletasks()
         hwnd = _get_parent(w.winfo_id())
@@ -138,7 +138,7 @@ class Popup:
         w.geometry(f"+{max(area.left, min(x + 12, area.right - w.winfo_reqwidth()))}"
                    f"+{max(area.top, min(top, area.bottom - h))}")
         w.deiconify()
-        self._schedule_hide()
+        self.schedule_hide()
 
     def close(self):
         """The ✕ button: stop any read and hide."""
@@ -199,7 +199,7 @@ class Popup:
             self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.divider)
         else:
             self.stop_btn.pack_forget()
-            self._schedule_hide()
+            self.schedule_hide()
 
     def set_caption(self, text):
         if self.playing:
@@ -245,6 +245,9 @@ class Popup:
         menu.update_idletasks()
         menu.post(button.winfo_rootx(), button.winfo_rooty() - menu.winfo_reqheight())  # upward
 
+    def lang_tag(self):
+        return self.lang.get() or None
+
     def set_speed(self, speed):
         self.speed.set(speed)
         self.speed_btn.parts[1]["text"] = settings.speed_label(speed)
@@ -262,7 +265,7 @@ class Popup:
         self.menu_open = True  # the next click belongs to the menu, not "outside the popup"
         self._cancel_hide()
 
-    def _schedule_hide(self):
+    def schedule_hide(self):
         self._cancel_hide()
         if not (self.playing or self.menu_open) and self.visible:  # a hidden popup must not stop reads
             self._hide_job = self.win.after(IDLE_HIDE_MS, self.hide)

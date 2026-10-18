@@ -4,7 +4,7 @@
 
 # Codex Speak
 
-**Select text in any Windows app and hear it in your ChatGPT voice, through Codex.**
+**Select text in any Windows or Mac app and hear it in your ChatGPT voice, through Codex.**
 
 Codex Speak runs the Codex realtime voice from your ChatGPT sign-in through `codex app-server`. No OpenAI API key. Edge neural voices and offline Windows voices take over when Codex can't speak.
 
@@ -14,8 +14,9 @@ Codex Speak runs the Codex realtime voice from your ChatGPT sign-in through `cod
 [![Latest release](https://img.shields.io/github/v/release/tzachbon/codex-speak)](https://github.com/tzachbon/codex-speak/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078d4)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-555555)
 
-[**Download for Windows**](https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe) · [Website](https://tzachbon.github.io/codex-speak/) · [Report a bug](https://github.com/tzachbon/codex-speak/issues/new/choose)
+[**Download for Windows**](https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe) · [**Download for Mac**](https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak.dmg) · [Website](https://tzachbon.github.io/codex-speak/) · [Report a bug](https://github.com/tzachbon/codex-speak/issues/new/choose)
 
 ![The playback bar above selected text](docs/popup.png)
 
@@ -42,6 +43,19 @@ Codex Speak runs the Codex realtime voice from your ChatGPT sign-in through `cod
 3. Optional, for the ChatGPT voice: install the [Codex CLI](https://github.com/openai/codex) (`npm i -g @openai/codex`) and sign in once with `codex login`. Without it, the app uses the Edge and Windows voices.
 
 Requirements: Windows 11, 64-bit.
+
+## macOS
+
+1. Download **[CodexSpeak.dmg](https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak.dmg)**, open it, and drag Codex Speak to Applications.
+2. The app is ad-hoc signed, not notarized. The first time, right-click it in Applications and choose *Open*, then *Open* again. On macOS 15 and later, open *System Settings > Privacy & Security* and choose *Open Anyway*.
+3. Codex Speak lives in the menu bar. It asks for **Accessibility** access, which it needs to read the selected text. A guide window opens System Settings for you and closes once access is granted. While access is missing, the menu bar icon shows a warning.
+4. Optional, for the ChatGPT voice: install the Codex CLI and run `codex login`, as on Windows.
+
+Requirements: macOS 13 or later on Apple silicon.
+
+On a Mac, the voices are Codex and then the built-in macOS voice, which stays on your Mac. Edge voices and captions are Windows only for now. *Start Codex Speak when I log in* adds a LaunchAgent. Settings are kept in `~/Library/Application Support/codex-speak`. Updates are not installed automatically: Settings shows when a new version is out, and *Download* opens the release page.
+
+After an update, macOS can stop trusting the app even though System Settings still lists it as allowed. Codex Speak detects this, and the guide's *Fix permission* button clears the old entry so you can grant it again.
 
 **Upgrading from Select to TTS?** This is the same app under a new name. Run the new installer. It replaces Select to TTS, and your settings, sign-in startup choice, and speech-to-text URL carry over.
 

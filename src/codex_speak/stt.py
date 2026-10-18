@@ -17,6 +17,7 @@ import time
 import av
 from aiortc import AudioStreamTrack, RTCPeerConnection, RTCSessionDescription
 
+from . import settings
 from .codex_rt import AppServer, NO_STUN
 
 MODEL = "codex-realtime"
@@ -25,7 +26,7 @@ MAX_SECONDS = 60
 RATE = 24000
 SPEED = 4  # Audio is sent this many times faster than real time.
 SKEW = 1.0  # Seconds Codex fragment end_ms may run ahead of the sent stream (0.6 s measured).
-DIAG_LOG = Path(os.environ.get("LOCALAPPDATA", ".")) / "codex-speak" / "stt-diagnostics.log"
+DIAG_LOG = Path(settings.LOCAL_DIR) / "stt-diagnostics.log"
 _busy = threading.Lock()
 _diag_lock = threading.Lock()
 

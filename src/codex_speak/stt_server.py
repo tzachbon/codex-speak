@@ -1,7 +1,7 @@
 """Local-only, OpenAI-shaped HTTP adapter for subscription STT.
 
 Run python -m codex_speak.stt_server. The private connection URL is written
-to %LOCALAPPDATA%/codex-speak/stt-connection.json, never logged.
+to stt-connection.json in the app's local data folder, never logged.
 """
 import argparse
 from email import policy
@@ -13,11 +13,26 @@ from pathlib import Path
 import secrets
 import socket
 import threading
+from urllib.parse import urlsplit
 
+from . import settings
 from .stt import BusyError, MAX_BYTES, MESSAGES, MODEL, SttError, transcribe
 
 MAX_BODY = MAX_BYTES + 65536
-CONNECTION = Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "stt-connection.json"
+CONNECTION = Path(settings.LOCAL_DIR) / "stt-connection.json"
+
+
+
+def connection():
+    """(base_url, model) from the connection file, accepted only when it points at this machine."""
+    data = json.loads(CONNECTION.read_text(encoding="utf-8"))
+    url, model = data["base_url"], data["model"]
+    parsed = urlsplit(url)
+    if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or not parsed.path.endswith("/v1") or model != MODEL):
+        raise ValueError("Invalid local STT connection")
+    return url, model
 
 
 def parse_form(content_type, body):
@@ -225,7 +240,7 @@ def start(port=18765, connection_file=CONNECTION):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=18765)
-    parser.add_argument("--connection-file", type=Path, default=Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "stt-connection.json")
+    parser.add_argument("--connection-file", type=Path, default=CONNECTION)
     args = parser.parse_args()
     with SttServer(args.port) as server:
         connection = json.dumps({"base_url": server.base_url, "model": MODEL}, indent=2)

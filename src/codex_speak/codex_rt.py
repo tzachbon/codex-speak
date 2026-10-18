@@ -4,7 +4,7 @@ Drives `codex app-server` (experimental thread/realtime API) over stdio JSON-RPC
 over WebRTC v3 because the websocket transport requires an API key (see PLAN.md, T1).
 Over 80 lines on purpose: the JSON-RPC client and the call sequence share one process handle.
 """
-import asyncio, concurrent.futures, glob, json, os, queue, shutil, subprocess, threading, time
+import asyncio, concurrent.futures, glob, json, os, queue, shutil, signal, subprocess, sys, threading, time
 
 import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -18,8 +18,59 @@ PROMPT = ("You are a text-to-speech engine. Read the user's message aloud exactl
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
 
 
+# Windows: no console window. Elsewhere: a process group, so close() can end Codex's helpers too.
+SPAWN = ({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32"
+         else {"start_new_session": True})
+_found = []
+
+
+def extended_path() -> str:
+    """PATH plus the usual install folders. Apps started from Finder get only /usr/bin:/bin:/usr/sbin:/sbin."""
+    home = os.path.expanduser("~")
+    extra = ["/opt/homebrew/bin", "/usr/local/bin", f"{home}/.local/bin", f"{home}/.npm-global/bin",
+             f"{home}/.volta/bin", f"{home}/.bun/bin", *sorted(glob.glob(f"{home}/.nvm/versions/node/*/bin")),
+             *sorted(glob.glob(f"{home}/.local/share/fnm/node-versions/*/installation/bin")),
+             *sorted(glob.glob(f"{home}/Library/Application Support/fnm/node-versions/*/installation/bin"))]
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    return os.pathsep.join(parts + [p for p in extra if p not in parts])
+
+
+def _login_shell_codex():
+    """Asks the user's login shell, which knows PATH changes made in its profile. Cached."""
+    if not _found:
+        try:
+            out = subprocess.run([os.environ.get("SHELL", "/bin/zsh"), "-ilc", "command -v codex"],
+                                 capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL).stdout
+            _found.append(out.strip().splitlines()[-1] if out.strip() else None)
+        except (OSError, subprocess.TimeoutExpired):
+            _found.append(None)
+    return _found[0]
+
+
+def _native_darwin(shim):
+    """The native binary behind a global npm install, or the shim itself when it already is one."""
+    real = os.path.realpath(shim)
+    try:
+        with open(real, "rb") as f:
+            if f.read(4) in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):  # Mach-O, as Homebrew installs it
+                return real
+    except OSError:
+        return shim
+    root = real
+    while root != os.path.dirname(root) and not root.endswith(os.path.join("@openai", "codex")):
+        root = os.path.dirname(root)
+    found = glob.glob(os.path.join(root, "node_modules", "@openai", "codex-darwin-*", "vendor", "*",
+                                   "bin", "codex"))
+    return found[0] if found else shim
+
+
 def codex_exe() -> str:
     """The native binary, so terminating it doesn't orphan a server behind the npm shim."""
+    if sys.platform == "darwin":
+        shim = shutil.which("codex", path=extended_path()) or _login_shell_codex()
+        if not shim:
+            raise FileNotFoundError("codex is not installed or not on PATH")
+        return _native_darwin(shim)
     shim = shutil.which("codex")
     if not shim:
         raise FileNotFoundError("codex is not on PATH")
@@ -34,7 +85,8 @@ class AppServer:
         self.p = subprocess.Popen([codex_exe(), "app-server"], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   encoding="utf-8", bufsize=1,
-                                  creationflags=subprocess.CREATE_NO_WINDOW)
+                                  env={**os.environ, "PATH": extended_path()} if sys.platform == "darwin" else None,
+                                  **SPAWN)
         try:
             self.events, self._pending, self._next, self._lock = queue.Queue(), {}, 0, threading.Lock()
             self._reader = threading.Thread(target=self._read, daemon=True)
@@ -85,9 +137,15 @@ class AppServer:
         if self.alive:
             # Codex helpers can inherit stdout. End our process tree so the reader reaches EOF.
             try:
-                subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                if sys.platform == "win32":
+                    subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, **SPAWN)
+                else:
+                    os.killpg(self.p.pid, signal.SIGTERM)  # start_new_session made it the group leader
+                    try:
+                        self.p.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(self.p.pid, signal.SIGKILL)
             except (OSError, subprocess.TimeoutExpired):
                 pass
             if self.alive:

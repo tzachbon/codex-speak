@@ -1,3 +1,9 @@
+import sys
+import unittest
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
 import json
 import gc
 import tempfile
@@ -9,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image
 from codex_speak import settings
-from codex_speak import settings_ui
+from codex_speak.win import settings_ui
 
 
 class CaptionSettings(unittest.TestCase):

@@ -5,13 +5,13 @@ import tempfile
 import threading
 import unittest
 
-from pynput.mouse import Button
+import sys
 
-from codex_speak import clipboard, lang, settings
+from codex_speak import lang, settings
 from codex_speak.audio import NoAudioError, PcmPlayer, Stretcher
+from codex_speak.clicks import Clicks
 from codex_speak.codex_rt import CodexEngine
-from codex_speak.engines import Chain, EdgeEngine, sapi_rate
-from codex_speak.trigger import SelectionTrigger
+from codex_speak.engines import Chain, EdgeEngine
 
 
 class Lang(unittest.TestCase):
@@ -22,15 +22,6 @@ class Lang(unittest.TestCase):
         self.assertEqual(lang.detect("Привет мир"), "ru-RU")
         self.assertEqual(lang.detect("مرحبا بالعالم"), "ar-SA")
         self.assertEqual(lang.detect("123"), "en-US")
-
-
-class Clipboard(unittest.TestCase):
-    def test_safe_to_borrow(self):
-        self.assertTrue(clipboard.safe_to_borrow(set()))
-        self.assertTrue(clipboard.safe_to_borrow({13, 1, 7, 16, 49353}))  # text + HTML Format
-        self.assertTrue(clipboard.safe_to_borrow({2, 8, 17}))  # bitmap backed by a DIB
-        self.assertFalse(clipboard.safe_to_borrow({2}))  # bare HBITMAP
-        self.assertFalse(clipboard.safe_to_borrow({14, 13}))  # enhanced metafile
 
 
 class Fake:
@@ -176,17 +167,19 @@ class ChainTest(unittest.TestCase):
         self.assertEqual((a.calls, type(result[0])), (0, NoAudioError))
 
 
-class Trigger(unittest.TestCase):
+class ClicksTest(unittest.TestCase):
     def test_drag_and_double_click(self):
-        hits = []
-        t = SelectionTrigger(lambda x, y: hits.append((x, y)), lambda x, y: None)
-        click = lambda x, y: (t._click(x, y, Button.left, True), t._click(x, y, Button.left, False))
-        t._click(0, 0, Button.left, True)
-        t._click(100, 0, Button.left, False)  # drag
-        click(500, 500)  # single click: nothing
-        click(500, 500)  # second click: double-click
-        t._click(0, 0, Button.right, True)  # other buttons ignored
-        self.assertEqual(hits, [(100, 0), (500, 500)])
+        c, hits = Clicks(0.5), []
+        def click(x, y, t):
+            c.down(x, y)
+            return c.up(x, y, t)
+        c.down(0, 0)
+        hits.append(c.up(100, 0, 1.0))  # drag
+        hits.append(click(500, 500, 2.0))  # single click: nothing
+        hits.append(click(500, 500, 2.2))  # second click: double-click
+        hits.append(click(500, 500, 3.0))  # too late for a double-click
+        hits.append(click(510, 500, 3.1))  # moved too far between clicks
+        self.assertEqual(hits, [True, False, True, False, False])
 
 
 class Player(unittest.TestCase):
@@ -250,8 +243,9 @@ class Settings(unittest.TestCase):
     def test_auto_update_is_opt_in_and_requires_a_boolean(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "settings.json")
-            self.assertFalse(settings.load(path)["auto_update"])
-            for value, expected in ((True, True), (False, False), ("yes", False), (1, False)):
+            self.assertEqual(settings.load(path)["auto_update"], sys.platform == "darwin")  # opt-in on Windows
+            default = settings.DEFAULTS["auto_update"]
+            for value, expected in ((True, True), (False, False), ("yes", default), (1, default)):
                 settings.save({"auto_update": value}, path)
                 self.assertEqual(settings.load(path)["auto_update"], expected)
 
@@ -259,14 +253,29 @@ class Settings(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "sub", "settings.json")
             self.assertEqual(settings.load(path), settings.DEFAULTS)
-            settings.save({"engine": "Edge", "speed": 9, "clipboard_fallback": False}, path)
-            self.assertEqual(settings.load(path), {**settings.DEFAULTS, "engine": "Edge", "speed": 2.0,
+            engine = settings.ENGINES[-1]
+            settings.save({"engine": engine, "speed": 9, "clipboard_fallback": False}, path)
+            self.assertEqual(settings.load(path), {**settings.DEFAULTS, "engine": engine, "speed": 2.0,
                                                    "clipboard_fallback": False})
             for junk in ("{not json", "[1, 2]", "null", '{"engine": "Bogus", "speed": "fast"}',
                          '{"speed": NaN, "clipboard_fallback": "false"}', '{"speed": true, "engine": 3}', '{"speed": 1' + '0' * 400 + '}'):
                 with open(path, "w") as f:
                     f.write(junk)
                 self.assertEqual(settings.load(path), settings.DEFAULTS)
+
+    def test_engine_values_are_per_platform(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            other = "Windows" if sys.platform == "darwin" else "macOS"
+            settings.save({"engine": other}, path)
+            self.assertIsNone(settings.load(path)["engine"])
+
+    def test_ax_granted_build_is_a_string_or_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            for saved, expected in (("0.6.0+abc", "0.6.0+abc"), (3, None), (None, None)):
+                settings.save({"ax_granted_build": saved}, path)
+                self.assertEqual(settings.load(path)["ax_granted_build"], expected)
 
     def test_prefetch_is_off_unless_saved_as_a_boolean(self):
         with tempfile.TemporaryDirectory() as d:
@@ -277,26 +286,6 @@ class Settings(unittest.TestCase):
                     f.write('{"prefetch": %s}' % saved)
                 self.assertEqual(settings.load(path)["prefetch"], expected, saved)
 
-    def test_startup_round_trip(self):
-        from types import SimpleNamespace
-        from unittest.mock import MagicMock, patch
-        service, tasks = MagicMock(), {}
-        folder = service.GetFolder.return_value
-        folder.GetTask.side_effect = lambda name: tasks[name]
-        folder.RegisterTaskDefinition.side_effect = lambda name, *args: tasks.update({name: SimpleNamespace(Enabled=True)})
-        folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
-        with patch.object(settings, "_scheduler", return_value=service):
-            name = "codex-speak-unittest"
-            try:
-                settings.set_startup(True, name)
-                self.assertTrue(settings.startup_enabled(name))
-                tasks[name].Enabled = False
-                self.assertFalse(settings.startup_enabled(name))
-                settings.set_startup(False, name)
-                self.assertFalse(settings.startup_enabled(name))
-                settings.set_startup(False, name)  # already off: no error
-            finally:
-                settings.set_startup(False, name)
 
 
 class RenameMigration(unittest.TestCase):
@@ -377,79 +366,6 @@ class RenameMigration(unittest.TestCase):
                 settings.migrate(dirs)
             self.assertEqual(settings.load(os.path.join(new, "settings.json"))["speed"], 1.5)
 
-    def test_installed_build_replaces_the_old_task(self):
-        from unittest.mock import call, patch
-        replaced = [call(True), call(False, settings.LEGACY_TASK)]
-        for old_enabled, expected in ((True, replaced), (False, replaced[1:])):  # a disabled one stays off
-            with patch.object(settings.sys, "frozen", True, create=True), \
-                    patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else None), \
-                    patch.object(settings, "startup_enabled", return_value=False), \
-                    patch.object(settings, "set_startup") as set_startup, \
-                    patch.object(settings.winreg, "OpenKey", side_effect=OSError):
-                settings.refresh_startup()
-            self.assertEqual(set_startup.call_args_list, expected, old_enabled)
-
-    def test_source_run_leaves_the_old_task_alone(self):
-        from unittest.mock import patch
-        with patch.object(settings.sys, "frozen", False, create=True), \
-                patch.object(settings, "startup_enabled", return_value=True), \
-                patch.object(settings, "_task_enabled", return_value=True) as old_task, \
-                patch.object(settings, "set_startup") as set_startup, \
-                patch.object(settings.winreg, "OpenKey", side_effect=OSError):
-            settings.refresh_startup()
-        set_startup.assert_not_called()
-        old_task.assert_not_called()
-
-    def test_installed_refresh_keeps_a_disabled_current_task_off(self):
-        from unittest.mock import call, patch
-        for old_enabled in (None, False, True):
-            for legacy_run in (False, True):
-                with self.subTest(old_enabled=old_enabled, legacy_run=legacy_run), \
-                        patch.object(settings.sys, "frozen", True, create=True), \
-                        patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else False), \
-                        patch.object(settings, "set_startup") as set_startup, \
-                        patch.object(settings, "_drop_run_value") as drop_run, \
-                        patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
-                        patch.object(settings.winreg, "OpenKey", side_effect=None if legacy_run else OSError):
-                    settings.refresh_startup()
-                self.assertEqual(set_startup.call_args_list, [] if old_enabled is None else [call(False, settings.LEGACY_TASK)])
-                self.assertEqual(drop_run.call_count, int(legacy_run))
-
-    def test_disabled_legacy_task_overrides_an_older_run_value(self):
-        from unittest.mock import patch
-        with patch.object(settings.sys, "frozen", True, create=True), \
-                patch.object(settings, "_task_enabled", side_effect=lambda name: False if name == settings.LEGACY_TASK else None), \
-                patch.object(settings, "set_startup") as set_startup, \
-                patch.object(settings, "_drop_run_value") as drop_run, \
-                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
-                patch.object(settings.winreg, "OpenKey"):
-            settings.refresh_startup()
-        set_startup.assert_called_once_with(False, settings.LEGACY_TASK)
-        drop_run.assert_called_once()
-
-    def test_installed_disable_removes_both_disabled_tasks(self):
-        from types import SimpleNamespace
-        from unittest.mock import MagicMock, patch
-        service = MagicMock()
-        tasks = {name: SimpleNamespace(Enabled=False) for name in (settings.TASK, settings.LEGACY_TASK)}
-        folder = service.GetFolder.return_value
-        folder.GetTask.side_effect = lambda name: tasks[name]
-        folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
-        with patch.object(settings.sys, "frozen", True, create=True), \
-                patch.object(settings, "_scheduler", return_value=service), \
-                patch.object(settings, "_drop_run_value"):
-            settings.set_startup(False)
-        self.assertEqual(tasks, {})
-
-    def test_source_run_leaves_the_legacy_run_value_alone(self):
-        from unittest.mock import patch
-        with patch.object(settings.sys, "frozen", False, create=True), \
-                patch.object(settings, "set_startup") as set_startup, \
-                patch.object(settings.winreg, "OpenKey"), \
-                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)) as query:
-            settings.refresh_startup()
-        query.assert_called_once()
-        set_startup.assert_not_called()
 
 
 class SttServerRestart(unittest.TestCase):
@@ -478,8 +394,6 @@ class Speed(unittest.TestCase):
             out = b"".join(st(tone[i:i + 960]) for i in range(0, len(tone), 960))
             self.assertAlmostEqual(len(out) / 2, expected, delta=expected * 0.06)
 
-    def test_sapi_rate(self):
-        self.assertEqual([sapi_rate(s) for s in (0.5, 1.0, 1.5, 2.0, 3.0)], [-6, 0, 4, 6, 10])
 
 
 if __name__ == "__main__":

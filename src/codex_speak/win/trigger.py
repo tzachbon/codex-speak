@@ -4,7 +4,8 @@ import time
 
 from pynput import mouse
 
-DRAG_PX = 6
+from ..clicks import DRAG_PX, Clicks  # noqa: F401  DRAG_PX is part of this module's surface
+
 MULTI_CLICK_S = ctypes.windll.user32.GetDoubleClickTime() / 1000
 
 
@@ -13,7 +14,7 @@ class SelectionTrigger:
 
     def __init__(self, on_selection, on_press):
         self.on_selection, self.on_press = on_selection, on_press
-        self._down, self._last = (0, 0), (0, 0, 0.0)
+        self._clicks = Clicks(MULTI_CLICK_S)
         self._listener = mouse.Listener(on_click=self._click)
 
     def start(self):
@@ -26,13 +27,8 @@ class SelectionTrigger:
         if button != mouse.Button.left:
             return
         if pressed:
-            self._down = (x, y)
+            self._clicks.down(x, y)
             self.on_press(x, y)
             return
-        lx, ly, lt = self._last
-        now = time.monotonic()
-        self._last = (x, y, now)
-        dragged = abs(x - self._down[0]) > DRAG_PX or abs(y - self._down[1]) > DRAG_PX
-        multi = now - lt < MULTI_CLICK_S and abs(x - lx) <= 4 and abs(y - ly) <= 4
-        if dragged or multi:
+        if self._clicks.up(x, y, time.monotonic()):
             self.on_selection(x, y)

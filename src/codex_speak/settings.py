@@ -1,20 +1,27 @@
-"""User settings in %APPDATA%, plus start-at-sign-in through a Task Scheduler logon task."""
+"""User settings, plus start-at-sign-in through a Task Scheduler logon task on Windows."""
 import json
 import math
 import os
 import shutil
 import sys
 import tempfile
-import winreg
 
-APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
-LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+if sys.platform == "win32":
+    import winreg
+
+if sys.platform == "darwin":
+    APPDATA = LOCALAPPDATA = os.path.expanduser("~/Library/Application Support")
+else:
+    APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
+    LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
 DIR = os.path.join(APPDATA, "codex-speak")
+LOCAL_DIR = os.path.join(LOCALAPPDATA, "codex-speak")  # the same folder on macOS
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "codex-speak")  # uninstall deletes it
+ENGINES = ("Codex", "macOS") if sys.platform == "darwin" else ("Codex", "Edge", "Windows")
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
-            "prefetch": False, "auto_update": False, "caption_font_size": 10, "caption_background": False,
-            "caption_background_opacity": 0.6}
+            "prefetch": False, "auto_update": sys.platform == "darwin", "caption_font_size": 10,
+            "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Codex Speak"  # the installer creates and removes it with `--startup on|off`
@@ -36,7 +43,7 @@ def load(path=PATH) -> dict:
     except (OSError, ValueError):
         saved = {}
     s = {k: saved.get(k, v) for k, v in DEFAULTS.items()} if isinstance(saved, dict) else dict(DEFAULTS)
-    if s["engine"] not in (None, "Codex", "Edge", "Windows"):
+    if s["engine"] not in (None, *ENGINES):
         s["engine"] = None
     speed = s["speed"]
     try:
@@ -58,6 +65,8 @@ def load(path=PATH) -> dict:
     for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background", "auto_update"):
         if not isinstance(s[key], bool):
             s[key] = DEFAULTS[key]
+    if not isinstance(s["ax_granted_build"], (str, type(None))):
+        s["ax_granted_build"] = None
     return s
 
 
