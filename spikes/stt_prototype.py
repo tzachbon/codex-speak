@@ -20,7 +20,7 @@ import wave
 
 import av
 from aiortc import AudioStreamTrack, RTCPeerConnection, RTCSessionDescription
-from codex_speak.codex_rt import AppServer, NO_STUN
+from harness_discussion.codex_rt import AppServer, NO_STUN
 
 
 class WavTrack(AudioStreamTrack):

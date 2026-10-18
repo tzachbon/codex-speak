@@ -14,8 +14,8 @@ from unittest.mock import patch
 from pathlib import Path
 
 from PIL import Image
-from codex_speak import settings
-from codex_speak.win import settings_ui
+from harness_discussion import settings
+from harness_discussion.win import settings_ui
 
 
 class CaptionSettings(unittest.TestCase):

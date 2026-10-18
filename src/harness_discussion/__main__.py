@@ -1,4 +1,4 @@
-"""codex-speak: select text anywhere, press ▶ on the floating button, hear it read aloud."""
+"""harness-discussion: select text anywhere, press ▶ on the floating button, hear it read aloud."""
 import sys
 
 

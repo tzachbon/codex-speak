@@ -1,7 +1,7 @@
 """Reading units: list numbers, the pieces Codex reads, and the caption's current sentence."""
 import unittest
 
-from codex_speak import sentences
+from harness_discussion import sentences
 
 
 def letters(text):

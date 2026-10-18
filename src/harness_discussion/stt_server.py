@@ -1,6 +1,6 @@
 """Local-only, OpenAI-shaped HTTP adapter for subscription STT.
 
-Run python -m codex_speak.stt_server. The private connection URL is written
+Run python -m harness_discussion.stt_server. The private connection URL is written
 to stt-connection.json in the app's local data folder, never logged.
 """
 import argparse

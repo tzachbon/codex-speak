@@ -10,8 +10,8 @@ from unittest import mock
 if sys.platform != "darwin":
     raise unittest.SkipTest("macOS only")
 
-from codex_speak import codex_rt  # noqa: E402
-from codex_speak.mac import pasteboard, permission, selection, startup, voice  # noqa: E402
+from harness_discussion import codex_rt  # noqa: E402
+from harness_discussion.mac import pasteboard, permission, selection, startup, voice  # noqa: E402
 
 
 class AvRateTest(unittest.TestCase):
@@ -35,11 +35,11 @@ class StartupTest(unittest.TestCase):
 
     def test_enable_writes_open_command_and_disable_removes_it(self):
         self.assertFalse(startup.enabled())
-        startup.set_enabled(True, "/Applications/Codex Speak.app")
+        startup.set_enabled(True, "/Applications/Harness Discussion.app")
         with open(startup.plist_path(), "rb") as f:
             data = plistlib.load(f)
         self.assertEqual(data["Label"], startup.LABEL)
-        self.assertEqual(data["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/Codex Speak.app"])
+        self.assertEqual(data["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/Harness Discussion.app"])
         self.assertTrue(data["RunAtLoad"])
         startup.set_enabled(False)
         self.assertFalse(startup.enabled())
@@ -52,10 +52,42 @@ class StartupTest(unittest.TestCase):
     def test_refresh_follows_a_moved_app_only_when_enabled(self):
         startup.refresh("/Applications/New.app")
         self.assertFalse(startup.enabled())
-        startup.set_enabled(True, "/Users/me/Downloads/Codex Speak.app")
-        startup.refresh("/Applications/Codex Speak.app")
+        startup.set_enabled(True, "/Users/me/Downloads/Harness Discussion.app")
+        startup.refresh("/Applications/Harness Discussion.app")
         with open(startup.plist_path(), "rb") as f:
-            self.assertEqual(plistlib.load(f)["ProgramArguments"][-1], "/Applications/Codex Speak.app")
+            self.assertEqual(plistlib.load(f)["ProgramArguments"][-1], "/Applications/Harness Discussion.app")
+
+    def old_plist(self):
+        return os.path.join(self.home.name, "Library/LaunchAgents/com.tzachbon.codexspeak.plist")
+
+    def test_codex_speak_login_item_carries_over(self):
+        self.assertEqual(startup.LABEL, "com.tzachbon.harnessdiscussion")
+        os.makedirs(os.path.dirname(self.old_plist()))
+        with open(self.old_plist(), "wb") as f:
+            plistlib.dump({"Label": "com.tzachbon.codexspeak", "ProgramArguments": ["/usr/bin/open", "-a", "/Applications/Codex Speak.app"]}, f)
+        with mock.patch.object(startup.subprocess, "run", side_effect=OSError) as run:  # errors are ignored
+            startup.refresh("/Applications/New.app")
+        self.assertEqual(run.call_args.args[0], ["/bin/launchctl", "bootout", f"gui/{os.getuid()}", self.old_plist()])
+        self.assertFalse(os.path.exists(self.old_plist()))
+        with open(startup.plist_path(), "rb") as f:
+            self.assertEqual(plistlib.load(f)["ProgramArguments"], ["/usr/bin/open", "-a", "/Applications/New.app"])
+
+    def test_source_run_leaves_the_codex_speak_login_item_alone(self):
+        os.makedirs(os.path.dirname(self.old_plist()))
+        with open(self.old_plist(), "wb") as f:
+            plistlib.dump({"Label": "com.tzachbon.codexspeak"}, f)
+        with mock.patch.object(startup, "bundle_path", return_value=None), \
+                mock.patch.object(startup.subprocess, "run") as run:
+            startup.refresh()
+        run.assert_not_called()
+        self.assertTrue(os.path.exists(self.old_plist()))
+        self.assertFalse(startup.enabled())
+
+    def test_no_codex_speak_login_item_adds_none(self):
+        with mock.patch.object(startup.subprocess, "run") as run:
+            startup.refresh("/Applications/New.app")
+        run.assert_not_called()
+        self.assertFalse(startup.enabled())
 
 
 class PermissionTest(unittest.TestCase):

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import threading
 
-from codex_speak.core import App
-from codex_speak import sentences
+from harness_discussion.core import App
+from harness_discussion import sentences
 
 
 class Popup:
@@ -268,9 +268,9 @@ class WindowsPause(unittest.TestCase):
             made_voice.set()
             return voice
 
-        from codex_speak.win.voice import SapiEngine
+        from harness_discussion.win.voice import SapiEngine
         e = SapiEngine()
-        with patch("codex_speak.win.voice.comtypes.CoInitialize"), patch("codex_speak.win.voice.comtypes.client.CreateObject", side_effect=create):
+        with patch("harness_discussion.win.voice.comtypes.CoInitialize"), patch("harness_discussion.win.voice.comtypes.client.CreateObject", side_effect=create):
             e.speak("Never spoken", "en-US", lambda err: done.set())
             self.assertTrue(connecting.wait(2))
             e.pause()

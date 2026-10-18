@@ -14,21 +14,26 @@ if sys.platform == "darwin":
 else:
     APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
     LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-DIR = os.path.join(APPDATA, "codex-speak")
-LOCAL_DIR = os.path.join(LOCALAPPDATA, "codex-speak")  # the same folder on macOS
+DIR = os.path.join(APPDATA, "harness-discussion")
+LOCAL_DIR = os.path.join(LOCALAPPDATA, "harness-discussion")  # the same folder on macOS
 PATH = os.path.join(DIR, "settings.json")
-TEMP_DIR = os.path.join(tempfile.gettempdir(), "codex-speak")  # uninstall deletes it
+TEMP_DIR = os.path.join(tempfile.gettempdir(), "harness-discussion")  # uninstall deletes it
 ENGINES = ("Codex", "macOS") if sys.platform == "darwin" else ("Codex", "Edge", "Windows")
 DEFAULTS = {"engine": None, "speed": 1.0, "clipboard_fallback": True, "stt_server": False,
             "prefetch": False, "auto_update": sys.platform == "darwin", "caption_font_size": 10,
             "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
-TASK = "Codex Speak"  # the installer creates and removes it with `--startup on|off`
-# Before 0.5.0 the app was called Select to TTS. migrate() and refresh_startup() move its folders and task.
-LEGACY_TASK = "Select to TTS"
-LEGACY_DIRS = ((os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
-               (os.path.join(LOCALAPPDATA, "select-to-tts"), os.path.join(LOCALAPPDATA, "codex-speak"),
+TASK = "Harness Discussion"  # the installer creates and removes it with `--startup on|off`
+# The app was called Select to TTS before 0.5.0, then Codex Speak. migrate() and refresh_startup()
+# move their folders and tasks, newest app first, so an older leftover never wins.
+LEGACY_TASKS = ("Codex Speak", "Select to TTS")
+LEGACY_DIRS = (*(((os.path.join(APPDATA, "codex-speak"), DIR,  # macOS: one folder, so one entry moves it whole
+                   ("settings.json", "codex-speak.log", "stt-connection.json")),) if APPDATA == LOCALAPPDATA else
+                 ((os.path.join(APPDATA, "codex-speak"), DIR, ("settings.json", "codex-speak.log")),
+                  (os.path.join(LOCALAPPDATA, "codex-speak"), LOCAL_DIR, ("stt-connection.json",)))),
+               (os.path.join(APPDATA, "select-to-tts"), DIR, ("settings.json",)),
+               (os.path.join(LOCALAPPDATA, "select-to-tts"), LOCAL_DIR,
                 ("stt-connection.json",)))  # the speech-to-text URL keeps its token
 # Earlier builds used this Run value. Windows starts Run entries one at a time after sign-in,
 # waiting up to 30 s on each, which delayed the app by minutes.
@@ -70,9 +75,11 @@ def load(path=PATH) -> dict:
     return s
 
 
-def migrate(dirs=LEGACY_DIRS) -> None:
+def migrate(dirs=LEGACY_DIRS) -> bool:
     """Moves each old folder to its new name. If it can't, copies the files worth keeping over the
-    new ones on every start until a copy of all of them succeeds. Never raises."""
+    new ones on every start until a copy of all of them succeeds. Never raises. True if it moved or
+    copied anything."""
+    moved = False
     for old, new, keep in dirs:
         if not os.path.isdir(old):
             continue
@@ -80,6 +87,7 @@ def migrate(dirs=LEGACY_DIRS) -> None:
             try:
                 open(os.path.join(old, ".migrated"), "w").close()  # moves atomically with the folder
                 os.rename(old, new)
+                moved = True
                 continue
             except OSError:
                 pass  # a file in it is locked: copy instead
@@ -94,8 +102,10 @@ def migrate(dirs=LEGACY_DIRS) -> None:
                     shutil.copy2(src, dst + ".tmp")
                     os.replace(dst + ".tmp", dst)  # never a half-copied file
             open(done, "w").close()
+            moved = True
         except OSError:
             pass  # tried again next start
+    return moved
 
 
 def save(s: dict, path=PATH) -> None:
@@ -114,7 +124,7 @@ def launch_command() -> tuple[str, str]:
     """(program, arguments) that start this app."""
     if getattr(sys, "frozen", False):
         return sys.executable, ""
-    return os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), "-m codex_speak"
+    return os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), "-m harness_discussion"
 
 
 def _scheduler():
@@ -148,7 +158,7 @@ def set_startup(on: bool, name=TASK) -> None:
             folder.RegisterTaskDefinition(name, d, 6, user, None, 3)  # create or update, interactive
         else:
             installed = name == TASK and getattr(sys, "frozen", False)  # source runs keep the old task
-            for task in (name, LEGACY_TASK) if installed else (name,):
+            for task in (name, *LEGACY_TASKS) if installed else (name,):
                 if _task_enabled(task) is not None:
                     folder.DeleteTask(task, 0)
     except COMError as e:
@@ -159,7 +169,7 @@ def set_startup(on: bool, name=TASK) -> None:
 
 def _logon_task(service, user, program, args):
     d = service.NewTask(0)
-    d.RegistrationInfo.Description = "Starts Codex Speak when you sign in."
+    d.RegistrationInfo.Description = "Starts Harness Discussion when you sign in."
     trigger = d.Triggers.Create(9)  # TASK_TRIGGER_LOGON
     trigger.UserId = user
     action = d.Actions.Create(0)  # TASK_ACTION_EXEC
@@ -181,7 +191,8 @@ def _drop_run_value():
 
 def refresh_startup() -> None:
     """Points an enabled sign-in task at this install (it may have moved) and moves an older
-    build's Run value or Select to TTS task to the task. Source runs leave an installed copy's task alone."""
+    build's Run value or Codex Speak or Select to TTS task to the task. Source runs leave an installed
+    copy's task alone."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
             winreg.QueryValueEx(k, RUN_VALUE)
@@ -191,13 +202,13 @@ def refresh_startup() -> None:
     frozen = getattr(sys, "frozen", False)
     if not frozen:
         return
-    old_task = _task_enabled(LEGACY_TASK)
+    old_tasks = {name: state for name in LEGACY_TASKS if (state := _task_enabled(name)) is not None}
     enabled = _task_enabled(TASK)
     if enabled is None:
-        enabled = old_task if old_task is not None else legacy
+        enabled = next(iter(old_tasks.values()), legacy)
     if enabled:
         set_startup(True)
-    if old_task is not None:  # a disabled one is dropped, not carried over
-        set_startup(False, LEGACY_TASK)
+    for name in old_tasks:  # a disabled one is dropped, not carried over
+        set_startup(False, name)
     if legacy and not enabled:
         _drop_run_value()

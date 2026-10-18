@@ -22,7 +22,7 @@ class SettingsWindow:
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE, padx=24, pady=20)
-        w.title("Codex Speak settings")
+        w.title("Harness Discussion settings")
         w.resizable(False, False)
         self._icon = ImageTk.PhotoImage(icon, master=w)
         w.iconphoto(False, self._icon)
@@ -57,11 +57,11 @@ class SettingsWindow:
 
         self.startup = tk.BooleanVar(w, settings.startup_enabled())
         card = self._card("General")
-        ttk.Checkbutton(card, text="Start Codex Speak when I sign in to Windows", style="Card.TCheckbutton",
+        ttk.Checkbutton(card, text="Start Harness Discussion when I sign in to Windows", style="Card.TCheckbutton",
                         variable=self.startup, command=self._startup_changed).pack(anchor="w")
         row = tk.Frame(card, bg=CARD)
         row.pack(fill="x", pady=(10, 0))
-        ttk.Label(row, text=f"Codex Speak {updates.current_version()}", style="Card.TLabel").pack(side="left")
+        ttk.Label(row, text=f"Harness Discussion {updates.current_version()}", style="Card.TLabel").pack(side="left")
         self.update_button = ttk.Button(row, text="Check and install update", command=on_update)
         self.update_button.pack(side="right")
         self.auto_update = tk.BooleanVar(w, cfg.get("auto_update", False))
@@ -251,7 +251,7 @@ class SettingsWindow:
             settings.set_startup(self.startup.get())
         except OSError as e:
             self.startup.set(settings.startup_enabled())
-            messagebox.showerror("Codex Speak", f"Could not change sign-in startup: {e}", parent=self.win)
+            messagebox.showerror("Harness Discussion", f"Could not change sign-in startup: {e}", parent=self.win)
 
     def _show_speed(self):
         self.speed_lbl["text"] = settings.speed_label(self.speed.get())
@@ -326,4 +326,4 @@ class SettingsWindow:
 
     def _test(self):
         self._flush_pending()
-        self.on_test(f"This is how Codex Speak sounds at {self.speed_lbl['text']} speed.")
+        self.on_test(f"This is how Harness Discussion sounds at {self.speed_lbl['text']} speed.")

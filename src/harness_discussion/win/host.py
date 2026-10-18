@@ -20,7 +20,7 @@ class TkHost:
         self.root = tk.Tk()
         self.root.withdraw()
         self.trigger = None
-        self.icon = pystray.Icon("codex-speak", icon_image(), "Codex Speak", self._menu())
+        self.icon = pystray.Icon("harness-discussion", icon_image(), "Harness Discussion", self._menu())
 
     def _menu(self):
         put = lambda *event: lambda: self.app.events.put(event)
@@ -56,7 +56,7 @@ class TkHost:
         self.root.after(ms, fn)
 
     def notify(self, message):
-        self.icon.notify(message, "Codex Speak")
+        self.icon.notify(message, "Harness Discussion")
 
     def run(self, pump):
         def tick():

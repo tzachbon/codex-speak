@@ -1,7 +1,7 @@
 """Markup stripping, speakable tokens, and rich-text list numbers."""
 import unittest
 
-from codex_speak import richtext
+from harness_discussion import richtext
 
 
 class StripMarkup(unittest.TestCase):
@@ -30,12 +30,12 @@ class StripMarkup(unittest.TestCase):
 class Speakable(unittest.TestCase):
     def test_shortens_links_paths_and_hashes(self):
         cases = [
-            ("See https://github.com/tzachbon/codex-speak/pull/11 now.", "See github.com now."),
+            ("See https://github.com/tzachbon/harness-discussion/pull/11 now.", "See github.com now."),
             ("Pushed to https://www.example.com/a.", "Pushed to example.com."),
             ("Open https://example.com?token=abc now.", "Open example.com now."),
             ("Open https://example.com#top now.", "Open example.com now."),
             ("Open packaging/setup_signing_mac.sh and check.", "Open setup signing mac.sh and check."),
-            ("See src/codex_speak/audio.py for it.", "See audio.py for it."),
+            ("See src/harness_discussion/audio.py for it.", "See audio.py for it."),
             ("Dirty audio (67aa9fd): gaps.", "Dirty audio: gaps."),
             ("Commit 0025d63 handles it.", "Commit handles it."),
         ]

@@ -15,8 +15,8 @@ import wave
 
 import av
 
-from codex_speak import stt, stt_server
-from codex_speak.codex_rt import AppServer
+from harness_discussion import stt, stt_server
+from harness_discussion.codex_rt import AppServer
 
 from stt_helpers import FakePeer, multipart, receive, wav, words
 

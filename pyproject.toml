@@ -1,5 +1,5 @@
 [project]
-name = "codex-speak"
+name = "harness-discussion"
 version = "0.1.1"
 description = "Select text anywhere on Windows or macOS and hear it read aloud"
 authors = [
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.gui-scripts]
-codex-speak = "codex_speak.__main__:main"
+harness-discussion = "harness_discussion.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]

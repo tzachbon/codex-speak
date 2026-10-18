@@ -14,8 +14,8 @@ import time
 
 import edge_tts
 
-from codex_speak import lang
-from codex_speak.engines import EdgeEngine
+from harness_discussion import lang
+from harness_discussion.engines import EdgeEngine
 
 TEXT = ("The quick brown fox jumps over the lazy dog. " * 17)[:730]
 

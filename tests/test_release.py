@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from codex_speak import updates
+from harness_discussion import updates
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging"))
 import publish_release
@@ -117,9 +117,9 @@ class Publication(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.artifact = Path(directory.name) / "CodexSpeak-Setup.exe"
+        self.artifact = Path(directory.name) / "HarnessDiscussion-Setup.exe"
         self.artifact.write_bytes(b"Test installer")
-        self.dmg = Path(directory.name) / "CodexSpeak.dmg"
+        self.dmg = Path(directory.name) / "HarnessDiscussion.dmg"
         self.dmg.write_bytes(b"Test disk image")
         self.artifacts = [self.artifact]
         self.tags, self.release, self.published, self.calls = {}, None, [], []
@@ -133,7 +133,7 @@ class Publication(unittest.TestCase):
         return {"name": path.name, "state": state,
                 "size": path.stat().st_size if state == "uploaded" else 0,
                 "digest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
-                "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/v0.2.0/{path.name}"}
+                "browser_download_url": f"https://github.com/tzachbon/harness-discussion/releases/download/v0.2.0/{path.name}"}
 
     def run_command(self, args, **kwargs):
         args = tuple(args)
@@ -191,21 +191,21 @@ class Publication(unittest.TestCase):
         self.artifacts = [self.artifact, self.dmg]
         self.publish()
         self.assertFalse(self.release["isDraft"])
-        self.assertEqual([a["name"] for a in self.release["assets"]], ["CodexSpeak-Setup.exe", "CodexSpeak.dmg"])
+        self.assertEqual([a["name"] for a in self.release["assets"]], ["HarnessDiscussion-Setup.exe", "HarnessDiscussion.dmg"])
         metadata = {"tag_name": "v0.2.0", "draft": False, "prerelease": False, "assets": self.release["assets"]}
         reply = MagicMock()
         reply.__enter__.return_value = reply
         reply.geturl.return_value = updates.API
         reply.read.return_value = json.dumps(metadata).encode()
-        for name in ("CodexSpeak-Setup.exe", "CodexSpeak.dmg"):
+        for name in ("HarnessDiscussion-Setup.exe", "HarnessDiscussion.dmg"):
             with self.subTest(name=name), patch.object(updates, "urlopen", return_value=reply), \
                     patch.object(updates, "ASSET", name), patch.object(updates, "version", return_value="0.1.1"):
                 self.assertEqual(updates.check()["name"], name)
 
     def test_failed_second_upload_keeps_the_release_a_draft(self):
         self.artifacts = [self.artifact, self.dmg]
-        self.upload_states = {"CodexSpeak.dmg": "starter"}
-        with self.assertRaisesRegex(ValueError, "CodexSpeak.dmg"):
+        self.upload_states = {"HarnessDiscussion.dmg": "starter"}
+        with self.assertRaisesRegex(ValueError, "HarnessDiscussion.dmg"):
             self.publish()
         self.assertTrue(self.release["isDraft"])
         self.assertFalse(any(call[:3] == ("gh", "release", "edit") for call in self.calls))
@@ -213,7 +213,7 @@ class Publication(unittest.TestCase):
     def test_any_missing_installer_fails_before_writes(self):
         self.artifacts = [self.artifact, self.dmg]
         self.dmg.unlink()
-        with self.assertRaisesRegex(ValueError, "CodexSpeak.dmg"):
+        with self.assertRaisesRegex(ValueError, "HarnessDiscussion.dmg"):
             self.publish()
         self.assertEqual(self.calls, [])
 
