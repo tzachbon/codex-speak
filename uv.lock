@@ -374,53 +374,6 @@ wheels = [
 ]
 
 [[package]]
-name = "codex-speak"
-version = "0.1.1"
-source = { editable = "." }
-dependencies = [
-    { name = "aiortc" },
-    { name = "comtypes", marker = "sys_platform == 'win32'" },
-    { name = "edge-tts" },
-    { name = "pillow" },
-    { name = "pynput", marker = "sys_platform == 'win32'" },
-    { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
-    { name = "pystray", marker = "sys_platform == 'win32'" },
-    { name = "sounddevice" },
-    { name = "uiautomation", marker = "sys_platform == 'win32'" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pyinstaller" },
-]
-spike = [
-    { name = "aiortc" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiortc", specifier = ">=1.15.0" },
-    { name = "comtypes", marker = "sys_platform == 'win32'", specifier = ">=1.4.17" },
-    { name = "edge-tts", specifier = ">=7.2.8" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pynput", marker = "sys_platform == 'win32'", specifier = ">=1.8.2" },
-    { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'", specifier = ">=11" },
-    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'", specifier = ">=11" },
-    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'", specifier = ">=11" },
-    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'", specifier = ">=11" },
-    { name = "pystray", marker = "sys_platform == 'win32'", specifier = ">=0.19.5" },
-    { name = "sounddevice", specifier = ">=0.5.6" },
-    { name = "uiautomation", marker = "sys_platform == 'win32'", specifier = ">=2.0.29" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pyinstaller", specifier = ">=6.22.3" }]
-spike = [{ name = "aiortc", specifier = ">=1.15.0" }]
-
-[[package]]
 name = "comtypes"
 version = "1.4.17"
 source = { registry = "https://pypi.org/simple" }
@@ -665,6 +618,53 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/36/ff/556b2423f449a7515af6b8222a4d7833cbe09ff3e8d2f0b80471f5f6d02e/google_crc32c-1.9.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0abe7e202c25909869c35672ab0f2fe748a7acf276eb78577332a7c38999740f", size = 36858, upload-time = "2026-09-24T21:38:15.799Z" },
     { url = "https://files.pythonhosted.org/packages/40/71/4733f1b7c921d04a2bb9b9916cf66498bf7ad0860a06289413830da83192/google_crc32c-1.9.0-cp315-cp315-win_amd64.whl", hash = "sha256:5695c8b9327e040b2aba12c6659b0acb5995314ef0af0192da66e662e011103b", size = 35534, upload-time = "2026-09-24T21:39:31.337Z" },
 ]
+
+[[package]]
+name = "harness-discussion"
+version = "0.1.1"
+source = { editable = "." }
+dependencies = [
+    { name = "aiortc" },
+    { name = "comtypes", marker = "sys_platform == 'win32'" },
+    { name = "edge-tts" },
+    { name = "pillow" },
+    { name = "pynput", marker = "sys_platform == 'win32'" },
+    { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
+    { name = "pystray", marker = "sys_platform == 'win32'" },
+    { name = "sounddevice" },
+    { name = "uiautomation", marker = "sys_platform == 'win32'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyinstaller" },
+]
+spike = [
+    { name = "aiortc" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiortc", specifier = ">=1.15.0" },
+    { name = "comtypes", marker = "sys_platform == 'win32'", specifier = ">=1.4.17" },
+    { name = "edge-tts", specifier = ">=7.2.8" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "pynput", marker = "sys_platform == 'win32'", specifier = ">=1.8.2" },
+    { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'", specifier = ">=11" },
+    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'", specifier = ">=11" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'", specifier = ">=11" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'", specifier = ">=11" },
+    { name = "pystray", marker = "sys_platform == 'win32'", specifier = ">=0.19.5" },
+    { name = "sounddevice", specifier = ">=0.5.6" },
+    { name = "uiautomation", marker = "sys_platform == 'win32'", specifier = ">=2.0.29" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pyinstaller", specifier = ">=6.22.3" }]
+spike = [{ name = "aiortc", specifier = ">=1.15.0" }]
 
 [[package]]
 name = "idna"

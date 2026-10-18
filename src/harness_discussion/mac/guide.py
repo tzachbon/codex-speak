@@ -10,19 +10,19 @@ class GuideWindow:
     def __init__(self, stale, after):
         self.after, self.stale = after, stale
         if stale:
-            title = "Codex Speak was updated, so macOS needs permission again"
+            title = "Harness Discussion was updated, so macOS needs permission again"
             steps = ["1. Click Fix permission. This clears the old entry.",
-                     "2. Turn on Codex Speak in the list that opens.",
+                     "2. Turn on Harness Discussion in the list that opens.",
                      "3. Come back here. This window closes by itself when it works."]
             action = ui.button("Fix permission", self._fix, primary=True)
         else:
-            title = "Let Codex Speak read selected text"
+            title = "Let Harness Discussion read selected text"
             steps = ["1. Click Open System Settings below.",
-                     "2. Turn on Codex Speak in the list. If it isn't there, click + and pick "
-                     "Codex Speak from Applications.",
+                     "2. Turn on Harness Discussion in the list. If it isn't there, click + and pick "
+                     "Harness Discussion from Applications.",
                      "3. Come back here. This window closes by itself when it works."]
             action = ui.button("Open System Settings", lambda: permission.open_settings(), primary=True)
-        why = ("macOS asks you to allow this once. Codex Speak uses it only to read the text you select, "
+        why = ("macOS asks you to allow this once. Harness Discussion uses it only to read the text you select, "
                "and nothing is read until you press play.")
         self.help = ui.label("", 12, secondary=True, width=WIDTH)
         self.help.setHidden_(True)
@@ -38,7 +38,7 @@ class GuideWindow:
             self.help,
             ui.stack([action, self.spinner, self.status], vertical=False, spacing=10),
         ], spacing=14, inset=22)
-        self.win = ui.window("Codex Speak needs permission", content)
+        self.win = ui.window("Harness Discussion needs permission", content)
         ui.show(self.win)
 
     @property
@@ -52,8 +52,8 @@ class GuideWindow:
         if permission.reset_grant():
             permission.open_settings()
         else:
-            self.help.setStringValue_("Couldn't clear the old entry. In the list, select Codex Speak, click −, "
-                                      "then click + and add Codex Speak from Applications again.")
+            self.help.setStringValue_("Couldn't clear the old entry. In the list, select Harness Discussion, click −, "
+                                      "then click + and add Harness Discussion from Applications again.")
             self.help.setHidden_(False)
             permission.open_settings(prompt=False)
         self.win.setContentSize_(self.win.contentView().fittingSize())

@@ -3,8 +3,8 @@ import threading
 import unittest
 from unittest import mock
 
-from codex_speak import audio
-from codex_speak.audio import PcmPlayer
+from harness_discussion import audio
+from harness_discussion.audio import PcmPlayer
 
 
 class Player(unittest.TestCase):

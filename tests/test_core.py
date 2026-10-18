@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_speak import core, settings, updates
-from codex_speak.audio import NoAudioError
+from harness_discussion import core, settings, updates
+from harness_discussion.audio import NoAudioError
 
 
 class Engine:
@@ -224,7 +224,7 @@ class CoreTest(unittest.TestCase):
 
     def test_macos_update_check_only_reports_the_version(self):
         app = self.make(Engine("Codex"))
-        asset = {"version": "9.0.0", "name": "CodexSpeak.dmg"}
+        asset = {"version": "9.0.0", "name": "HarnessDiscussion.dmg"}
         with patch.object(sys, "platform", "darwin"), patch.object(sys, "frozen", True, create=True), \
                 patch.object(updates, "check", return_value=asset), \
                 patch.object(updates, "download") as download, patch.object(updates, "install") as install:

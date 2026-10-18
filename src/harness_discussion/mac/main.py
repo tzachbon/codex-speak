@@ -4,9 +4,12 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 
 from .. import settings
 from ..core import App, log
+
+OLD_BUNDLE_ID = "com.tzachbon.codexspeak"  # Codex Speak, the app's earlier name
 
 
 def _self_test():
@@ -25,17 +28,35 @@ def _self_test():
     print("self-test ok")
 
 
+def _quit_old_app():
+    """Codex Speak would recreate its folder after migrate() moves it."""
+    import AppKit
+    from Foundation import NSDate, NSRunLoop
+    apps = list(AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(OLD_BUNDLE_ID))
+    for app in apps:
+        app.terminate()
+    deadline = time.monotonic() + 2
+    while apps and time.monotonic() < deadline and not all(app.isTerminated() for app in apps):
+        # isTerminated() only changes while the main run loop runs
+        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.05))
+
+
 def main():
     if sys.argv[1:2] == ["--self-test"]:
         _self_test()
         return
+    _quit_old_app()
+    if settings.migrate():
+        cfg = settings.load()
+        cfg["ax_granted_build"] = None  # a new bundle id needs a first grant, not the "was updated" guide
+        settings.save(cfg)
     os.makedirs(settings.DIR, exist_ok=True)
     lock = open(os.path.join(settings.DIR, "app.lock"), "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         return  # another copy runs. Opening the app through Finder reaches it as a reopen
-    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "codex-speak.log"),
+    handler = logging.handlers.RotatingFileHandler(os.path.join(settings.DIR, "harness-discussion.log"),
                                                    maxBytes=256_000, backupCount=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, handlers=[handler],  # libraries log IPs at INFO
                         format="%(asctime)s %(levelname)s %(message)s")

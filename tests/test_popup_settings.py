@@ -13,8 +13,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_speak import core, settings
-from codex_speak.win import host as win_host, settings_ui
+from harness_discussion import core, settings
+from harness_discussion.win import host as win_host, settings_ui
 
 
 class Speech:

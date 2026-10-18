@@ -7,12 +7,12 @@ if sys.platform != "win32":
 
 from pynput.mouse import Button
 
-from codex_speak import settings
+from harness_discussion import settings
 from unittest import mock
 
-from codex_speak.win import clipboard, selection
-from codex_speak.win.trigger import SelectionTrigger
-from codex_speak.win.voice import sapi_rate
+from harness_discussion.win import clipboard, selection
+from harness_discussion.win.trigger import SelectionTrigger
+from harness_discussion.win.voice import sapi_rate
 
 
 class Clipboard(unittest.TestCase):
@@ -67,7 +67,7 @@ class SignInTask(unittest.TestCase):
         folder.RegisterTaskDefinition.side_effect = lambda name, *args: tasks.update({name: SimpleNamespace(Enabled=True)})
         folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)
         with patch.object(settings, "_scheduler", return_value=service):
-            name = "codex-speak-unittest"
+            name = "harness-discussion-unittest"
             try:
                 settings.set_startup(True, name)
                 self.assertTrue(settings.startup_enabled(name))
@@ -80,17 +80,47 @@ class SignInTask(unittest.TestCase):
                 settings.set_startup(False, name)
 
 
+    def test_legacy_task_names(self):
+        self.assertEqual(settings.TASK, "Harness Discussion")
+        self.assertEqual(settings.LEGACY_TASKS, ("Select to TTS", "Codex Speak"))
+
     def test_installed_build_replaces_the_old_task(self):
         from unittest.mock import call, patch
-        replaced = [call(True), call(False, settings.LEGACY_TASK)]
-        for old_enabled, expected in ((True, replaced), (False, replaced[1:])):  # a disabled one stays off
-            with patch.object(settings.sys, "frozen", True, create=True), \
-                    patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else None), \
-                    patch.object(settings, "startup_enabled", return_value=False), \
+        for legacy in settings.LEGACY_TASKS:
+            replaced = [call(True), call(False, legacy)]
+            for old_enabled, expected in ((True, replaced), (False, replaced[1:])):  # a disabled one stays off
+                with self.subTest(legacy=legacy, old_enabled=old_enabled), \
+                        patch.object(settings.sys, "frozen", True, create=True), \
+                        patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == legacy else None), \
+                        patch.object(settings, "startup_enabled", return_value=False), \
+                        patch.object(settings, "set_startup") as set_startup, \
+                        patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+                    settings.refresh_startup()
+                self.assertEqual(set_startup.call_args_list, expected)
+
+    def test_both_legacy_tasks_are_removed_and_the_first_found_decides(self):
+        from unittest.mock import call, patch
+        both = [call(False, name) for name in settings.LEGACY_TASKS]
+        for states, expected in (((True, False), [call(True), *both]), ((False, True), both),
+                                 ((None, True), [call(True), both[1]])):
+            found = dict(zip(settings.LEGACY_TASKS, states))
+            with self.subTest(states=states), patch.object(settings.sys, "frozen", True, create=True), \
+                    patch.object(settings, "_task_enabled", side_effect=lambda name: found.get(name)), \
                     patch.object(settings, "set_startup") as set_startup, \
                     patch.object(settings.winreg, "OpenKey", side_effect=OSError):
                 settings.refresh_startup()
-            self.assertEqual(set_startup.call_args_list, expected, old_enabled)
+            self.assertEqual(set_startup.call_args_list, expected)
+
+    def test_current_task_state_wins_over_legacy_tasks(self):
+        from unittest.mock import call, patch
+        for current in (True, False):
+            with self.subTest(current=current), patch.object(settings.sys, "frozen", True, create=True), \
+                    patch.object(settings, "_task_enabled", side_effect=lambda name: current if name == settings.TASK else not current), \
+                    patch.object(settings, "set_startup") as set_startup, \
+                    patch.object(settings.winreg, "OpenKey", side_effect=OSError):
+                settings.refresh_startup()
+            self.assertEqual(set_startup.call_args_list,
+                             [call(True)] * current + [call(False, name) for name in settings.LEGACY_TASKS])
 
     def test_source_run_leaves_the_old_task_alone(self):
         from unittest.mock import patch
@@ -105,36 +135,38 @@ class SignInTask(unittest.TestCase):
 
     def test_installed_refresh_keeps_a_disabled_current_task_off(self):
         from unittest.mock import call, patch
-        for old_enabled in (None, False, True):
-            for legacy_run in (False, True):
-                with self.subTest(old_enabled=old_enabled, legacy_run=legacy_run), \
-                        patch.object(settings.sys, "frozen", True, create=True), \
-                        patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == settings.LEGACY_TASK else False), \
-                        patch.object(settings, "set_startup") as set_startup, \
-                        patch.object(settings, "_drop_run_value") as drop_run, \
-                        patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
-                        patch.object(settings.winreg, "OpenKey", side_effect=None if legacy_run else OSError):
-                    settings.refresh_startup()
-                self.assertEqual(set_startup.call_args_list, [] if old_enabled is None else [call(False, settings.LEGACY_TASK)])
-                self.assertEqual(drop_run.call_count, int(legacy_run))
+        for legacy in settings.LEGACY_TASKS:
+            for old_enabled in (None, False, True):
+                for legacy_run in (False, True):
+                    with self.subTest(legacy=legacy, old_enabled=old_enabled, legacy_run=legacy_run), \
+                            patch.object(settings.sys, "frozen", True, create=True), \
+                            patch.object(settings, "_task_enabled", side_effect=lambda name: old_enabled if name == legacy else False if name == settings.TASK else None), \
+                            patch.object(settings, "set_startup") as set_startup, \
+                            patch.object(settings, "_drop_run_value") as drop_run, \
+                            patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
+                            patch.object(settings.winreg, "OpenKey", side_effect=None if legacy_run else OSError):
+                        settings.refresh_startup()
+                    self.assertEqual(set_startup.call_args_list, [] if old_enabled is None else [call(False, legacy)])
+                    self.assertEqual(drop_run.call_count, int(legacy_run))
 
     def test_disabled_legacy_task_overrides_an_older_run_value(self):
         from unittest.mock import patch
-        with patch.object(settings.sys, "frozen", True, create=True), \
-                patch.object(settings, "_task_enabled", side_effect=lambda name: False if name == settings.LEGACY_TASK else None), \
-                patch.object(settings, "set_startup") as set_startup, \
-                patch.object(settings, "_drop_run_value") as drop_run, \
-                patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
-                patch.object(settings.winreg, "OpenKey"):
-            settings.refresh_startup()
-        set_startup.assert_called_once_with(False, settings.LEGACY_TASK)
-        drop_run.assert_called_once()
+        for legacy in settings.LEGACY_TASKS:
+            with self.subTest(legacy=legacy), patch.object(settings.sys, "frozen", True, create=True), \
+                    patch.object(settings, "_task_enabled", side_effect=lambda name: False if name == legacy else None), \
+                    patch.object(settings, "set_startup") as set_startup, \
+                    patch.object(settings, "_drop_run_value") as drop_run, \
+                    patch.object(settings.winreg, "QueryValueEx", return_value=("SelectToTTS.exe", 1)), \
+                    patch.object(settings.winreg, "OpenKey"):
+                settings.refresh_startup()
+            set_startup.assert_called_once_with(False, legacy)
+            drop_run.assert_called_once()
 
-    def test_installed_disable_removes_both_disabled_tasks(self):
+    def test_installed_disable_removes_every_disabled_task(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock, patch
         service = MagicMock()
-        tasks = {name: SimpleNamespace(Enabled=False) for name in (settings.TASK, settings.LEGACY_TASK)}
+        tasks = {name: SimpleNamespace(Enabled=False) for name in (settings.TASK, *settings.LEGACY_TASKS)}
         folder = service.GetFolder.return_value
         folder.GetTask.side_effect = lambda name: tasks[name]
         folder.DeleteTask.side_effect = lambda name, flags: tasks.pop(name)

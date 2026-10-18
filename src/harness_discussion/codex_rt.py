@@ -158,7 +158,7 @@ class AppServer:
             self.events, self._pending, self._next, self._lock = queue.Queue(), {}, 0, threading.Lock()
             self._reader = threading.Thread(target=self._read, daemon=True)
             self._reader.start()
-            self.call("initialize", {"clientInfo": {"name": "codex-speak", "version": "0.1.0"},
+            self.call("initialize", {"clientInfo": {"name": "harness-discussion", "version": "0.1.0"},
                                      "capabilities": {"experimentalApi": True}})
             self._send({"method": "initialized"})
             self.thread_id = self.call("thread/start", {"ephemeral": True})["thread"]["id"]
@@ -404,7 +404,7 @@ class CodexEngine:
                     pass  # session may already be closed
 
 
-if __name__ == "__main__":  # manual check: uv run python -m codex_speak.codex_rt "text" [he-IL] [stop_after_s]
+if __name__ == "__main__":  # manual check: uv run python -m harness_discussion.codex_rt "text" [he-IL] [stop_after_s]
     import sys
     done = threading.Event()
     engine = CodexEngine()

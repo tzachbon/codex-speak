@@ -9,7 +9,7 @@ from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
 
 WIDTH = 440
-RELEASES = "https://github.com/tzachbon/codex-speak/releases/tag/v{}"
+RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
 ENGINES = [(None, "Auto: Codex, then the macOS voice"), ("Codex", "Codex only"),
            ("macOS", "macOS voice only (offline)")]
 
@@ -23,7 +23,7 @@ class SettingsWindow:
         self.app, self.cfg = app, dict(app.cfg)
         self._save_timer = None
 
-        self.startup = ui.checkbox("Start Codex Speak when I log in", startup.enabled(), self._startup_changed)
+        self.startup = ui.checkbox("Start Harness Discussion when I log in", startup.enabled(), self._startup_changed)
         self.update_button = ui.button("Check for updates", app.check_update)
         self.download_button = ui.button("Download", self._download)
         self.update_status = ui.label("", 11, secondary=True, width=WIDTH)
@@ -31,12 +31,12 @@ class SettingsWindow:
                                        lambda on: self._set("auto_update", on))
         general = _section("General", [
             self.startup,
-            ui.stack([ui.label(f"Codex Speak {updates.current_version()}"), self.update_button,
+            ui.stack([ui.label(f"Harness Discussion {updates.current_version()}"), self.update_button,
                       self.download_button], vertical=False),
             self.auto_update, self.update_status])
 
         self.permission_row = ui.stack([
-            ui.label("Codex Speak can't read selected text yet.", 12, width=WIDTH - 120),
+            ui.label("Harness Discussion can't read selected text yet.", 12, width=WIDTH - 120),
             ui.button("Fix this", show_guide)], vertical=False, spacing=10)
 
         self.speed = AppKit.NSSlider.sliderWithValue_minValue_maxValue_target_action_(
@@ -86,7 +86,7 @@ class SettingsWindow:
             ui.stack([self.stt_status, ui.button("Refresh", self._refresh_stt)], vertical=False)])
 
         self.content = ui.stack([general, self.permission_row, reading, selection, stt], spacing=20, inset=22)
-        self.win = ui.window("Codex Speak Settings", self.content)
+        self.win = ui.window("Harness Discussion Settings", self.content)
         self.refresh_permission()
         self.focus()
 
@@ -159,7 +159,7 @@ class SettingsWindow:
 
     def _test(self):
         self._flush()
-        self.app.test_voice(f"This is how Codex Speak sounds at {settings.speed_label(self.cfg['speed'])} speed.")
+        self.app.test_voice(f"This is how Harness Discussion sounds at {settings.speed_label(self.cfg['speed'])} speed.")
 
     def _stt_toggled(self, on):
         self._set("stt_server", on)

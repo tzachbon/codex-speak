@@ -14,8 +14,8 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-from codex_speak import stt_server
-from codex_speak.win import settings_ui
+from harness_discussion import stt_server
+from harness_discussion.win import settings_ui
 
 
 class SttSettings(unittest.TestCase):
@@ -50,7 +50,7 @@ class SttSettings(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.path = Path(self.temp.name) / "codex-speak/stt-connection.json"
+        self.path = Path(self.temp.name) / "harness-discussion/stt-connection.json"
         self.path.parent.mkdir()
         self.env = patch.object(stt_server, "CONNECTION", self.path)
         self.env.start()

@@ -50,7 +50,7 @@ class MacHost:
         self.engine_item = self._add("Last engine: -", None)
         self.error_item = self._add("", None)
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self._add("Quit Codex Speak", put("quit"))
+        self._add("Quit Harness Discussion", put("quit"))
         self.item.setMenu_(self.menu)
         self.refresh_menu()
 
@@ -63,11 +63,11 @@ class MacHost:
 
     def refresh_menu(self):
         image = ui.symbol("exclamationmark.triangle.fill" if self._missing else "speaker.wave.2.fill",
-                          "Codex Speak")
+                          "Harness Discussion")
         image.setTemplate_(not self._missing)
         self.item.button().setImage_(image)
-        self.item.button().setToolTip_("Codex Speak needs Accessibility permission" if self._missing
-                                       else "Codex Speak")
+        self.item.button().setToolTip_("Harness Discussion needs Accessibility permission" if self._missing
+                                       else "Harness Discussion")
         self.permission_item.setHidden_(not self._missing)
         self.engine_item.setTitle_(f"Last engine: {(self.app and self.app.chain.last) or '-'}")
         self.error_item.setHidden_(self._error is None)

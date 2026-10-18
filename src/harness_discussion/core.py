@@ -14,7 +14,7 @@ import time
 
 from . import lang, sentences, settings, stt_server, updates
 
-log = logging.getLogger("codex_speak")
+log = logging.getLogger("harness_discussion")
 # Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
 CAPTION_DELAY_S = 0.6
 

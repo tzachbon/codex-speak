@@ -1,12 +1,12 @@
 #!/bin/bash
-# Run once on a Mac that builds Codex Speak: creates the local signing identity that build_mac.sh uses.
+# Run once on a Mac that builds Harness Discussion: creates the local signing identity that build_mac.sh uses.
 # An ad-hoc signature changes with every build, so macOS drops the Accessibility grant after each
 # rebuild. A fixed certificate keeps it. The self-signed key lives in its own keychain and signs only
 # local builds; that keychain's random password is stored in the login keychain.
 set -euo pipefail
-name="Codex Speak Local Signing"
-keychain="$HOME/Library/Keychains/codex-speak-signing.keychain-db"
-service=codex-speak-signing
+name="Harness Discussion Local Signing"
+keychain="$HOME/Library/Keychains/harness-discussion-signing.keychain-db"
+service=harness-discussion-signing
 
 create() {
     local password
