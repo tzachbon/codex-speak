@@ -282,6 +282,33 @@ class SourcesSettingsTest(unittest.TestCase):
         self.rows["Codex"][4][0].performClick_(None)
         self.assertEqual(self.played, [("This is Codex.", "Codex")])
 
+    def test_the_welcome_header_shows_above_sources_only_on_first_run(self):
+        from harness_discussion.mac import settings_ui
+        self.assertIsNone(self.win.welcome)
+        welcome = settings_ui.SettingsWindow(self.app, lambda: None, welcome=True)
+        self.addCleanup(welcome.win.close)
+        views = list(welcome.sources.superview().arrangedSubviews())
+        self.assertEqual(welcome.welcome.stringValue(), "Pick the voices Harness Discussion uses.")
+        self.assertEqual(views.index(welcome.welcome) + 1, views.index(welcome.sources))
+
+
+class PopupSourceTest(unittest.TestCase):
+    def test_label_follows_set_source_and_a_pick_reaches_on_source(self):
+        import AppKit
+        from harness_discussion.mac import popup
+        AppKit.NSApplication.sharedApplication()
+        picked = []
+        noop = lambda *a: None
+        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
+                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: ["Codex", "macOS"])
+        bar.set_source("Codex")
+        self.assertEqual(bar.source_btn.title(), "Codex ▾")
+        menus = []
+        with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
+                (choices, current)) or pick("macOS")):
+            bar.source_btn.performClick_(None)
+        self.assertEqual((menus, picked), ([([("Codex", "Codex"), ("macOS", "macOS")], "Codex")], ["macOS"]))
+
 
 if __name__ == "__main__":
     unittest.main()

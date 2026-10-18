@@ -42,7 +42,7 @@ class Popup:
     text, playing, paused, menu_open, visible = "", False, False, False, False
 
     def __init__(self, speed, **callbacks):
-        self.callbacks, self.caption = callbacks, ""
+        self.callbacks, self.caption, self.source = callbacks, "", None
 
     def show(self, text, x, y):
         self.text, self.visible = text, True
@@ -77,11 +77,14 @@ class Popup:
     def set_speed(self, speed):
         pass
 
+    def set_source(self, name):
+        self.source = name
+
 
 class FakeHost:
     def __init__(self, engines):
         self._engines, self.timers, self.notes, self.quits = engines, [], [], 0
-        self.app = None
+        self.app, self.opened = None, []
 
     def engines(self):
         return self._engines
@@ -89,8 +92,8 @@ class FakeHost:
     def make_popup(self, speed, **callbacks):
         return Popup(speed, **callbacks)
 
-    def open_settings(self):
-        return None
+    def open_settings(self, welcome=False):
+        self.opened.append(welcome)
 
     def after(self, ms, fn):
         self.timers.append((ms, fn))

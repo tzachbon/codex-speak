@@ -144,7 +144,8 @@ class PopupCaptionLifecycle(unittest.TestCase):
         root.withdraw()
         callback = lambda *args: None
         popup = Popup(root, 1, on_play=callback, on_stop=callback, on_pause=callback,
-                      on_resume=callback, on_lang=callback, on_speed=callback, on_settings=callback)
+                      on_resume=callback, on_lang=callback, on_speed=callback, on_settings=callback,
+                      on_source=callback, sources=lambda: [])
         try:
             popup.show("Selected text", 140, 140)
             popup.set_playing(True)

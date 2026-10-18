@@ -201,6 +201,15 @@ class CaptionSettingsUi(unittest.TestCase):
         rows["Edge"][3][3].invoke()
         self.assertEqual(played, ["Edge"])
 
+    def test_the_welcome_header_shows_above_sources_only_on_first_run(self):
+        self.make_window(dict(settings.DEFAULTS), lambda *args: None)
+        self.assertIsNone(self.window.welcome)
+        self.window.close()
+        self.make_window(dict(settings.DEFAULTS), lambda *args: None, welcome=True)
+        children = self.window.sources_frame.master.pack_slaves()
+        self.assertEqual(self.window.welcome["text"], "Pick the voices Harness Discussion uses.")
+        self.assertEqual(children.index(self.window.welcome) + 1, children.index(self.window.sources_frame))
+
 
 if __name__ == "__main__":
     unittest.main()

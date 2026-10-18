@@ -129,6 +129,7 @@ def save(s: dict, path=PATH) -> None:
     os.replace(tmp, path)  # never leaves a half-written file behind
 
 
+WELCOME = "Pick the voices Harness Discussion uses."  # Settings header on first run, above Sources
 STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Signed out — open Cursor and sign in",
                "expired": "Sign-in expired — open Cursor"}
 

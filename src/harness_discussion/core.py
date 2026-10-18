@@ -13,6 +13,7 @@ import threading
 import time
 
 from . import lang, sentences, settings, stt_server, updates
+from .sources import Sources
 
 log = logging.getLogger("harness_discussion")
 # Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
@@ -20,7 +21,7 @@ CAPTION_DELAY_S = 0.6
 SPEECH_KEYS = ("sources", "voices", "speed", "prefetch")  # captured for the entire selection
 
 
-class App:
+class App(Sources):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -45,39 +46,22 @@ class App:
                 settings.save(self.cfg)
             except OSError:
                 pass  # Settings just shows again on the next start
-            self.events.put(("settings",))  # show new users where the app lives
+            self.events.put(("settings", True))  # show new users where the app lives, with a welcome
         for key, value in self.cfg.items():
             self.apply(key, value)
         self.popup = host.make_popup(self.cfg["speed"], on_play=self.play, on_stop=self.stop,
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
-                                     on_settings=lambda: self.events.put(("settings",)))
+                                     on_settings=lambda: self.events.put(("settings",)),
+                                     on_source=self._popup_source, sources=self._source_choices)
         self._configure_captions()
+        self._show_source()
 
     def start(self):
         """Starts listening for selections and schedules the update check."""
         self.host.start_trigger(self._selected, lambda x, y: self.events.put(("press", x, y)))
         self.host.after(30_000, self._auto_update)
         self.refresh_statuses()
-
-    def refresh_statuses(self):
-        """Settings shows the cached result: status() can take seconds, as macOS asks a login shell for codex."""
-        if not self._checking.acquire(blocking=False):
-            return  # the running check reports soon enough
-        def work():
-            statuses = {}
-            try:
-                for e in self.chain.engines:
-                    try:
-                        statuses[e.name] = e.status() if hasattr(e, "status") else "ready"
-                    except Exception as err:
-                        log.warning("%s status failed: %s", e.name, type(err).__name__)
-                        statuses[e.name] = "missing"
-                self.statuses = self.chain.statuses = statuses
-            finally:
-                self._checking.release()
-            self.events.put(("statuses",))
-        threading.Thread(target=work, daemon=True).start()
 
     def apply(self, key, value):
         """Called on the main thread. Engines read these attributes when the next read starts."""
@@ -138,8 +122,10 @@ class App:
             self.popup.set_speed(value)
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.set_speed(value)
-        if key == "sources" and self.settings_win and self.settings_win.alive:
-            self.settings_win.set_sources(value)
+        if key == "sources":
+            self._show_source()
+            if self.settings_win and self.settings_win.alive:
+                self.settings_win.set_sources(value)
         if key in SPEECH_KEYS and not self._read_options and self.popup.text:
             self._prepare_selection(self.popup.lang_tag())
         if not save:
@@ -307,6 +293,7 @@ class App:
         self.chain.stop()
         self._restore_speech_options()
         self.popup.set_playing(False)
+        self._show_source()
 
     def pause(self):
         self.popup.set_caption_paused(True)
@@ -423,9 +410,13 @@ class App:
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.focus()
             else:
-                self.settings_win = self.host.open_settings()
+                self.settings_win = self.host.open_settings(welcome=bool(args))  # ("settings", True) on first run
             self.refresh_statuses()
+        elif kind == "engine":
+            if self.chain.busy:  # an attempt that started before a stop is not shown
+                p.set_source(args[0])
         elif kind == "statuses":
+            self._show_source()
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.refresh_sources()
         elif kind == "quit":
