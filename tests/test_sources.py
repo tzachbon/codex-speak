@@ -199,6 +199,34 @@ class CoreSources(unittest.TestCase):
         self.assertIs(app.chain.statuses, app.statuses)
         self.assertEqual(refreshed, [1])
 
+    def wait_for_statuses(self, app):
+        for _ in range(200):
+            if ("statuses",) in list(app.events.queue):
+                return app.pump()
+            threading.Event().wait(0.01)
+        self.fail("no status check finished")
+
+    def test_a_shown_selection_checks_the_statuses_again(self):
+        cursor = Engine("Cursor")
+        cursor.status = lambda: "ready"
+        app = self.make(cursor, Engine("Codex"))
+        app._handle("show", "Hello.", 1, 1)
+        self.wait_for_statuses(app)
+        self.assertEqual(app.chain.statuses["Cursor"], "ready")
+
+    def test_one_status_check_at_a_time(self):
+        release, calls = threading.Event(), []
+        cursor = Engine("Cursor")
+        cursor.status = lambda: (calls.append(1), release.wait(5), "expired")[-1]
+        app = self.make(cursor)
+        app.refresh_statuses()
+        app.refresh_statuses()  # skipped: the first one is still running
+        release.set()
+        self.wait_for_statuses(app)
+        app.refresh_statuses()  # the first one finished, so this one runs
+        self.wait_for_statuses(app)
+        self.assertEqual((len(calls), app.statuses), (2, {"Cursor": "expired"}))
+
 
 del CoreTest  # imported for its helpers; its tests run in test_core
 

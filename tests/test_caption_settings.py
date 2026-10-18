@@ -160,7 +160,7 @@ class CaptionSettingsUi(unittest.TestCase):
 
     def sources_window(self, statuses=None):
         changes, played = [], []
-        engines = [SimpleNamespace(name="Cursor", voices=(("ara", "Ara"), ("eve", "Eve")), default_voice="ara"),
+        engines = [SimpleNamespace(name="Cursor", voices=(("eve", "Eve"), ("ara", "Ara")), default_voice="ara"),
                    SimpleNamespace(name="Codex"), SimpleNamespace(name="Edge"), SimpleNamespace(name="Windows")]
         self.make_window(dict(settings.DEFAULTS), lambda key, value, save=True: changes.append((key, value)),
                          engines=engines, statuses=lambda: statuses or {}, on_play=played.append)
@@ -192,9 +192,12 @@ class CaptionSettingsUi(unittest.TestCase):
         self.assertEqual(voice.get(), "Ara")  # Cursor's default before a choice
         self.window.win.deiconify()
         self.root.update()
-        voice.current(1)
+        voice.current(0)
         voice.event_generate("<<ComboboxSelected>>")
         self.assertEqual(changes[-1], ("voices", {"Cursor": "eve"}))
+        self.window.cfg["voices"] = {"Cursor": "gone"}  # a voice Cursor no longer offers
+        self.window.refresh_sources()
+        self.assertEqual(voice.get(), "Ara")
         rows["Edge"][3][3].invoke()
         self.assertEqual(played, ["Edge"])
 

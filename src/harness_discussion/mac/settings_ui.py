@@ -158,11 +158,14 @@ class SettingsWindow:
             if voice:
                 engine = self._engines[name]
                 ids = [v for v, _ in engine.voices]
-                chosen = self.cfg["voices"].get(name, getattr(engine, "default_voice", None))
-                voice.selectItemAtIndex_(ids.index(chosen) if chosen in ids else 0)
+                chosen = self.cfg["voices"].get(name)
+                chosen = chosen if chosen in ids else getattr(engine, "default_voice", ids[0])
+                voice.selectItemAtIndex_(ids.index(chosen))
             up.setEnabled_(i > 0)
             down.setEnabled_(i < len(sources) - 1)
             self.sources.addArrangedSubview_(row)
+        if hasattr(self, "win"):  # a status that wraps makes its row taller
+            self._fit()
 
     def set_sources(self, sources):
         """Mirrors an order changed elsewhere, without saving it again."""

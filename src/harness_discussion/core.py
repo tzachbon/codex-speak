@@ -37,6 +37,7 @@ class App:
         self.chain = Chain(host.engines())
         self.chain.on_engine = lambda name: self.events.put(("engine", name))
         self.statuses = {}  # engine name -> status(), filled by refresh_statuses
+        self._checking = threading.Lock()  # one status check at a time, so an older slow one can't win
         first_run = not os.path.exists(settings.PATH)
         self.cfg = settings.load()
         if first_run:
@@ -61,15 +62,20 @@ class App:
 
     def refresh_statuses(self):
         """Settings shows the cached result: status() can take seconds, as macOS asks a login shell for codex."""
+        if not self._checking.acquire(blocking=False):
+            return  # the running check reports soon enough
         def work():
             statuses = {}
-            for e in self.chain.engines:
-                try:
-                    statuses[e.name] = e.status() if hasattr(e, "status") else "ready"
-                except Exception as err:
-                    log.warning("%s status failed: %s", e.name, type(err).__name__)
-                    statuses[e.name] = "missing"
-            self.statuses = self.chain.statuses = statuses
+            try:
+                for e in self.chain.engines:
+                    try:
+                        statuses[e.name] = e.status() if hasattr(e, "status") else "ready"
+                    except Exception as err:
+                        log.warning("%s status failed: %s", e.name, type(err).__name__)
+                        statuses[e.name] = "missing"
+                self.statuses = self.chain.statuses = statuses
+            finally:
+                self._checking.release()
             self.events.put(("statuses",))
         threading.Thread(target=work, daemon=True).start()
 
@@ -377,6 +383,7 @@ class App:
                     self.stop()  # a new selection replaces the paused read
                 p.show(text, x, y)
                 self._prepare_selection()
+                self.refresh_statuses()  # a sign-in may have changed since the last check
         elif kind == "press":
             if p.contains(*args):
                 pass  # clicks on the popup itself (including opening the menu)

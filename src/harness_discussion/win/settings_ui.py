@@ -344,8 +344,9 @@ class SettingsWindow:
             if voice:
                 engine = self._engines[name]
                 ids = [v for v, _ in engine.voices]
-                chosen = self.cfg["voices"].get(name, getattr(engine, "default_voice", None))
-                voice.current(ids.index(chosen) if chosen in ids else 0)
+                chosen = self.cfg["voices"].get(name)
+                chosen = chosen if chosen in ids else getattr(engine, "default_voice", ids[0])
+                voice.current(ids.index(chosen))
             for column, widget in enumerate(widgets):
                 widget.grid(row=i, column=column, sticky="w", padx=(0, 6), pady=2)
             widgets[4]["state"] = "normal" if i else "disabled"

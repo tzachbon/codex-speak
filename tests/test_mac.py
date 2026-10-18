@@ -229,7 +229,7 @@ class SourcesSettingsTest(unittest.TestCase):
         from harness_discussion.mac import settings_ui, ui
         AppKit.NSApplication.sharedApplication()
         self.changes, self.played = [], []
-        engines = [SimpleNamespace(name="Cursor", voices=(("ara", "Ara"), ("eve", "Eve")), default_voice="ara"),
+        engines = [SimpleNamespace(name="Cursor", voices=(("eve", "Eve"), ("ara", "Ara")), default_voice="ara"),
                    SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
         self.app = SimpleNamespace(
             cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"},
@@ -254,6 +254,12 @@ class SourcesSettingsTest(unittest.TestCase):
                          ["Sign-in expired — open Cursor", "Ready"])
         self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
 
+    def test_the_window_fits_a_status_that_wraps(self):
+        for statuses in ({}, {"Cursor": "signed_out", "Codex": "signed_out", "macOS": "signed_out"}):
+            self.app.statuses = statuses
+            self.win.refresh_sources()
+            self.assertEqual(self.win.win.contentView().frame().size.height, self.win.content.fittingSize().height)
+
     def test_up_down_and_enable_save_the_sources(self):
         self.assertFalse(self.rows["Cursor"][4][1].isEnabled())  # already first
         self.rows["Codex"][4][1].performClick_(None)
@@ -267,9 +273,12 @@ class SourcesSettingsTest(unittest.TestCase):
     def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
         voice = self.rows["Cursor"][2]
         self.assertEqual(voice.titleOfSelectedItem(), "Ara")  # Cursor's default before a choice
-        voice.selectItemAtIndex_(1)
+        voice.selectItemAtIndex_(0)
         voice.sendAction_to_(voice.action(), voice.target())
         self.assertEqual(self.changes[-1], ("voices", {"Cursor": "eve"}))
+        self.win.cfg["voices"] = {"Cursor": "gone"}  # a voice Cursor no longer offers
+        self.win.refresh_sources()
+        self.assertEqual(voice.titleOfSelectedItem(), "Ara")
         self.rows["Codex"][4][0].performClick_(None)
         self.assertEqual(self.played, [("This is Codex.", "Codex")])
 
