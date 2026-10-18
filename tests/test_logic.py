@@ -1,16 +1,18 @@
 import array
+import asyncio
 import math
 import os
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 import sys
 
 from codex_speak import lang, settings
 from codex_speak.audio import NoAudioError, PcmPlayer, Stretcher
 from codex_speak.clicks import Clicks
-from codex_speak.codex_rt import CodexEngine
+from codex_speak.codex_rt import ATTEMPTS, CodexEngine, Silent
 from codex_speak.engines import Chain, EdgeEngine
 
 
@@ -228,6 +230,40 @@ class Player(unittest.TestCase):
         paused.clear()
         p._fill(out, 4, None, None)
         self.assertEqual((bytes(out), len(p._buf)), (b"\x01\x02" * 4, 8))
+
+
+def _no_audio(cause):
+    err = NoAudioError(f"Codex: {cause}")
+    err.__cause__ = cause
+    return err
+
+
+class CodexRetry(unittest.TestCase):
+    def read(self, *outcomes):
+        engine = CodexEngine()
+        self.addCleanup(engine.close)
+        engine._srv = mock.Mock(alive=True)
+        with mock.patch.object(engine, "_read_aloud", mock.AsyncMock(side_effect=outcomes)) as read_aloud:
+            future = asyncio.run_coroutine_threadsafe(engine._speak(None, None), engine._loop)
+            try:
+                future.result(5)
+                err = None
+            except NoAudioError as e:
+                err = e
+        return read_aloud.await_count, err
+
+    def test_a_silent_session_is_retried_in_a_fresh_one(self):
+        self.assertEqual(self.read(_no_audio(Silent("x")), _no_audio(Silent("x")), None), (3, None))
+
+    def test_gives_up_after_the_last_attempt(self):
+        count, err = self.read(*[_no_audio(Silent("x"))] * ATTEMPTS)
+        self.assertEqual(count, ATTEMPTS)
+        self.assertIsInstance(err.__cause__, Silent)
+
+    def test_other_failures_are_not_retried(self):
+        count, err = self.read(_no_audio(RuntimeError("thread/start failed")))
+        self.assertEqual(count, 1)
+        self.assertIsInstance(err.__cause__, RuntimeError)
 
 
 class StopClearsPause(unittest.TestCase):

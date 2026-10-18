@@ -102,6 +102,21 @@ class CodexPathTest(unittest.TestCase):
             os.symlink(shim, link)
             self.assertEqual(os.path.realpath(codex_rt._native_darwin(link)), os.path.realpath(native))
 
+    def test_newest_codex_wins_over_path_order(self):
+        with tempfile.TemporaryDirectory() as root:
+            dirs = [os.path.join(root, name) for name in ("local-bin", "fnm", "brew")]
+            for d in dirs:
+                os.makedirs(d)
+                exe = os.path.join(d, "codex")
+                open(exe, "w").close()
+                os.chmod(exe, 0o755)
+            versions = {os.path.join(dirs[0], "codex"): (0, 144, 6), os.path.join(dirs[1], "codex"): (0, 163, 0),
+                        os.path.join(dirs[2], "codex"): (0, 163, 0)}
+            with mock.patch.object(codex_rt, "extended_path", return_value=os.pathsep.join(dirs)), \
+                    mock.patch.object(codex_rt, "_native_darwin", side_effect=lambda shim: shim), \
+                    mock.patch.object(codex_rt, "_version", side_effect=versions.get):
+                self.assertEqual(codex_rt._newest_darwin(), os.path.join(dirs[1], "codex"))
+
     def test_mach_o_binary_is_used_directly(self):
         with tempfile.TemporaryDirectory() as root:
             exe = os.path.join(root, "codex")
