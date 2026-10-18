@@ -1,12 +1,9 @@
-"""Fallback engines (Edge neural, offline Windows) and the chain that tries engines in order."""
+"""The Edge neural engine, the threaded engine base, and the chain that tries engines in order."""
 import contextlib
 import logging
-import math
 import threading
 import time
 
-import comtypes
-import comtypes.client
 import edge_tts
 
 from . import lang
@@ -14,8 +11,6 @@ from .audio import NoAudioError, PcmPlayer
 from .edge_stream import EdgeStream
 
 log = logging.getLogger(__name__)
-
-ONECORE = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices"  # Hebrew Asaf lives only here
 
 
 class _Threaded:
@@ -143,46 +138,6 @@ class EdgeEngine(_Threaded):
                 player.close()
 
 
-def sapi_rate(speed):
-    """SAPI rate runs -10..10, where +10 is about 3x and -10 about 1/3x."""
-    return max(-10, min(10, round(10 * math.log(speed, 3))))
-
-
-class SapiEngine(_Threaded):
-    name = "Windows"
-
-    def _run(self, text, tag, stop, on_audio):
-        prefix = lang.LANGS.get(tag, (None, None, None))[2]
-        comtypes.CoInitialize()
-        cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
-        cat.SetId(ONECORE, False)
-        tokens = cat.EnumerateTokens()
-        match = [tokens.Item(i) for i in range(tokens.Count)
-                 if prefix and tokens.Item(i).GetDescription().startswith(prefix)]
-        if not match:
-            raise NoAudioError(f"Windows: no installed voice for {tag}")
-        voice = comtypes.client.CreateObject("SAPI.SpVoice")
-        voice.Voice = match[0]
-        voice.Rate = sapi_rate(self.speed)
-        while self.paused.is_set():
-            if stop.wait(0.05):
-                return
-        if stop.is_set():
-            return
-        voice.Speak(text, 1)  # SVSFlagsAsync
-        on_audio()
-        held = False
-        while not voice.WaitUntilDone(50):
-            if stop.is_set():
-                if held:
-                    voice.Resume()  # a paused voice would not purge
-                voice.Speak("", 3)  # async | purge: silence now
-                return
-            if self.paused.is_set() != held:  # COM calls stay on this thread
-                held = self.paused.is_set()
-                voice.Pause() if held else voice.Resume()
-
-
 class Chain:
     """Tries engines in order, moving on only when one fails before producing any speech."""
 
@@ -229,6 +184,8 @@ class Chain:
                 if gen != self._gen:
                     return  # superseded by a newer speak()
                 if isinstance(err, NoAudioError) and i + 1 < len(order):
+                    log.info("%s had no audio (%s), trying %s", engine.name, type(err.__cause__).__name__,
+                             order[i + 1].name)
                     return attempt(i + 1)
                 self.last = engine.name
                 idle.set()  # a late completion cannot mark a newer read idle

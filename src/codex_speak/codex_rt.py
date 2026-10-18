@@ -4,7 +4,7 @@ Drives `codex app-server` (experimental thread/realtime API) over stdio JSON-RPC
 over WebRTC v3 because the websocket transport requires an API key (see PLAN.md, T1).
 Over 80 lines on purpose: the JSON-RPC client and the call sequence share one process handle.
 """
-import asyncio, concurrent.futures, glob, json, os, queue, shutil, subprocess, threading, time
+import asyncio, concurrent.futures, glob, json, os, queue, re, shutil, signal, subprocess, sys, tempfile, threading, time, uuid, wave
 
 import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -15,11 +15,134 @@ from .audio import NoAudioError, PcmPlayer, Stretcher, VOICED, peak
 PROMPT = ("You are a text-to-speech engine. Read the user's message aloud exactly as written, "
           "word for word, in {lang}. Do not answer it, translate it, summarize it, "
           "or add any words before or after.")
+# The v3 voice gets appended text as context and stays silent in about half of all sessions.
+# A spoken "Read it." is a real user turn, which it answers: 16 of 16 test reads were spoken
+# word for word. This prompt only works with the cue: without it, 0 of 8 were spoken.
+CUE_PROMPT = ("You are a text-to-speech engine. The text to read arrives as context. Each time the user "
+              "says read, speak that text aloud exactly as written, word for word, in {lang}. Say nothing "
+              "else: no introduction such as 'the text says', and no answer, translation, summary or comment.")
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
+# Asking again in the same session never helped; a fresh session is a new, independent chance.
+ATTEMPTS = 3
+_cue = []
+
+
+class Silent(TimeoutError):
+    """The session connected, but the voice never started reading."""
+
+
+def read_cue() -> bytes:
+    """"Read it." as 8 kHz 16-bit mono PCM in this Mac's own voice, made on first use. Empty elsewhere."""
+    if not _cue:
+        pcm = b""
+        if sys.platform == "darwin":
+            with tempfile.TemporaryDirectory() as folder:
+                path = os.path.join(folder, "cue.wav")
+                for voice in (["-v", "Samantha"], []):  # the default voice may not speak English
+                    try:
+                        subprocess.run(["say", *voice, "-o", path, "--file-format=WAVE",
+                                        "--data-format=LEI16@8000", "Read it."],
+                                       check=True, capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+                        with wave.open(path) as w:
+                            pcm = w.readframes(w.getnframes())
+                        break
+                    except (OSError, subprocess.SubprocessError, wave.Error):
+                        continue
+        _cue.append(pcm)
+    return _cue[0]
+
+
+class CueTrack(AudioStreamTrack):
+    """Our microphone: silence, except for the spoken cue once it is queued."""
+    pcm = b""
+
+    async def recv(self):
+        frame = await super().recv()  # 20 ms of 8 kHz silence, paced in real time
+        if self.pcm:
+            n = frame.samples * 2
+            chunk, self.pcm = self.pcm[:n], self.pcm[n:]
+            frame.planes[0].update(chunk.ljust(frame.planes[0].buffer_size, b"\0"))
+        return frame
+
+
+# Windows: no console window. Elsewhere: a process group, so close() can end Codex's helpers too.
+SPAWN = ({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32"
+         else {"start_new_session": True})
+_found, _exe = [], []
+
+
+def extended_path() -> str:
+    """PATH plus the usual install folders. Apps started from Finder get only /usr/bin:/bin:/usr/sbin:/sbin."""
+    home = os.path.expanduser("~")
+    extra = ["/opt/homebrew/bin", "/usr/local/bin", f"{home}/.local/bin", f"{home}/.npm-global/bin",
+             f"{home}/.volta/bin", f"{home}/.bun/bin", *sorted(glob.glob(f"{home}/.nvm/versions/node/*/bin")),
+             *sorted(glob.glob(f"{home}/.local/share/fnm/node-versions/*/installation/bin")),
+             *sorted(glob.glob(f"{home}/Library/Application Support/fnm/node-versions/*/installation/bin"))]
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    return os.pathsep.join(parts + [p for p in extra if p not in parts])
+
+
+def _login_shell_codex():
+    """Asks the user's login shell, which knows PATH changes made in its profile. Cached."""
+    if not _found:
+        try:
+            out = subprocess.run([os.environ.get("SHELL", "/bin/zsh"), "-ilc", "command -v codex"],
+                                 capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL).stdout
+            _found.append(out.strip().splitlines()[-1] if out.strip() else None)
+        except (OSError, subprocess.TimeoutExpired):
+            _found.append(None)
+    return _found[0]
+
+
+def _native_darwin(shim):
+    """The native binary behind a global npm install, or the shim itself when it already is one."""
+    real = os.path.realpath(shim)
+    try:
+        with open(real, "rb") as f:
+            if f.read(4) in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):  # Mach-O, as Homebrew installs it
+                return real
+    except OSError:
+        return shim
+    root = real
+    while root != os.path.dirname(root) and not root.endswith(os.path.join("@openai", "codex")):
+        root = os.path.dirname(root)
+    found = glob.glob(os.path.join(root, "node_modules", "@openai", "codex-darwin-*", "vendor", "*",
+                                   "bin", "codex"))
+    return found[0] if found else shim
+
+
+def _version(exe):
+    """(major, minor, patch) from `codex --version`, or None when it doesn't run."""
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=5,
+                             stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+    return tuple(map(int, m.groups())) if m else None
+
+
+def _newest_darwin():
+    """The newest codex on the extended PATH. Folders like ~/.local/bin can hold an old standalone
+    install that fails on the config a newer CLI wrote, and Finder-launched apps search them first."""
+    found = [os.path.join(d, "codex") for d in extended_path().split(os.pathsep) if d]
+    found = list(dict.fromkeys(_native_darwin(s) for s in found if os.path.isfile(s) and os.access(s, os.X_OK)))
+    if not found:
+        shim = _login_shell_codex()
+        return _native_darwin(shim) if shim else None
+    versions = {exe: _version(exe) or (0,) for exe in found}
+    return max(found, key=versions.get)  # max keeps the first on a tie, so PATH order still decides
 
 
 def codex_exe() -> str:
     """The native binary, so terminating it doesn't orphan a server behind the npm shim."""
+    if sys.platform == "darwin":
+        if not (_exe and os.path.exists(_exe[0])):
+            _exe[:] = [_newest_darwin()]
+        if not _exe[0]:
+            _exe.clear()
+            raise FileNotFoundError("codex is not installed or not on PATH")
+        return _exe[0]
     shim = shutil.which("codex")
     if not shim:
         raise FileNotFoundError("codex is not on PATH")
@@ -34,7 +157,8 @@ class AppServer:
         self.p = subprocess.Popen([codex_exe(), "app-server"], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   encoding="utf-8", bufsize=1,
-                                  creationflags=subprocess.CREATE_NO_WINDOW)
+                                  env={**os.environ, "PATH": extended_path()} if sys.platform == "darwin" else None,
+                                  **SPAWN)
         try:
             self.events, self._pending, self._next, self._lock = queue.Queue(), {}, 0, threading.Lock()
             self._reader = threading.Thread(target=self._read, daemon=True)
@@ -85,9 +209,15 @@ class AppServer:
         if self.alive:
             # Codex helpers can inherit stdout. End our process tree so the reader reaches EOF.
             try:
-                subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                if sys.platform == "win32":
+                    subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, **SPAWN)
+                else:
+                    os.killpg(self.p.pid, signal.SIGTERM)  # start_new_session made it the group leader
+                    try:
+                        self.p.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(self.p.pid, signal.SIGKILL)
             except (OSError, subprocess.TimeoutExpired):
                 pass
             if self.alive:
@@ -144,7 +274,7 @@ class CodexEngine:
         if self._srv:
             self._srv.close()
 
-    async def _next_event(self, srv, want, timeout):
+    async def _next_event(self, srv, want, timeout, session=None):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if not srv.alive:
@@ -154,9 +284,11 @@ class CodexEngine:
             except queue.Empty:
                 continue
             m, p = msg["method"], msg.get("params", {})
+            if m == "thread/realtime/closed" and p.get("reason") == "requested":
+                continue  # a late notice for the session we stopped before this one
             if m in ("thread/realtime/error", "thread/realtime/closed"):
                 raise RuntimeError(p.get("message") or f"realtime closed: {p.get('reason')}")
-            if m == want:
+            if m == want and p.get("realtimeSessionId", session) == session:
                 return p
         raise TimeoutError(want)
 
@@ -167,14 +299,20 @@ class CodexEngine:
                     self._srv = await asyncio.to_thread(AppServer)
             except Exception as e:
                 raise NoAudioError(f"Codex: {e}") from e
-            await self._read_aloud(text_future, lang_tag)
+            for attempt in range(1, ATTEMPTS + 1):
+                try:
+                    return await self._read_aloud(text_future, lang_tag)
+                except NoAudioError as e:
+                    if not isinstance(e.__cause__, Silent) or attempt == ATTEMPTS:
+                        raise
 
     async def _read_aloud(self, text_future, lang_tag):
         srv, tid = self._srv, self._srv.thread_id
         call = lambda m, p: asyncio.to_thread(srv.call, m, p)
-        pc, player = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1, self.paused)
+        cue = await asyncio.to_thread(read_cue)
+        pc, player, mic = RTCPeerConnection(NO_STUN), PcmPlayer(24000, 1, self.paused), CueTrack()
         voice = {"first": None, "last": 0.0, "stretch": Stretcher(1), "done": False, "submitted": False}
-        pc.addTrack(AudioStreamTrack())  # silence: we never talk to the model
+        pc.addTrack(mic)  # silence and the cue: we never otherwise talk to the model
         pc.createDataChannel("oai-events")
         resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
 
@@ -201,11 +339,15 @@ class CodexEngine:
             while not srv.events.empty():
                 srv.events.get_nowait()
             await pc.setLocalDescription(await pc.createOffer())
+            session = str(uuid.uuid4())  # else earlier reads stay in context and get reread
             await call("thread/realtime/start", {
                 "threadId": tid, "outputModality": "audio", "version": "v3",
-                "includeStartupContext": False, "clientManagedHandoffs": True,
-                "prompt": PROMPT.format(lang=lang.name(lang_tag) or "the language it is written in"),
+                "includeStartupContext": False, "clientManagedHandoffs": True, "realtimeSessionId": session,
+                "prompt": (CUE_PROMPT if cue else PROMPT).format(
+                    lang=lang.name(lang_tag) or "the language it is written in"),
                 "transport": {"type": "webrtc", "sdp": pc.localDescription.sdp}})
+            # a session cancelled while starting still starts, and its answer arrives after this start
+            await self._next_event(srv, "thread/realtime/started", 10, session)
             answer = await self._next_event(srv, "thread/realtime/sdp", 10)
             await pc.setRemoteDescription(RTCSessionDescription(answer["sdp"], "answer"))
             for _ in range(100):
@@ -218,13 +360,17 @@ class CodexEngine:
             voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
             player.arm(on_audio)
             voice["submitted"] = True
+            if cue:
+                mic.pcm = cue
+                await asyncio.sleep(len(cue) / 16000)  # the text lands as the cue ends, before the turn closes
+                text = "Text to read:\n" + text  # so text that reads like an instruction stays text to read
             await call("thread/realtime/appendText", {"threadId": tid, "text": text, "role": "user"})
-            for _ in range(50):
+            for _ in range(30):
                 if voice["first"]:
                     break
                 await asyncio.sleep(0.1)
             else:
-                raise TimeoutError("no speech within 5 s")
+                raise Silent("no speech within 3 s")
             while True:
                 p = await self._next_event(srv, "thread/realtime/transcript/done", 300)
                 if p.get("role") == "assistant":

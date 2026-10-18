@@ -1,4 +1,4 @@
-# Every successful master build publishes a versioned installer.
+# Every successful master build publishes a versioned release: the Windows installer and the macOS dmg.
 name: build
 
 on:
@@ -45,8 +45,32 @@ jobs:
           path: dist/CodexSpeak-Setup.exe
           if-no-files-found: error
 
-  release:
+  build-mac:
     needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - name: Stamp build metadata
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: uv version "$RELEASE_VERSION" --no-sync
+      - run: uv sync --locked
+      - run: uv run python -m unittest discover -s tests
+      - name: Build the dmg
+        env:
+          RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+        run: ./packaging/build_mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexSpeak-mac
+          path: dist/CodexSpeak.dmg
+          if-no-files-found: error
+
+  release:
+    needs: [build, build-mac]
     if: github.event_name == 'push'
     runs-on: windows-latest
     permissions:
@@ -60,9 +84,13 @@ jobs:
         with:
           name: CodexSpeak-Setup
           path: dist
-      - name: Publish tested installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: CodexSpeak-mac
+          path: dist
+      - name: Publish tested installers
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
           RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
-        run: uv run --no-project python packaging/publish_release.py
+        run: uv run --no-project python packaging/publish_release.py dist/CodexSpeak-Setup.exe dist/CodexSpeak.dmg

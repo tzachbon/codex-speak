@@ -13,10 +13,12 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from . import settings
+
 API = "https://api.github.com/repos/tzachbon/codex-speak/releases/latest"
-ASSET = "CodexSpeak-Setup.exe"
+ASSET = "CodexSpeak.dmg" if sys.platform == "darwin" else "CodexSpeak-Setup.exe"
 MAX_INSTALLER = 200 * 1024 * 1024
-CACHE = Path(os.environ["LOCALAPPDATA"]) / "codex-speak" / "updates"
+CACHE = Path(settings.LOCAL_DIR) / "updates"
 
 
 def _trusted(url):
@@ -107,6 +109,8 @@ def download(asset):
 def install(path):
     if not getattr(sys, "frozen", False):
         raise ValueError("Source runs cannot install updates")
+    if sys.platform != "win32":
+        raise ValueError("Updates install from the release page on this platform")
     if path.name != ASSET or not path.resolve().is_relative_to(CACHE.resolve()) or not path.is_file():
         raise ValueError("Invalid installer path")
     subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART",

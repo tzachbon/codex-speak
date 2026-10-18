@@ -1,3 +1,9 @@
+import sys
+import unittest
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
 import json
 import os
 from pathlib import Path
@@ -8,7 +14,8 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-from codex_speak import settings_ui
+from codex_speak import stt_server
+from codex_speak.win import settings_ui
 
 
 class SttSettings(unittest.TestCase):
@@ -43,10 +50,10 @@ class SttSettings(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.env = patch.dict(os.environ, LOCALAPPDATA=self.temp.name)
-        self.env.start()
         self.path = Path(self.temp.name) / "codex-speak/stt-connection.json"
         self.path.parent.mkdir()
+        self.env = patch.object(stt_server, "CONNECTION", self.path)
+        self.env.start()
 
     def tearDown(self):
         self.env.stop()

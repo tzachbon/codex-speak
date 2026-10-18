@@ -25,9 +25,9 @@ def response(data, url):
 
 def release(tag="v0.10.0"):
     return {"tag_name": tag, "draft": False, "prerelease": False, "assets": [{
-        "name": "CodexSpeak-Setup.exe", "state": "uploaded", "size": 3,
+        "name": updates.ASSET, "state": "uploaded", "size": 3,
         "digest": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-        "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/CodexSpeak-Setup.exe"}]}
+        "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/{tag}/{updates.ASSET}"}]}
 
 
 class Releases(unittest.TestCase):
@@ -96,6 +96,7 @@ class Downloads(unittest.TestCase):
             self.assertEqual(list(Path(directory).iterdir()), [])
 
 
+@unittest.skipUnless(sys.platform == "win32", "the installer runs only on Windows")
 class Installation(unittest.TestCase):
     def test_installer_targets_running_install_without_a_shell_or_reboot(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(updates, "CACHE", Path(directory)), patch.object(

@@ -1,12 +1,12 @@
 import queue
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 import threading
 
-from codex_speak.__main__ import App
+from codex_speak.core import App
 from codex_speak import sentences
-from codex_speak.engines import SapiEngine
 
 
 class Popup:
@@ -19,6 +19,12 @@ class Popup:
     def __init__(self):
         self.caption = ""
         self.lang = SimpleNamespace(get=lambda: "")
+
+    def lang_tag(self):
+        return self.lang.get() or None
+
+    def schedule_hide(self):
+        pass
 
     def set_caption(self, text):
         self.caption = text
@@ -85,7 +91,7 @@ def app():
     a.cfg = {"engine": None, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
     a.notifications = []
-    a.icon = SimpleNamespace(notify=lambda *args: a.notifications.append(args))
+    a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args))
     return a
 
 
@@ -240,6 +246,7 @@ class Sequence(unittest.TestCase):
         self.assertEqual((a.popup.caption, len(a.chain.calls), len(a.notifications)), ("", 1, 1))
 
 
+@unittest.skipUnless(sys.platform == "win32", "SAPI is Windows only")
 class WindowsPause(unittest.TestCase):
     def test_stop_before_speak_while_paused_never_submits_text_to_sapi(self):
         connecting, release, made_voice, done = (threading.Event() for _ in range(4))
@@ -257,8 +264,9 @@ class WindowsPause(unittest.TestCase):
             made_voice.set()
             return voice
 
+        from codex_speak.win.voice import SapiEngine
         e = SapiEngine()
-        with patch("codex_speak.engines.comtypes.CoInitialize"), patch("codex_speak.engines.comtypes.client.CreateObject", side_effect=create):
+        with patch("codex_speak.win.voice.comtypes.CoInitialize"), patch("codex_speak.win.voice.comtypes.client.CreateObject", side_effect=create):
             e.speak("Never spoken", "en-US", lambda err: done.set())
             self.assertTrue(connecting.wait(2))
             e.pause()

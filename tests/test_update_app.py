@@ -1,3 +1,9 @@
+import sys
+import unittest
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
 from pathlib import Path
 import queue
 import sys
@@ -6,7 +12,7 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
-from codex_speak.__main__ import App
+from codex_speak.core import App
 from codex_speak import settings, updates
 
 
@@ -18,7 +24,7 @@ class UpdateApp(unittest.TestCase):
         self.path.write_bytes(b"abc")
         self.app = App.__new__(App)
         a = self.app
-        a.root, a.chain, a.trigger, a.icon = Mock(), Mock(busy=False), Mock(), Mock()
+        a.host, a.chain = Mock(), Mock(busy=False)
         a.chain.engines = []
         a.popup = Mock()
         a.cfg = {**settings.DEFAULTS, "auto_update": True}
@@ -50,7 +56,7 @@ class UpdateApp(unittest.TestCase):
             a._try_update()
             self.assertEqual(order, ["save", "install"])
             install.assert_called_once_with(self.path)
-            a.root.destroy.assert_called_once()
+            a.host.quit.assert_called_once()
             self.assertTrue(a._closing)
 
     def test_update_waits_between_sentences_even_when_engine_is_idle(self):
@@ -85,7 +91,7 @@ class UpdateApp(unittest.TestCase):
             a._try_update()
             install.assert_called_once()
             self.assertFalse(server.busy.locked())
-            a.root.destroy.assert_not_called()
+            a.host.quit.assert_not_called()
             self.assertIsNone(a._pending_update)
             self.assertIn("cannot launch", a._update_text)
 
@@ -123,7 +129,7 @@ class UpdateApp(unittest.TestCase):
         with patch.object(a, "check_update") as check:
             a._auto_update()
             check.assert_called_once_with(manual=False)
-            a.root.after.assert_called_with(24 * 60 * 60 * 1000, a._auto_update)
+            a.host.after.assert_called_with(24 * 60 * 60 * 1000, a._auto_update)
             a.cfg["auto_update"] = False
             a._auto_update()
             check.assert_called_once()
@@ -143,7 +149,7 @@ class UpdateApp(unittest.TestCase):
             self.assertTrue(draining.wait(1))
             self.assertIsNone(a.stt)
             new = Mock(busy=threading.Lock())
-            with patch("codex_speak.__main__.stt_server.start", return_value=new):
+            with patch("codex_speak.core.stt_server.start", return_value=new):
                 a._run_stt(True)
             with patch.object(updates, "install") as install, patch.object(settings, "save"):
                 self.result()
@@ -195,9 +201,9 @@ class UpdateApp(unittest.TestCase):
         a.events.put(("update_result", self.path, "Update ready."))
         a.events.put(("settings",))
         with patch.object(updates, "install"), patch.object(settings, "save"):
-            a._pump()
-        a.root.destroy.assert_called_once()
-        a.root.after.assert_not_called()
+            a.pump()
+        a.host.quit.assert_called_once()
+        a.host.after.assert_not_called()
         self.assertEqual(a.events.get_nowait(), ("settings",))
 
 

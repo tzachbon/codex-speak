@@ -119,17 +119,21 @@ class Publication(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.artifact = Path(directory.name) / "CodexSpeak-Setup.exe"
         self.artifact.write_bytes(b"Test installer")
+        self.dmg = Path(directory.name) / "CodexSpeak.dmg"
+        self.dmg.write_bytes(b"Test disk image")
+        self.artifacts = [self.artifact]
         self.tags, self.release, self.published, self.calls = {}, None, [], []
-        self.upload_state = "uploaded"
+        self.upload_state, self.upload_states = "uploaded", {}
         boundary = patch.object(subprocess, "run", side_effect=self.run_command)
         boundary.start()
         self.addCleanup(boundary.stop)
 
-    def asset(self, state="uploaded"):
-        return {"name": self.artifact.name, "state": state,
-                "size": self.artifact.stat().st_size if state == "uploaded" else 0,
-                "digest": "sha256:" + hashlib.sha256(self.artifact.read_bytes()).hexdigest(),
-                "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/v0.2.0/{self.artifact.name}"}
+    def asset(self, state="uploaded", path=None):
+        path = path or self.artifact
+        return {"name": path.name, "state": state,
+                "size": path.stat().st_size if state == "uploaded" else 0,
+                "digest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+                "browser_download_url": f"https://github.com/tzachbon/codex-speak/releases/download/v0.2.0/{path.name}"}
 
     def run_command(self, args, **kwargs):
         args = tuple(args)
@@ -145,10 +149,11 @@ class Publication(unittest.TestCase):
         elif args[:3] == ("gh", "release", "create"):
             self.assertIn("--verify-tag", args)
             self.assertNotIn("--target", args)
-            self.release = {"isDraft": True, "assets": [self.asset(self.upload_state)]}
+            self.release = {"isDraft": True, "assets": [self.asset(self.upload_state, Path(args[4]))]}
         elif args[:3] == ("gh", "release", "upload"):
             self.assertNotIn("--clobber", args)
-            self.release["assets"].append(self.asset(self.upload_state))
+            path = Path(args[4])
+            self.release["assets"].append(self.asset(self.upload_states.get(path.name, self.upload_state), path))
         elif args[:3] == ("gh", "api", "--paginate"):
             output = "\n".join(self.published)
         elif args[:3] == ("gh", "release", "edit"):
@@ -161,7 +166,7 @@ class Publication(unittest.TestCase):
         return result
 
     def publish(self):
-        publish_release.publish("0.2.0", self.commit, "owner/repo", self.artifact)
+        publish_release.publish("0.2.0", self.commit, "owner/repo", self.artifacts)
 
     def test_new_release_is_bound_to_tested_commit_and_published(self):
         self.publish()
@@ -178,8 +183,39 @@ class Publication(unittest.TestCase):
         reply.geturl.return_value = updates.API
         reply.read.return_value = json.dumps(metadata).encode()
         with patch.object(updates, "urlopen", return_value=reply), \
+                patch.object(updates, "ASSET", self.artifact.name), \
                 patch.object(updates, "version", return_value="0.1.1"):
             self.assertEqual(updates.check()["version"], "0.2.0")
+
+    def test_both_installers_are_published_and_each_platform_finds_its_own(self):
+        self.artifacts = [self.artifact, self.dmg]
+        self.publish()
+        self.assertFalse(self.release["isDraft"])
+        self.assertEqual([a["name"] for a in self.release["assets"]], ["CodexSpeak-Setup.exe", "CodexSpeak.dmg"])
+        metadata = {"tag_name": "v0.2.0", "draft": False, "prerelease": False, "assets": self.release["assets"]}
+        reply = MagicMock()
+        reply.__enter__.return_value = reply
+        reply.geturl.return_value = updates.API
+        reply.read.return_value = json.dumps(metadata).encode()
+        for name in ("CodexSpeak-Setup.exe", "CodexSpeak.dmg"):
+            with self.subTest(name=name), patch.object(updates, "urlopen", return_value=reply), \
+                    patch.object(updates, "ASSET", name), patch.object(updates, "version", return_value="0.1.1"):
+                self.assertEqual(updates.check()["name"], name)
+
+    def test_failed_second_upload_keeps_the_release_a_draft(self):
+        self.artifacts = [self.artifact, self.dmg]
+        self.upload_states = {"CodexSpeak.dmg": "starter"}
+        with self.assertRaisesRegex(ValueError, "CodexSpeak.dmg"):
+            self.publish()
+        self.assertTrue(self.release["isDraft"])
+        self.assertFalse(any(call[:3] == ("gh", "release", "edit") for call in self.calls))
+
+    def test_any_missing_installer_fails_before_writes(self):
+        self.artifacts = [self.artifact, self.dmg]
+        self.dmg.unlink()
+        with self.assertRaisesRegex(ValueError, "CodexSpeak.dmg"):
+            self.publish()
+        self.assertEqual(self.calls, [])
 
     def test_annotated_tag_is_peeled_and_completed_release_is_a_noop(self):
         self.tags = {"v0.2.0": "b" * 40, "v0.2.0^{}": self.commit}
@@ -228,7 +264,7 @@ class Publication(unittest.TestCase):
     def test_missing_installer_and_invalid_inputs_do_not_write(self):
         for version, commit in (("0.2.0-rc.1", self.commit), ("0.2.0", "not-a-sha")):
             with self.assertRaises(ValueError):
-                publish_release.publish(version, commit, "owner/repo", self.artifact)
+                publish_release.publish(version, commit, "owner/repo", [self.artifact])
         self.artifact.unlink()
         with self.assertRaises(ValueError):
             self.publish()

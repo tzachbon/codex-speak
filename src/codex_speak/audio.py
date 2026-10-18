@@ -1,12 +1,17 @@
 """Speaker output: streamed 16-bit PCM (Codex and Edge)."""
 import array
 import threading
+import time
 from fractions import Fraction
 
 import av
 import sounddevice as sd
 
 VOICED = 500  # int16 peak that counts as speech rather than line noise
+# Codex sends speech a few percent slower than real time, so a fixed head start drains mid-speech.
+# The player keeps JITTER seconds queued and tops it up by lengthening pauses, where it isn't heard.
+JITTER = 0.25
+QUIET = 100  # int16 peak of a 20 ms block that is a pause; quiet consonants peak higher
 
 
 class NoAudioError(RuntimeError):
@@ -50,13 +55,17 @@ class Stretcher:
 
 
 class PcmPlayer:
+    _hold, _holding, _last_write = 0, False, 0.0  # no cushion for players built without a sound device
+
     def __init__(self, rate: int = 24000, channels: int = 1, paused: threading.Event | None = None):
         self._buf, self._lock, self._width = bytearray(), threading.Lock(), 2 * channels
+        self._hold, self._holding = int(rate * JITTER) * self._width, True
         self._paused = paused or threading.Event()  # set: play silence and keep the queue
         self._on_audio = None
         self._output_pending = False
+        # 20 ms blocks: left to choose, CoreAudio calls back every 15 samples and any stall is a gap
         self._stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
-                                          callback=self._fill)
+                                          blocksize=rate // 50, callback=self._fill)
         self._stream.start()
 
     def _fill(self, out, frames, _time, _status):
@@ -65,9 +74,18 @@ class PcmPlayer:
             out[:] = bytes(n)
             return
         with self._lock:
-            chunk = bytes(self._buf[:n])
+            more = time.monotonic() - self._last_write < JITTER  # else the writes ended: play the tail
+            if len(self._buf) >= self._hold or not more:
+                self._holding = False
+            elif not self._buf:
+                self._holding = True  # ran dry: wait for a full cushion rather than play each late packet
+            if self._holding or (len(self._buf) < self._hold and more and peak(self._buf[:n]) < QUIET):
+                chunk = b""
+            else:
+                chunk = bytes(self._buf[:n])
+                del self._buf[:n]
+                self._holding = len(chunk) < n
             self._output_pending = bool(chunk)  # drain cannot complete ahead of the start notification
-            del self._buf[:n]
             on_audio = self._on_audio if peak(chunk) > VOICED else None
             if on_audio:
                 self._on_audio = None
@@ -87,6 +105,7 @@ class PcmPlayer:
     def write(self, pcm: bytes) -> None:
         with self._lock:
             self._buf += pcm
+            self._last_write = time.monotonic()
 
     @property
     def pending(self) -> bool:

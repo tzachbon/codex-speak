@@ -5,7 +5,7 @@ import unittest
 
 import av
 
-from codex_speak.__main__ import App
+from codex_speak.core import App
 from codex_speak.audio import NoAudioError
 from codex_speak.edge_stream import EdgeStream
 from codex_speak.engines import Chain, EdgeEngine
