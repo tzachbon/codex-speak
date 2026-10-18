@@ -19,19 +19,21 @@ body:
   - type: input
     id: windows
     attributes:
-      label: Windows version
-      description: Run `winver`, for example "Windows 11 24H2 (26100.4061)".
+      label: Windows or macOS version
+      description: On Windows, run `winver`, for example "Windows 11 24H2 (26100.4061)". On a Mac, see Apple menu > About This Mac, for example "macOS 15.5".
     validations:
       required: true
   - type: dropdown
     id: engine
     attributes:
-      label: Voice setting
+      label: Voice source that was reading
+      description: Shown on the bar next to the speed menu.
       options:
-        - "Auto: Codex, then Edge, then Windows"
-        - Codex only
-        - Edge only
-        - Windows only
+        - Cursor
+        - Codex
+        - Edge
+        - Windows
+        - macOS
         - Not about speech
     validations:
       required: true
@@ -45,6 +47,7 @@ body:
     attributes:
       label: Log
       description: |
-        Paste the relevant lines from `%APPDATA%\harness-discussion\harness-discussion.log`.
+        Paste the relevant lines from `%APPDATA%\harness-discussion\harness-discussion.log`
+        (on a Mac, `~/Library/Application Support/harness-discussion/harness-discussion.log`).
         The log records engines, timing, and errors. It never contains the selected text.
       render: text

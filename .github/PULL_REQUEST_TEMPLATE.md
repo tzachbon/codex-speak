@@ -4,7 +4,7 @@
 
 ## How I tested it
 
-<!-- Commands you ran and what you checked by hand (app, engine, Windows version). -->
+<!-- Commands you ran and what you checked by hand (app, voice source, Windows or macOS version). -->
 
 - [ ] `uv run python -m unittest discover -s tests` passes
 - [ ] README or STT.md updated if behavior changed
