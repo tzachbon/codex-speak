@@ -61,6 +61,8 @@ def copy_selection() -> str:
         return ""  # nothing was selected, nothing was copied
     time.sleep(0.03)  # let the app finish writing every type
     try:
+        if not safe_to_borrow(types()):
+            return ""  # the source marked what it copied as a secret
         return str(board.stringForType_(AppKit.NSPasteboardTypeString) or "")
     finally:
         restore(saved)

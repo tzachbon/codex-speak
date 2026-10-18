@@ -123,7 +123,7 @@
   <div class="wrap">
     <div class="brand"><img src="icon.png" alt=""><h1>Codex Speak</h1></div>
     <p class="lead">Select text in any Windows or Mac app, press <strong>▶</strong>, and hear it in your ChatGPT voice.
-      Codex Speak runs the Codex realtime voice from your ChatGPT sign-in, with no API key. Edge and offline Windows voices take over when Codex can't speak.</p>
+      Codex Speak runs the Codex realtime voice from your ChatGPT sign-in, with no API key. Built-in voices take over when Codex can't speak.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak-Setup.exe">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 11.5 3.5 7l1-1L7.3 8.8V1h1.4v7.8L11.5 6l1 1L8 11.5ZM2 13.5h12V15H2z"/></svg>
@@ -169,11 +169,11 @@
     <div class="grid">
       <div class="card"><h3>Works in most apps</h3><p>Drag or double-click to select text in a browser, Notepad, VS Code, and most other apps. The bar never takes focus from the app you're in.</p></div>
       <div class="card"><h3>Your ChatGPT voice</h3><p>Reads with the Codex realtime voice from your ChatGPT sign-in. No API key. It uses your plan's Codex access and counts toward its limits.</p></div>
-      <div class="card"><h3>Always has a voice</h3><p>If Codex can't speak, Edge neural voices take over, then the offline Windows voices. You can also pin one engine.</p></div>
+      <div class="card"><h3>Always has a voice</h3><p>If Codex can't speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over. You can also pin one engine.</p></div>
       <div class="card"><h3>Pause, speed, stop</h3><p>Pause and continue from the same spot. Pick 0.5× to 2× from the bar. Your choice is saved.</p></div>
-      <div class="card"><h3>Read-along captions</h3><p>The sentence being read appears above the bar. Long sentences pan across the line. Size and background are adjustable.</p></div>
+      <div class="card"><h3>Read-along captions</h3><p>The sentence being read appears above the bar. Long sentences pan across the line. Size and background are adjustable. Windows only for now.</p></div>
       <div class="card"><h3>Six languages</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. In Auto, Codex infers the language, and Edge and Windows tell Hebrew, Arabic, and Russian apart by script. Or pick one from the menu.</p></div>
-      <div class="card"><h3>Optional automatic updates</h3><p>Installs new GitHub releases when the app is idle, after checking the installer's SHA-256 digest. Off by default.</p></div>
+      <div class="card"><h3>Optional automatic updates</h3><p>Installs new GitHub releases when the app is idle, after checking the installer's SHA-256 digest. Off by default. On a Mac, Settings shows new versions and links to the download.</p></div>
       <div class="card"><h3>Speech-to-text too</h3><p>An optional local, OpenAI-compatible endpoint lets apps such as OpenWhispr transcribe with the same Codex sign-in. <a href="https://github.com/tzachbon/codex-speak/blob/master/STT.md">Details</a>.</p></div>
     </div>
   </div>
@@ -188,9 +188,9 @@
           <span class="note">The app isn't code-signed, so Windows SmartScreen may warn you. Choose <em>More info</em>, then <em>Run anyway</em>. You can read and build the source yourself.<br>
           Coming from Select to TTS? It's the same app under a new name. The installer replaces it and keeps your settings.<br>
           On a Mac, <a href="https://github.com/tzachbon/codex-speak/releases/latest/download/CodexSpeak.dmg">download the dmg</a>, drag the app to Applications, right-click it and choose <em>Open</em>, then grant Accessibility access when the guide asks.</span></li>
-        <li>For the ChatGPT voice, install the <a href="https://github.com/openai/codex">Codex CLI</a> and sign in once with <code>codex login</code>. Without it, the app uses Edge and Windows voices.</li>
+        <li>For the ChatGPT voice, install the <a href="https://github.com/openai/codex">Codex CLI</a> and sign in once with <code>codex login</code>. Without it, the app uses the Edge and Windows voices, or the macOS voice on a Mac.</li>
         <li>Select some text anywhere and press <strong>▶</strong>. <strong>⏸</strong> pauses and <strong>■</strong> stops.</li>
-        <li>Open Settings from ⚙ on the bar or from the tray icon to set speed, voice, captions, start at sign-in, and updates.</li>
+        <li>Open Settings from ⚙ on the bar or from the tray or menu bar icon to set speed, voice, captions, start at sign-in, and updates.</li>
       </ol>
     </div>
     <img src="settings.png" width="497" height="1185" loading="lazy" alt="The Settings window: start at sign-in, updates, speed, voice, captions, selection, and speech-to-text">

@@ -183,7 +183,8 @@ class Popup:
         self.playing, self.paused = playing, playing and paused
         if not playing:
             self.set_loading(False)
-        self.btn.setImage_(ui.symbol("pause.fill" if playing and not paused else "play.fill", "Play"))
+        pausing = playing and not paused
+        self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
         self.stop_btn.setHidden_(not playing)
         if not playing:
             self.schedule_hide()

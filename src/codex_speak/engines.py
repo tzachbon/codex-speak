@@ -184,6 +184,8 @@ class Chain:
                 if gen != self._gen:
                     return  # superseded by a newer speak()
                 if isinstance(err, NoAudioError) and i + 1 < len(order):
+                    log.info("%s had no audio (%s), trying %s", engine.name, type(err.__cause__).__name__,
+                             order[i + 1].name)
                     return attempt(i + 1)
                 self.last = engine.name
                 idle.set()  # a late completion cannot mark a newer read idle

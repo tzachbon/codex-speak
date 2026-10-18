@@ -35,8 +35,9 @@ def _expose(pid):
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility", True)
 
 
-def _via_ax():
-    element = _attr(_system, "AXFocusedUIElement")
+def _via_ax(pid):
+    # The system-wide element often fails with kAXErrorCannotComplete. Asking the app works.
+    element = _attr(AXUIElementCreateApplication(pid), "AXFocusedUIElement")
     for _ in range(6):
         if element is None:
             return ""
@@ -55,8 +56,9 @@ def read(clipboard_fallback: bool = True) -> str:
     app = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
     if app is None or app.processIdentifier() == os.getpid():
         return ""
-    _expose(app.processIdentifier())
-    text = _via_ax()
+    pid = app.processIdentifier()
+    _expose(pid)
+    text = _via_ax(pid)
     if text is None:
         return ""  # a password field
     if not text.strip() and clipboard_fallback and not secure_input():

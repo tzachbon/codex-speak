@@ -39,6 +39,7 @@ class MacVoiceEngine(_Threaded):
                 synth.stopSpeakingAtBoundary_(AVSpeechBoundaryImmediate)
                 return
             if time.monotonic() > deadline:
+                synth.stopSpeakingAtBoundary_(AVSpeechBoundaryImmediate)
                 raise NoAudioError("macOS: the voice did not start")
         on_audio()
         held = False
