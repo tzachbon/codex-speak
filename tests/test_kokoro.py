@@ -236,7 +236,11 @@ class StatusRefresh(CoreTest):
         self.host.timers.clear()
         app.statuses = {"Kokoro": "downloading"}
         app._handle("statuses")
+        app._handle("statuses")  # a popup or Settings check finished while the poll waits
         self.assertEqual([ms for ms, _ in self.host.timers], [2000])
+        with patch.object(app, "refresh_statuses") as refresh:
+            self.host.timers[0][1]()
+        refresh.assert_called_once()
         app.statuses = {"Kokoro": "ready"}
         app._handle("statuses")
         self.assertEqual(len(self.host.timers), 1)

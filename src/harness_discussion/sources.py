@@ -62,6 +62,19 @@ class Sources:
             self.events.put(("statuses",))
         threading.Thread(target=work, daemon=True).start()
 
+    _poll_pending = False
+
+    def _poll_while_downloading(self):
+        """Main thread: one re-check every 2 s until the model download ends, however many checks report it."""
+        if "downloading" not in self.statuses.values() or self._poll_pending:
+            return
+        self._poll_pending = True
+
+        def poll():
+            self._poll_pending = False
+            self.refresh_statuses()
+        self.host.after(2000, poll)
+
     def _show_source(self):
         """Idle bar label: the source the next read starts with. While reading, engine events set it."""
         if not self.chain.busy:
