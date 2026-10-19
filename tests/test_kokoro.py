@@ -140,9 +140,11 @@ class Engine_(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-    def read(self, text, tag="en-US", model=None, voice=None):
+    def read(self, text, tag="en-US", model=None, voice=None, paused=False):
         e = kokoro_tts.KokoroEngine()
         e.Player, e.voice, e.speed = FakePlayer, voice, 1.25
+        if paused:
+            e.paused.set()
         FakePlayer.opened = []
         e._load = lambda: model if model is not None else (_ for _ in ()).throw(OSError("no model"))
         done, result, heard = threading.Event(), [], []
@@ -171,15 +173,13 @@ class Engine_(unittest.TestCase):
         self.assertIsInstance(self.read("Hello.")[0], NoAudioError)
         self.assertIsInstance(self.read("Hello.", model=FakeModel(fail_at=1))[0], NoAudioError)
 
-    def test_a_sentence_with_nothing_to_say_is_skipped(self):
-        model = FakeModel(fail_at=1, error=ValueError("no phonemes"))
-        self.assertIsNone(self.read("—. Hello.", model=model)[0])
-        self.assertEqual(len(FakePlayer.opened[0].writes), 1)
-        self.assertIsInstance(self.read("—.", model=FakeModel(fail_at=1, error=ValueError("x")))[0], NoAudioError)
-
     def test_an_error_after_speech_started_is_not_handed_over(self):
         err, _ = self.read("One. Two.", model=FakeModel(fail_at=2))
         self.assertIs(type(err), RuntimeError)
+
+    def test_an_error_before_buffered_speech_was_heard_hands_over(self):
+        err, heard = self.read("One. Two.", model=FakeModel(fail_at=2), paused=True)
+        self.assertEqual((type(err), heard), (NoAudioError, []))
 
     def test_stop_closes_playback_while_the_next_sentence_renders(self):
         release = threading.Event()

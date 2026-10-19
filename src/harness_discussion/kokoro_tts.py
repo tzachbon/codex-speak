@@ -144,15 +144,12 @@ class KokoroEngine(_Threaded):
                 for sentence in sentences.split(text):
                     if stop.is_set():
                         return
-                    try:
-                        pieces.put(model.create(sentence, voice=voice, speed=speed, lang=LANGS[tag])[0])
-                    except ValueError:
-                        pass  # nothing to pronounce, such as a lone symbol
+                    pieces.put(model.create(sentence, voice=voice, speed=speed, lang=LANGS[tag])[0])
                 pieces.put(None)
             except Exception as e:
                 pieces.put(e)
         threading.Thread(target=synthesize, daemon=True).start()
-        player = None
+        player, heard = None, threading.Event()
         try:
             while True:
                 try:
@@ -164,7 +161,7 @@ class KokoroEngine(_Threaded):
                 if samples is None or stop.is_set():
                     break
                 if isinstance(samples, Exception):
-                    if player is None:
+                    if not heard.is_set():  # buffered or paused speech was never heard, so another engine may read it
                         raise NoAudioError(f"Kokoro: {type(samples).__name__}") from samples
                     raise samples  # speech already started: the chain must not restart it on another engine
                 if player is None:
@@ -172,7 +169,7 @@ class KokoroEngine(_Threaded):
                         player = self.Player(24000, 1, self.paused)
                     except Exception as e:
                         raise NoAudioError(f"Kokoro: {e}") from e
-                    player.arm(on_audio)
+                    player.arm(lambda: (heard.set(), on_audio()))
                 player.write((np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes())
             if stop.is_set():
                 return
