@@ -2,10 +2,11 @@
 import ctypes
 import time
 import tkinter as tk
-import unicodedata
 from ctypes import wintypes as wt
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+
+from ..lang import reading_rtl
 
 
 class _BitmapHeader(ctypes.Structure):
@@ -60,15 +61,6 @@ _bk_mode = _bind(g32, "SetBkMode", ctypes.c_int, wt.HDC, ctypes.c_int)
 _text_color = _bind(g32, "SetTextColor", wt.DWORD, wt.HDC, wt.DWORD)
 _draw_text = _bind(u32, "DrawTextW", ctypes.c_int, wt.HDC, wt.LPCWSTR, ctypes.c_int,
                    ctypes.POINTER(wt.RECT), wt.UINT)
-
-
-def reading_rtl(text):
-    """Use the paragraph's first strong character, leaving bidi shaping to Windows."""
-    for char in text:
-        direction = unicodedata.bidirectional(char)
-        if direction in ("L", "R", "AL"):
-            return direction != "L"
-    return False
 
 
 class GdiLine:

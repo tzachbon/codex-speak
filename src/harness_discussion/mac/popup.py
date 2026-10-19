@@ -4,18 +4,9 @@ import objc
 
 from .. import lang, settings
 from . import ui
+from .caption import Caption
 
 IDLE_HIDE_S = 4.0
-CAPTION_WIDTH = 340
-CAPTION_LINES = 3  # a sentence with no stops would otherwise grow the panel off the screen
-
-
-class _Panel(AppKit.NSPanel):
-    def canBecomeKeyWindow(self):
-        return False
-
-    def canBecomeMainWindow(self):
-        return False
 
 
 class _Button(AppKit.NSButton):
@@ -48,10 +39,6 @@ class _Hover(AppKit.NSView):
         self.owner.schedule_hide()
 
 
-def _cg(color):
-    return color.CGColor()
-
-
 def _icon_button(name, description, fn, tint=None):
     b = _Button.alloc().init()
     b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
@@ -71,7 +58,7 @@ def _play_button(fn):
         c.setConstant_(30)
     b.setWantsLayer_(True)
     b.layer().setCornerRadius_(15)
-    b.layer().setBackgroundColor_(_cg(AppKit.NSColor.controlAccentColor()))
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.controlAccentColor()))
     return b
 
 
@@ -82,7 +69,7 @@ def _text_button(fn, title, titles, icon=lambda _t: None):
     b.setBordered_(False)
     b.setWantsLayer_(True)
     b.layer().setCornerRadius_(8)
-    b.layer().setBackgroundColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.1)))
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.1)))
     b.setImagePosition_(AppKit.NSImageLeading)
     b.setContentTintColor_(AppKit.NSColor.labelColor())
     b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
@@ -127,73 +114,6 @@ def _screen_at(x, y):
     return AppKit.NSScreen.mainScreen()
 
 
-class _Caption:
-    """Read-along: the sentence being read, in a click-through panel just above the bar."""
-
-    def __init__(self):
-        field = self.field = AppKit.NSTextField.wrappingLabelWithString_("")
-        field.setAlignment_(AppKit.NSTextAlignmentCenter)
-        field.setTextColor_(AppKit.NSColor.whiteColor())
-        field.setPreferredMaxLayoutWidth_(CAPTION_WIDTH - 24)
-        field.setMaximumNumberOfLines_(CAPTION_LINES)
-        field.cell().setTruncatesLastVisibleLine_(True)
-        field.widthAnchor().constraintLessThanOrEqualToConstant_(CAPTION_WIDTH - 24).setActive_(True)
-        shadow = AppKit.NSShadow.alloc().init()
-        shadow.setShadowBlurRadius_(3)
-        shadow.setShadowOffset_((0, -1))
-        shadow.setShadowColor_(AppKit.NSColor.colorWithWhite_alpha_(0, 0.9))
-        field.setShadow_(shadow)  # keeps white text readable over any page without a backdrop
-        box = self.box = AppKit.NSView.alloc().init()
-        box.setWantsLayer_(True)
-        box.layer().setCornerRadius_(10)
-        field.setTranslatesAutoresizingMaskIntoConstraints_(False)
-        box.addSubview_(field)
-        for a, inset in (("leadingAnchor", 12), ("trailingAnchor", -12), ("topAnchor", 6), ("bottomAnchor", -6)):
-            getattr(field, a)().constraintEqualToAnchor_constant_(getattr(box, a)(), inset).setActive_(True)
-        style = AppKit.NSWindowStyleMaskBorderless | AppKit.NSWindowStyleMaskNonactivatingPanel
-        p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
-            ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
-        p.setContentView_(box)
-        self._place = None
-        p.setIgnoresMouseEvents_(True)
-        p.setLevel_(AppKit.NSStatusWindowLevel)
-        p.setOpaque_(False)
-        p.setBackgroundColor_(AppKit.NSColor.clearColor())
-        p.setHasShadow_(False)
-        p.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
-                                 | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
-                                 | AppKit.NSWindowCollectionBehaviorTransient)
-        self.configure(10, False, 0.6)
-
-    def configure(self, font_size, background, background_opacity):
-        """font_size in Windows points, which render at 96 dpi: 4/3 of a Mac point."""
-        self.field.setFont_(AppKit.NSFont.systemFontOfSize_weight_(font_size * 4 / 3, AppKit.NSFontWeightMedium))
-        self.box.layer().setBackgroundColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(
-            0.1, background_opacity if background else 0)))
-        if self.win.isVisible():  # a font change from Settings resizes the caption on screen
-            self.show(self.field.stringValue(), *self._place)
-
-    def show(self, text, bar, area):
-        """Centered above `bar`, or below it when the screen top is too close."""
-        text = " ".join(text.split())
-        if not text:
-            return self.hide()
-        self.field.setStringValue_(text)
-        self._place = bar, area
-        self.win.setContentSize_(self.box.fittingSize())
-        w, h = self.win.frame().size.width, self.win.frame().size.height
-        x = bar.origin.x + (bar.size.width - w) / 2
-        x = max(area.origin.x, min(x, area.origin.x + area.size.width - w))
-        y = bar.origin.y + bar.size.height + 8
-        if y + h > area.origin.y + area.size.height:
-            y = bar.origin.y - 8 - h
-        self.win.setFrameOrigin_((x, y))
-        self.win.orderFrontRegardless()
-
-    def hide(self):
-        self.win.orderOut_(None)
-
-
 class Popup:
     def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
                  on_source, sources):
@@ -229,7 +149,7 @@ class Popup:
         effect.layer().setCornerRadius_(21)  # a pill: half of the 42-point height
         effect.layer().setMasksToBounds_(True)
         effect.layer().setBorderWidth_(0.5)
-        effect.layer().setBorderColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.15)))
+        effect.layer().setBorderColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.15)))
         hover = _Hover.alloc().initWithOwner_(self)
         for parent, child in ((hover, effect), (effect, row)):
             child.setTranslatesAutoresizingMaskIntoConstraints_(False)
@@ -239,10 +159,10 @@ class Popup:
                 getattr(child, a)().constraintEqualToAnchor_(getattr(parent, b)()).setActive_(True)
 
         style = AppKit.NSWindowStyleMaskBorderless | AppKit.NSWindowStyleMaskNonactivatingPanel
-        p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
+        p = self.win = ui.Panel.alloc().initWithContentRect_styleMask_backing_defer_(
             ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
         p.setContentView_(hover)
-        self.caption = _Caption()
+        self.caption = Caption()
         p.setAppearance_(AppKit.NSAppearance.appearanceNamed_(AppKit.NSAppearanceNameVibrantDark))
         p.setLevel_(AppKit.NSStatusWindowLevel)
         p.setFloatingPanel_(True)
@@ -308,6 +228,7 @@ class Popup:
         if not playing:
             self.caption.hide()
             self.set_loading(False)
+        self.caption.set_paused(self.paused)  # a read stopped while paused must not freeze the next one
         pausing = playing and not paused
         self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
         self.stop_btn.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
@@ -321,7 +242,7 @@ class Popup:
             self.caption.show(text, self.win.frame(), screen.visibleFrame())
 
     def set_caption_paused(self, paused):
-        pass  # the caption has no motion to pause; core holds the next sentence
+        self.caption.set_paused(paused)
 
     def configure_captions(self, font_size, background, background_opacity):
         self.caption.configure(font_size, background, background_opacity)
