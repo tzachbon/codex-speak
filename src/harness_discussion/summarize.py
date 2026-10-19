@@ -188,7 +188,8 @@ class Server:
     the loopback interface."""
 
     def __init__(self):
-        self._proc, self._port, self._lock = None, None, threading.Lock()
+        # _starting spans the model load. _lock only guards _proc, so stop() never waits for a load.
+        self._proc, self._port, self._lock, self._starting = None, None, threading.Lock(), threading.Lock()
 
     @property
     def running(self):
@@ -201,15 +202,16 @@ class Server:
         port = _free_port()
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         # Fixed arguments and no shell; its output is dropped, since its logs can quote the text.
-        self._proc = subprocess.Popen(
+        proc = subprocess.Popen(
             [str(exe), "-m", str(model_path()), "--host", "127.0.0.1", "--port", str(port), "-c", "8192",
              "-np", "1", "--no-webui"], cwd=exe.parent, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, creationflags=flags)
-        self._port = port
+        with self._lock:
+            self._proc, self._port = proc, port
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self._proc.poll() is not None:
-                self._proc = None
+            if proc.poll() is not None or self._proc is not proc:  # exited, or stop() took it
+                self.stop()
                 raise Error("The Summarize model stopped while loading.")
             try:
                 with _local_open(f"http://127.0.0.1:{port}/health", timeout=2) as reply:
@@ -222,7 +224,7 @@ class Server:
         raise Error("The Summarize model took too long to load.")
 
     def summarize(self, text, language, timeout=180):
-        with self._lock:
+        with self._starting:
             if not self.running:
                 self._start(90)
             port = self._port

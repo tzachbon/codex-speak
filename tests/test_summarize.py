@@ -3,8 +3,10 @@ import hashlib
 import io
 import json
 import queue
+import sys
 import tarfile
 import tempfile
+import threading
 import time
 import unittest
 import zipfile
@@ -134,6 +136,31 @@ class ServerTest(unittest.TestCase):
                 server.summarize("text", "English")
 
 
+    def test_stop_does_not_wait_for_the_model_to_load(self):
+        proc = mock.Mock()
+        proc.poll.return_value = None
+        server, errors = summarize.Server(), []
+
+        def run():
+            try:
+                server.summarize("text", "English")
+            except summarize.Error as e:
+                errors.append(str(e))
+        with mock.patch.object(summarize, "_server_path", return_value=Path(sys.executable)), \
+                mock.patch.object(summarize, "model_path", return_value=Path(__file__)), \
+                mock.patch.object(summarize.subprocess, "Popen", return_value=proc), \
+                mock.patch.object(summarize, "_local_open", side_effect=OSError):
+            worker = threading.Thread(target=run)
+            worker.start()
+            time.sleep(0.3)  # loading: /health keeps failing
+            started = time.monotonic()
+            server.stop()
+            self.assertLess(time.monotonic() - started, 1)
+            worker.join(5)
+        proc.terminate.assert_called_once()
+        self.assertEqual(errors, ["The Summarize model stopped while loading."])
+
+
 class _App(app_summarize.Summaries):
     """The parts of core.App the mixin uses."""
 
@@ -182,12 +209,28 @@ class FlowTest(unittest.TestCase):
             time.sleep(0.02)
         self.assertEqual(app.played[1:], [("English: short.", "en-US"), "server stopped"])
 
-    def test_stop_before_the_summary_arrives_reads_nothing(self):
+    def test_stop_before_the_summary_arrives_reads_nothing_and_still_stops_the_server_later(self):
         app = _App("ready")
         app.summarize("text", "en-US")
         app.stop()
         app.drain()
         self.assertEqual(app.played, [])
+        app.timers[0]()
+        for _ in range(50):
+            if app.played:
+                break
+            time.sleep(0.02)
+        self.assertEqual(app.played, ["server stopped"])
+
+    def test_a_new_summary_cancels_the_last_idle_timer_when_it_starts(self):
+        app = _App("ready")
+        app.summarize("text", "en-US")
+        app.drain()
+        app.summary_server.summarize = lambda text, language: time.sleep(0.2) or "later."
+        app.summarize("more", "en-US")
+        app.timers[0]()  # fires while the second summary is still running
+        time.sleep(0.05)
+        self.assertNotIn("server stopped", app.played)
 
     def test_a_pause_while_summarizing_holds_the_summary(self):
         app = _App("ready")

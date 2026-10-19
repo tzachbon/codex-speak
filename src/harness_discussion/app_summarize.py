@@ -34,6 +34,8 @@ class Summaries:
             return
         self.stop()  # a read in progress is replaced by the summary
         rid = self._read_id
+        self._summary_gen += 1  # older idle timers must not stop the server under this summary
+        gen = self._summary_gen
         self.popup.set_summary()
         tag = lang_tag or lang.detect(text)
         language = lang.name(tag) or "the language of the text"
@@ -43,7 +45,7 @@ class Summaries:
                 result = self.summary_server.summarize(text, language)
             except Exception as e:
                 result = e
-            self.events.put(("summary", rid, result, lang_tag))
+            self.events.put(("summary", rid, gen, result, lang_tag))
         threading.Thread(target=work, daemon=True).start()
 
     def summarize_action(self):
@@ -87,7 +89,10 @@ class Summaries:
         if self.settings_win and self.settings_win.alive:
             self.settings_win.refresh_summarize()
 
-    def _summary_done(self, rid, result, lang_tag):
+    def _summary_done(self, rid, gen, result, lang_tag):
+        if gen == self._summary_gen:  # the latest summary, even if its read was stopped
+            self.host.after(summarize.IDLE_S * 1000, lambda: gen == self._summary_gen and threading.Thread(
+                target=self.summary_server.stop, daemon=True).start())
         if rid != self._read_id:
             return  # stopped, or replaced by another read, while the model worked
         if isinstance(result, Exception):
@@ -95,10 +100,6 @@ class Summaries:
             log.info("summary failed: %s", type(result).__name__)
             self.host.notify(f"Could not summarize. {self._summary_error(result)}")
             return
-        self._summary_gen += 1
-        gen = self._summary_gen
-        self.host.after(summarize.IDLE_S * 1000, lambda: gen == self._summary_gen and threading.Thread(
-            target=self.summary_server.stop, daemon=True).start())
         paused = self.popup.paused
         self.play(result, lang_tag)
         if paused:  # paused while the model worked: the summary waits for Play
