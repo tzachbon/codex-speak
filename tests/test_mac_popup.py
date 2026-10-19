@@ -108,6 +108,14 @@ class PopupSourceTest(unittest.TestCase):
         bar.set_caption("Another sentence " * 20)
         self.assertEqual(c.offset, 0)
 
+    def test_a_read_stopped_while_paused_does_not_freeze_the_next_caption(self):
+        bar = self._playing_bar()
+        bar.set_caption_paused(True)
+        bar.set_playing(False)
+        bar.set_playing(True)
+        bar.set_caption("word " * 40)
+        self.assertIsNotNone(bar.caption._timer)
+
     def test_a_right_to_left_caption_starts_at_its_end_and_scrolls_back(self):
         bar = self._playing_bar()
         c = bar.caption

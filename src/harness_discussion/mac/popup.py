@@ -228,6 +228,7 @@ class Popup:
         if not playing:
             self.caption.hide()
             self.set_loading(False)
+        self.caption.set_paused(self.paused)  # a read stopped while paused must not freeze the next one
         pausing = playing and not paused
         self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
         self.stop_btn.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
