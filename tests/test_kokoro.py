@@ -186,14 +186,18 @@ class Engine_(unittest.TestCase):
         self.addCleanup(release.set)
 
         class Slow(FakeModel):
-            def create(self, *args, **kw):
+            started = []
+
+            def create(self, text, *args, **kw):
+                self.started.append(text)
                 if self.calls:
                     release.wait(5)
-                return super().create(*args, **kw)
+                return super().create(text, *args, **kw)
+        model = Slow()
         e = kokoro_tts.KokoroEngine()
-        e.Player, e._load = FakePlayer, lambda: Slow()
+        e.Player, e._load = FakePlayer, lambda: model
         FakePlayer.opened = []
-        done = threading.Event()
+        done, replayed = threading.Event(), threading.Event()
         e.speak("One. Two.", "en-US", lambda err: done.set())
         deadline = time.monotonic() + 5
         while not FakePlayer.opened and time.monotonic() < deadline:
@@ -201,6 +205,12 @@ class Engine_(unittest.TestCase):
         e.stop()
         self.assertTrue(done.wait(1))
         self.assertTrue(FakePlayer.opened[0].closed)
+        e.speak("Three.", "en-US", lambda err: replayed.set())
+        time.sleep(0.2)
+        self.assertEqual(model.started, ["One.", "Two."])  # "Two." still renders, so "Three." waits
+        release.set()
+        self.assertTrue(replayed.wait(5))
+        self.assertEqual(model.started, ["One.", "Two.", "Three."])
 
     def test_voices_are_english_with_a_readable_label(self):
         ids = dict(kokoro_tts.VOICES)

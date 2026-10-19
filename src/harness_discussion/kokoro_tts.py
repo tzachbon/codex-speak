@@ -116,6 +116,7 @@ class KokoroEngine(_Threaded):
     def __init__(self):
         super().__init__()
         self._model = None  # loaded on the first read, then kept
+        self._rendering = threading.Lock()  # a stopped read's last sentence finishes before the next read renders
 
     def status(self):
         return status()
@@ -142,9 +143,11 @@ class KokoroEngine(_Threaded):
         def synthesize():  # its own thread, so Stop ends playback without waiting for a sentence to render
             try:
                 for sentence in sentences.split(text):
-                    if stop.is_set():
-                        return
-                    pieces.put(model.create(sentence, voice=voice, speed=speed, lang=LANGS[tag])[0])
+                    with self._rendering:
+                        if stop.is_set():
+                            return
+                        samples = model.create(sentence, voice=voice, speed=speed, lang=LANGS[tag])[0]
+                    pieces.put(samples)
                 pieces.put(None)
             except Exception as e:
                 pieces.put(e)
