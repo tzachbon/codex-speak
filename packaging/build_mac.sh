@@ -33,8 +33,8 @@ plutil -replace HarnessDiscussionBuild -string "$version+$commit" "$plist"
 # Otherwise the local identity from setup_signing_mac.sh keeps the Accessibility grant across rebuilds,
 # and anything else is signed ad hoc.
 keychain="$HOME/Library/Keychains/harness-discussion-signing.keychain-db"
-if [[ -n "${MACOS_CERTIFICATE:-}" ]]; then
-    : "${MACOS_CERTIFICATE_PASSWORD:?}" "${MACOS_NOTARY_KEY:?}" "${MACOS_NOTARY_KEY_ID:?}" "${MACOS_NOTARY_ISSUER_ID:?}"
+if [[ -n "${MACOS_CERTIFICATE:-}${MACOS_CERTIFICATE_PASSWORD:-}${MACOS_NOTARY_KEY:-}${MACOS_NOTARY_KEY_ID:-}${MACOS_NOTARY_ISSUER_ID:-}" ]]; then
+    : "${MACOS_CERTIFICATE:?}" "${MACOS_CERTIFICATE_PASSWORD:?}" "${MACOS_NOTARY_KEY:?}" "${MACOS_NOTARY_KEY_ID:?}" "${MACOS_NOTARY_ISSUER_ID:?}"
     work=$(mktemp -d)
     keychain="$work/signing.keychain-db"
     trap 'security delete-keychain "$keychain" 2>/dev/null; rm -rf "$work"' EXIT
