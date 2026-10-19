@@ -7,7 +7,9 @@ import tkinter as tk
 import tkinter.font as tkfont
 from ctypes import wintypes
 
-from .. import lang, settings
+from PIL import ImageTk
+
+from .. import icons, lang, settings
 from .captions import CaptionSurface, _get_parent, _get_style, _set_style
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
@@ -122,6 +124,7 @@ class Popup:
             self.speed_menu.add_radiobutton(label=settings.speed_label(preset), value=preset,
                                             variable=self.speed, command=self._speed_changed)
         self.sources_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
+        self._icons = {}
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self.schedule_hide())
         w.withdraw()
@@ -267,10 +270,23 @@ class Popup:
         menu = self.sources_menu
         menu.delete(0, "end")
         self.source.set(self.source_btn.parts[1]["text"])  # a pick mid-read must not move the check off the label
-        for name in self.sources():
-            menu.add_radiobutton(label=name, value=name, variable=self.source,
-                                 command=lambda name=name: self.on_source(name))
+        choices = self.sources()
+        for name, fix in choices:
+            if not fix:
+                menu.add_radiobutton(label=name, value=name, variable=self.source, image=self._icon(name),
+                                     compound="left", command=lambda name=name: self.on_source(name))
+        fixes = [(name, fix) for name, fix in choices if fix]
+        if fixes and len(fixes) < len(choices):
+            menu.add_separator()
+        for name, fix in fixes:  # a source that needs an install or sign-in offers it instead
+            menu.add_command(label=f"{name}: {fix}", image=self._icon(name), compound="left",
+                             command=lambda name=name: self.on_source(name))
         self._post_menu(self.source_btn, menu)
+
+    def _icon(self, name):
+        if name not in self._icons:  # Tk drops an image nothing in Python refers to
+            self._icons[name] = ImageTk.PhotoImage(icons.source_image(name, 16), master=self.sources_menu)
+        return self._icons[name]
 
     def _speed_changed(self):
         self.set_speed(self.speed.get())

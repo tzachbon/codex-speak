@@ -13,21 +13,26 @@ import threading
 import time
 
 from . import lang, sentences, settings, stt_server, updates
+from .captions import Captions
 from .sources import Sources
 
 log = logging.getLogger("harness_discussion")
 # Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
 CAPTION_DELAY_S = 0.6
 SPEECH_KEYS = ("sources", "voices", "speed", "prefetch")  # captured for the entire selection
+# The first sentence goes alone so speech starts fast; the rest goes in large pieces, each fetched while
+# the one before plays, so no request waits on a line break.
+PIECE_CHARS = 5000
 
 
-class App(Sources):
+class App(Captions, Sources):
     def __init__(self, host):
         self.host = host
         host.app = self
         self.events, self._seq, self.settings_win, self._read_id = queue.Queue(), 0, None, 0
         self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
         self._continuous, self._last_caption, self._held_caption = False, "", ""
+        self._caption_steps = self._caption_held = None
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -250,10 +255,13 @@ class App(Sources):
             self.events.put(("show", text, x, y))
 
     def _units_for(self, text):
-        """Codex reads the whole selection in one session; other engines go sentence by sentence."""
+        """Codex reads the whole selection in one session; other engines get the first sentence, then the rest."""
         if self.chain.continuous():
             return [text.strip()] if text.strip() else []
-        return sentences.split(text)
+        first = next(iter(sentences.split(text)), None)
+        if not first:
+            return []
+        return [first, *sentences.chunks(text[text.index(first) + len(first):], PIECE_CHARS)]
 
     def play(self, text, lang_tag, only=None):
         """only: read through that engine alone, as a Settings Test button does."""
@@ -297,6 +305,7 @@ class App(Sources):
 
     def pause(self):
         self.popup.set_caption_paused(True)
+        self._hold_captions()
         self.chain.pause()
 
     def resume(self):
@@ -304,24 +313,11 @@ class App(Sources):
         held, self._held_caption = self._held_caption, ""
         if held:
             self._show_caption(held)
+        self._resume_captions()
         self.chain.resume()
         if self._pending_next:
             self._pending_next = False
             self._start_unit()
-
-    def _caption(self, rid, index, transcript):
-        """Shows the sentence Codex is speaking, held while paused because the transcript keeps arriving."""
-        if rid != self._read_id or index != self._unit_index or not self._read_options:
-            return
-        if self.popup.paused:
-            self._held_caption = sentences.current(transcript)
-        else:
-            self._show_caption(sentences.current(transcript))
-
-    def _show_caption(self, text):
-        if text != self._last_caption:
-            self._last_caption = text
-            self.popup.set_caption(text)
 
     def _logged(self, text, on_done):
         """(done, heard): done logs the read, heard marks the first audio, which ends the spinner."""
@@ -383,7 +379,11 @@ class App(Sources):
             if args[0] == self._read_id and args[1] == self._unit_index and self._read_options:
                 p.set_loading(False)
                 if not self._continuous or self.chain.active_name != "Codex":
-                    p.set_caption(self._units[self._unit_index])  # Codex captions follow its transcript
+                    unit = self._units[self._unit_index]  # Codex captions follow its transcript
+                    self._step_captions(*args[:2], list(sentences.split(unit)) or [unit])
+                if self._unit_index + 1 < len(self._units):
+                    self.chain.prepare_next(self._units[self._unit_index + 1], self._read_options[0],
+                                            fallback_tag=self._read_options[3])
         elif kind == "caption":
             self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":

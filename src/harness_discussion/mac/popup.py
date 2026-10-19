@@ -46,24 +46,68 @@ class _Hover(AppKit.NSView):
         self.owner.schedule_hide()
 
 
-def _icon_button(name, description, fn):
+def _cg(color):
+    return color.CGColor()
+
+
+def _icon_button(name, description, fn, tint=None):
     b = _Button.alloc().init()
     b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
     b.setBordered_(False)
     b.setImage_(ui.symbol(name, description))
     b.setImageScaling_(AppKit.NSImageScaleProportionallyDown)
-    b.widthAnchor().constraintEqualToConstant_(28).setActive_(True)
+    b.setContentTintColor_(tint or AppKit.NSColor.colorWithWhite_alpha_(1, 0.6))
+    b.widthAnchor().constraintEqualToConstant_(26).setActive_(True)
     b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
     return ui.bind(b, lambda _s: fn())
 
 
+def _play_button(fn):
+    """Play/Pause: a filled circle in the system accent color, the one control that stands out."""
+    b = _icon_button("play.fill", "Play", fn, tint=AppKit.NSColor.whiteColor())
+    for c in b.constraints():
+        c.setConstant_(30)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(15)
+    b.layer().setBackgroundColor_(_cg(AppKit.NSColor.controlAccentColor()))
+    return b
+
+
 def _text_button(title, fn):
+    """A rounded chip that opens a menu."""
     b = _Button.alloc().init()
     b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
     b.setBordered_(False)
-    b.setTitle_(title + " ▾")
-    b.setFont_(AppKit.NSFont.systemFontOfSize_(12))
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(8)
+    b.layer().setBackgroundColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.1)))
+    b.setImagePosition_(AppKit.NSImageLeading)
+    b.setContentTintColor_(AppKit.NSColor.labelColor())
+    b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
+    b.width = b.widthAnchor().constraintEqualToConstant_(40)
+    b.width.setActive_(True)
+    _set_title(b, title)
     return ui.bind(b, lambda s: fn(s))
+
+
+def _set_title(button, title, image=None):
+    """`title ▾` with a dimmed chevron, the chip sized to fit with padding."""
+    font = AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightMedium)
+    text = AppKit.NSMutableAttributedString.alloc().initWithString_attributes_(
+        title + " ", {AppKit.NSFontAttributeName: font, AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()})
+    text.appendAttributedString_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        "▾", {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_(10),
+              AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithWhite_alpha_(1, 0.55)}))
+    button.setImage_(image)
+    button.setAttributedTitle_(text)
+    button.width.setConstant_(button.cell().cellSize().width + 18)
+
+
+def _divider():
+    line = AppKit.NSBox.alloc().init()
+    line.setBoxType_(AppKit.NSBoxSeparator)
+    line.heightAnchor().constraintEqualToConstant_(18).setActive_(True)
+    return line
 
 
 def _cocoa_y(top):
@@ -89,30 +133,32 @@ class Popup:
         self.text, self.playing, self.paused, self.menu_open, self.loading = "", False, False, False, False
         self._lang, self._speed, self._source, self._hide_timer = None, speed, None, None
 
-        self.btn = _icon_button("play.fill", "Play", self._toggle)
-        self.stop_btn = _icon_button("stop.fill", "Stop", self._stop)
+        self.btn = _play_button(self._toggle)
+        self.stop_btn = _icon_button("stop.fill", "Stop", self._stop, tint=AppKit.NSColor.whiteColor())
         self.spinner = AppKit.NSProgressIndicator.alloc().init()
         self.spinner.setStyle_(AppKit.NSProgressIndicatorStyleSpinning)
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
+        for anchor in (self.spinner.widthAnchor(), self.spinner.heightAnchor()):
+            anchor.constraintEqualToConstant_(30).setActive_(True)
         self.lang_btn = _text_button("Auto", self._lang_menu)
         self.speed_btn = _text_button(settings.speed_label(speed), self._speed_menu)
         self.source_btn = _text_button("", self._source_menu)
-        settings_btn = _icon_button("gearshape", "Settings", self._open_settings)
+        settings_btn = _icon_button("gearshape.fill", "Settings", self._open_settings)
         close_btn = _icon_button("xmark", "Close", self.close)
-        divider = AppKit.NSBox.alloc().init()
-        divider.setBoxType_(AppKit.NSBoxSeparator)
-        row = ui.stack([self.btn, self.spinner, self.stop_btn, divider, self.lang_btn, self.speed_btn,
-                        self.source_btn, settings_btn, close_btn], vertical=False, spacing=2)
-        row.setEdgeInsets_((3, 6, 3, 6))
+        row = ui.stack([self.btn, self.spinner, self.stop_btn, _divider(), self.source_btn, self.lang_btn,
+                        self.speed_btn, _divider(), settings_btn, close_btn], vertical=False, spacing=6)
+        row.setEdgeInsets_((6, 7, 6, 8))
         self.spinner.setHidden_(True)
         self.stop_btn.setHidden_(True)
 
         effect = AppKit.NSVisualEffectView.alloc().init()
-        effect.setMaterial_(AppKit.NSVisualEffectMaterialPopover)
+        effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
         effect.setState_(AppKit.NSVisualEffectStateActive)
         effect.setWantsLayer_(True)
-        effect.layer().setCornerRadius_(8)
+        effect.layer().setCornerRadius_(21)  # a pill: half of the 42-point height
         effect.layer().setMasksToBounds_(True)
+        effect.layer().setBorderWidth_(0.5)
+        effect.layer().setBorderColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.15)))
         hover = _Hover.alloc().initWithOwner_(self)
         for parent, child in ((hover, effect), (effect, row)):
             child.setTranslatesAutoresizingMaskIntoConstraints_(False)
@@ -125,6 +171,7 @@ class Popup:
         p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
             ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
         p.setContentView_(hover)
+        p.setAppearance_(AppKit.NSAppearance.appearanceNamed_(AppKit.NSAppearanceNameVibrantDark))
         p.setLevel_(AppKit.NSStatusWindowLevel)
         p.setFloatingPanel_(True)
         p.setBecomesKeyOnlyIfNeeded_(True)
@@ -204,11 +251,11 @@ class Popup:
 
     def set_speed(self, speed):
         self._speed = speed
-        self.speed_btn.setTitle_(settings.speed_label(speed) + " ▾")
+        _set_title(self.speed_btn, settings.speed_label(speed))
 
     def set_source(self, name):
         self._source = name
-        self.source_btn.setTitle_(name + " ▾")
+        _set_title(self.source_btn, name, ui.source_icon(name))
         if self.visible:  # names differ in width; show() sizes the panel otherwise
             self.win.setContentSize_(self.win.contentView().fittingSize())
 
@@ -245,13 +292,20 @@ class Popup:
         self.set_playing(False)
 
     def _popup(self, button, choices, current, pick):
-        """choices: [(value, title)]. Blocks while the menu is open; timers keep running."""
+        """choices: [(value, title)] or [(value, title, image)], None for a separator. Blocks while the menu
+        is open; timers keep running."""
         menu = AppKit.NSMenu.alloc().init()
         menu.setAutoenablesItems_(False)
-        for value, title in choices:
+        for choice in choices:
+            if choice is None:
+                menu.addItem_(AppKit.NSMenuItem.separatorItem())
+                continue
+            value, title, *image = choice
             item = menu.addItemWithTitle_action_keyEquivalent_(title, "run:", "")
             item.setTarget_(ui.target(lambda _s, value=value: pick(value)))
             item.setState_(1 if value == current else 0)
+            if image:
+                item.setImage_(image[0])
         self.menu_open = True
         self.cancel_hide()
         try:
@@ -269,11 +323,15 @@ class Popup:
                     self._speed_changed)
 
     def _source_menu(self, button):
-        self._popup(button, [(n, n) for n in self.sources()], self._source, self.on_source)
+        """Ready sources to pick from; below them, each source that needs an install or sign-in offers it."""
+        choices = self.sources()
+        ready = [(n, n, ui.source_icon(n)) for n, fix in choices if not fix]
+        broken = [(n, f"{n}: {fix}", ui.source_icon(n)) for n, fix in choices if fix]
+        self._popup(button, ready + ([None] if ready and broken else []) + broken, self._source, self.on_source)
 
     def _set_lang(self, tag):
         self._lang = tag
-        self.lang_btn.setTitle_((lang.name(tag) or "Auto") + " ▾")
+        _set_title(self.lang_btn, lang.name(tag) or "Auto")
 
     def _lang_changed(self, tag):
         self._set_lang(tag)

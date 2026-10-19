@@ -247,12 +247,21 @@ class SourcesSettingsTest(unittest.TestCase):
 
     def test_each_status_renders_its_text(self):
         self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "Codex", "macOS")],
-                         ["Signed out — open Cursor and sign in", "Not installed", "Checking…"])
+                         ["Not signed in", "Not installed", "Checking…"])
         self.app.statuses = {"Cursor": "expired", "macOS": "ready"}
         self.win.refresh_sources()
         self.assertEqual([self.rows[n][1].stringValue() for n in ("Cursor", "macOS")],
-                         ["Sign-in expired — open Cursor", "Ready"])
+                         ["Sign-in expired", "Ready"])
         self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
+
+    def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
+        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True])
+        self.assertTrue(self.win.nav[0].title().endswith("●"))  # Cursor is signed out
+        self.win.nav[3].performClick_(None)
+        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, False])
+        self.app.statuses = {"Cursor": "ready", "Codex": "ready"}
+        self.win.refresh_sources()
+        self.assertFalse(self.win.nav[0].title().endswith("●"))
 
     def test_the_window_fits_a_status_that_wraps(self):
         for statuses in ({}, {"Cursor": "signed_out", "Codex": "signed_out", "macOS": "signed_out"}):
@@ -300,14 +309,16 @@ class PopupSourceTest(unittest.TestCase):
         picked = []
         noop = lambda *a: None
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: ["Codex", "macOS"])
+                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")])
         bar.set_source("Codex")
         self.assertEqual(bar.source_btn.title(), "Codex ▾")
         menus = []
         with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
                 (choices, current)) or pick("macOS")):
             bar.source_btn.performClick_(None)
-        self.assertEqual((menus, picked), ([([("Codex", "Codex"), ("macOS", "macOS")], "Codex")], ["macOS"]))
+        choices, current = menus[0]
+        self.assertEqual(([c and c[:2] for c in choices], current, picked),
+                         ([("Codex", "Codex"), ("macOS", "macOS"), None, ("Cursor", "Cursor: Sign in…")], "Codex", ["macOS"]))
 
 
 if __name__ == "__main__":

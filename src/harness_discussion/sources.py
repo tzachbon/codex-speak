@@ -1,8 +1,39 @@
-"""App's voice-source state: the cached statuses and the floating bar's source button."""
+"""App's voice-source state: the cached statuses, what makes a source usable, and the floating bar's source button."""
+import atexit
 import logging
+import subprocess
 import threading
+import webbrowser
 
 log = logging.getLogger("harness_discussion")
+INSTALL = {"Codex": "https://github.com/openai/codex#quickstart", "Cursor": "https://cursor.com/download"}
+RECHECK_S = (5, 15, 30, 60, 120)  # after a fix: installs and sign-ins finish outside the app
+
+
+def _codex_login():
+    """`codex login` opens the ChatGPT sign-in in the browser and exits once it is saved."""
+    from .codex_rt import SPAWN, codex_exe
+    p = subprocess.Popen([codex_exe(), "login"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **SPAWN)
+    atexit.register(p.kill)  # quitting the app ends an unfinished sign-in
+
+    def wait():
+        try:
+            p.wait(600)
+        except subprocess.TimeoutExpired:
+            p.kill()  # an abandoned sign-in must not keep its port forever
+    threading.Thread(target=wait, daemon=True).start()
+
+
+def fix(name, status):
+    """(button title, action) that makes a source usable, or None when there is nothing to do."""
+    if status == "missing" and name in INSTALL:
+        return "Install…", lambda: webbrowser.open(INSTALL[name])
+    if status in ("signed_out", "expired") and name == "Cursor":
+        return "Sign in…", lambda: webbrowser.open("cursor://")  # Cursor refreshes or asks for its sign-in
+    if status in ("signed_out", "expired") and name == "Codex":
+        return "Sign in…", _codex_login
+    return None
 
 
 class Sources:
@@ -32,11 +63,30 @@ class Sources:
         if not self.chain.busy:
             self.popup.set_source(self.chain.order()[0].name)
 
+    def fix_source(self, name):
+        """Runs the source's install or sign-in, then checks again while the user finishes it."""
+        found = fix(name, self.statuses.get(name))
+        if not found:
+            return
+        try:
+            found[1]()
+        except Exception as e:  # codex removed since the last check, or no browser
+            self.host.notify(f"Could not open {name}: {e}")
+            return
+        for s in RECHECK_S:
+            self.host.after(s * 1000, self.refresh_statuses)
+
     def _source_choices(self):
-        """The bar's menu: enabled sources not known to be unready, in the saved order, else what a read would use."""
-        ready = [name for name, on in self.cfg["sources"] if on and self.statuses.get(name, "ready") == "ready"]
-        return ready or [e.name for e in self.chain.order()]
+        """The bar's menu as (name, fix title or None): enabled sources not known to be unready, in the saved
+        order, else what a read would use; then each enabled source that needs an install or sign-in."""
+        on = [name for name, enabled in self.cfg["sources"] if enabled]
+        fixes = [(name, found[0]) for name in on if (found := fix(name, self.statuses.get(name)))]
+        broken = {name for name, _ in fixes}
+        ready = [(name, None) for name in on if self.statuses.get(name, "ready") == "ready"]
+        return (ready or [(e.name, None) for e in self.chain.order() if e.name not in broken]) + fixes
 
     def _popup_source(self, name):
+        if fix(name, self.statuses.get(name)):
+            return self.fix_source(name)
         sources = self.cfg["sources"]
         self.change("sources", [[name, True]] + [s for s in sources if s[0] != name])

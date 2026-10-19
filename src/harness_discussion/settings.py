@@ -130,8 +130,8 @@ def save(s: dict, path=PATH) -> None:
 
 
 WELCOME = "Pick the voices Harness Discussion uses."  # Settings header on first run, above Sources
-STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Signed out — open Cursor and sign in",
-               "expired": "Sign-in expired — open Cursor"}
+STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Not signed in",
+               "expired": "Sign-in expired"}
 
 
 def status_text(status) -> str:

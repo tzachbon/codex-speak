@@ -182,6 +182,12 @@ class Chain:
             tag = lang_tag if first.name == "Codex" else lang_tag or fallback_tag
             first.prepare(tag, text if self.prefetch else None)
 
+    def prepare_next(self, text, lang_tag, *, fallback_tag=None):
+        """While one piece plays, starts fetching the next on the engine reading it, whatever `prefetch` says."""
+        engine = self._active
+        if engine and engine.name != "Codex" and hasattr(engine, "prepare"):
+            engine.prepare(lang_tag or fallback_tag, text)
+
     def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None, on_caption=None):
         self._gen += 1
         self._idle = idle = threading.Event()

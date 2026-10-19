@@ -3,6 +3,7 @@ import AppKit
 import objc
 from Foundation import NSObject
 
+from .. import icons
 from ..codex_rt import CodexEngine
 from ..cursor_tts import CursorEngine
 from . import selection, ui
@@ -39,6 +40,7 @@ class MacHost:
         self.ns.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
         self.delegate = _Delegate.alloc().initWithHost_(self)
         self.ns.setDelegate_(self.delegate)
+        self._mark = ui.pil_image(icons.menu_bar_image(36), 18)
         self.item = AppKit.NSStatusBar.systemStatusBar().statusItemWithLength_(
             AppKit.NSVariableStatusItemLength)
         self.menu = AppKit.NSMenu.alloc().init()
@@ -63,8 +65,8 @@ class MacHost:
         return item
 
     def refresh_menu(self):
-        image = ui.symbol("exclamationmark.triangle.fill" if self._missing else "speaker.wave.2.fill",
-                          "Harness Discussion")
+        image = (ui.symbol("exclamationmark.triangle.fill", "Harness Discussion") if self._missing
+                 else self._mark)
         image.setTemplate_(not self._missing)
         self.item.button().setImage_(image)
         self.item.button().setToolTip_("Harness Discussion needs Accessibility permission" if self._missing

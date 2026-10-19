@@ -6,7 +6,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from harness_discussion import codex_rt, core, settings
+from harness_discussion import codex_rt, core, settings, sources
 from harness_discussion.audio import NoAudioError
 from harness_discussion.engines import Chain
 
@@ -258,7 +258,7 @@ class Bar(unittest.TestCase):
         app.refresh_statuses()
         wait_for_event(app)
         self.assertEqual(app.popup.source, "Edge")
-        self.assertEqual(app.popup.callbacks["sources"](), ["Edge"])
+        self.assertEqual(app.popup.callbacks["sources"](), [("Edge", None), ("Cursor", "Sign in…")])
 
     def test_with_no_enabled_source_ready_the_menu_lists_what_a_read_would_use(self):
         cursor, codex = Engine("Cursor"), Engine("Codex")
@@ -267,7 +267,21 @@ class Bar(unittest.TestCase):
         app.change("sources", [["Cursor", True], ["Codex", False], ["Edge", False]])
         app.refresh_statuses()
         wait_for_event(app)
-        self.assertEqual((app.popup.callbacks["sources"](), app.popup.source), (["Cursor"], "Cursor"))
+        self.assertEqual((app.popup.callbacks["sources"](), app.popup.source), ([("Cursor", "Sign in…")], "Cursor"))
+
+    def test_picking_a_source_that_needs_a_sign_in_runs_it_and_checks_again(self):
+        cursor = Engine("Cursor")
+        cursor.status = lambda: "signed_out"
+        app = self.make(cursor, Engine("Codex"))
+        app.refresh_statuses()
+        wait_for_event(app)
+        order = [list(s) for s in app.cfg["sources"]]
+        with patch("webbrowser.open") as browser:
+            app.popup.callbacks["on_source"]("Cursor")
+        browser.assert_called_once_with("cursor://")
+        self.assertEqual(app.cfg["sources"], order)  # a fix does not reorder
+        rechecks = [ms for ms, fn in app.host.timers if fn == app.refresh_statuses]
+        self.assertEqual(rechecks, [s * 1000 for s in sources.RECHECK_S])
 
     def test_picking_a_source_moves_it_first_saves_and_mirrors_settings(self):
         app = self.make(Engine("Cursor"), Engine("Codex"), Engine("Edge"))
