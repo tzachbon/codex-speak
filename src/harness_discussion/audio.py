@@ -54,6 +54,9 @@ class Stretcher:
             out += bytes(f.planes[0])[: f.samples * 2]
 
 
+_live, _live_lock = set(), threading.Lock()  # open players' streams, which a PortAudio reset would close
+
+
 class PcmPlayer:
     _hold, _holding, _last_write = 0, False, 0.0  # no cushion for players built without a sound device
 
@@ -64,9 +67,26 @@ class PcmPlayer:
         self._on_audio = None
         self._output_pending = False
         # 20 ms blocks: left to choose, CoreAudio calls back every 15 samples and any stall is a gap
-        self._stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
-                                          blocksize=rate // 50, callback=self._fill)
-        self._stream.start()
+        with _live_lock:  # opening and listing at once, so no reset lands between them
+            try:
+                self._stream = self._open(rate, channels)
+            except sd.PortAudioError:  # PortAudio lists devices once, so a headset or dock change leaves them stale
+                if _live:
+                    raise
+                sd._terminate()
+                sd._initialize()
+                self._stream = self._open(rate, channels)
+            _live.add(self._stream)
+
+    def _open(self, rate, channels):
+        stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
+                                    blocksize=rate // 50, callback=self._fill)
+        try:
+            stream.start()
+        except sd.PortAudioError:
+            stream.close()
+            raise
+        return stream
 
     def _fill(self, out, frames, _time, _status):
         n = frames * self._width
@@ -119,5 +139,9 @@ class PcmPlayer:
         with self._lock:
             self._buf.clear()
             self._on_audio = None
-        self._stream.abort()
-        self._stream.close()
+        with _live_lock:  # a reset waits until this stream is closed, not just unlisted
+            try:
+                self._stream.abort()
+                self._stream.close()
+            finally:
+                _live.discard(self._stream)

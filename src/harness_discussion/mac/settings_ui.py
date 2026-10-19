@@ -8,13 +8,15 @@ from .. import icons, settings, updates
 from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
+from .captions_page import CaptionsPage
 
 WIDTH = 460  # inside a card
 SIDEBAR = 200
 RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
 STATUS_COLOR = {"ready": "systemGreenColor", "missing": "systemRedColor", None: "tertiaryLabelColor"}
 # (title, SF Symbol, tile color) per sidebar page, in sidebar order
-PAGES = (("Voices", "waveform", "systemPurpleColor"), ("Reading", "text.cursor", "systemBlueColor"),
+PAGES = (("Voices", "waveform", "systemPurpleColor"), ("Captions", "captions.bubble.fill", "systemTealColor"),
+         ("Reading", "text.cursor", "systemBlueColor"),
          ("Speech to Text", "mic.fill", "systemOrangeColor"), ("General", "gearshape.fill", "systemGrayColor"))
 
 
@@ -63,7 +65,7 @@ def _nav_button(title, symbol, color, fn):
     return b
 
 
-class SettingsWindow:
+class SettingsWindow(CaptionsPage):
     def __init__(self, app, show_guide, welcome=False):
         self.app, self.cfg = app, dict(app.cfg)
         self._save_timer = None
@@ -89,6 +91,9 @@ class SettingsWindow:
                   "sign-in and can read slower but not faster, so above 1× the next source reads. macOS voices "
                   "stay on this Mac; add more in System Settings > Accessibility > Spoken Content."),
             ui.label("Speed", 13, bold=True), _card([speed])]
+
+        # Captions
+        captions = self._captions_page()
 
         # Reading
         hidden, _ = ui.option("Read apps that hide their selection",
@@ -145,7 +150,7 @@ class SettingsWindow:
             warning, ui.label("Harness Discussion can't read selected text yet.", 12, width=WIDTH - 130),
             ui.button("Fix this", show_guide, primary=True)], vertical=False, spacing=10)])
         self.pages = [ui.stack([ui.label(title, 20, bold=True), *views], spacing=10)
-                      for (title, _, _), views in zip(PAGES, (voices, reading, stt, general))]
+                      for (title, _, _), views in zip(PAGES, (voices, captions, reading, stt, general))]
         rest = AppKit.NSView.alloc().init()  # takes the spare height, so cards keep their own
         rest.setContentHuggingPriority_forOrientation_(1, AppKit.NSLayoutConstraintOrientationVertical)
         area = ui.stack([self.permission_row, *self.pages, rest], spacing=16)

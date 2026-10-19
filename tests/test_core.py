@@ -245,5 +245,18 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(app.update_state(), ("v9.0.0 is available.", False))
 
 
+class Causes(unittest.TestCase):
+    def test_the_log_names_every_cause_and_http_code_but_no_message(self):
+        import urllib.error
+        try:
+            try:
+                raise urllib.error.HTTPError("https://x", 401, "secret text", {}, None)
+            except urllib.error.HTTPError as e:
+                raise NoAudioError("secret text") from e
+        except NoAudioError as e:
+            line = core._causes(e)
+        self.assertEqual(line, "NoAudioError from HTTPError 401")
+
+
 if __name__ == "__main__":
     unittest.main()

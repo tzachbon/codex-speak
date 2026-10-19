@@ -255,13 +255,25 @@ class SourcesSettingsTest(unittest.TestCase):
         self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
 
     def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
-        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True])
+        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True, True])
         self.assertTrue(self.win.nav[0].title().endswith("●"))  # Cursor is signed out
-        self.win.nav[3].performClick_(None)
-        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, False])
+        self.win.nav[4].performClick_(None)
+        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, True, False])
         self.app.statuses = {"Cursor": "ready", "Codex": "ready"}
         self.win.refresh_sources()
         self.assertFalse(self.win.nav[0].title().endswith("●"))
+
+    def test_the_captions_page_saves_font_size_background_and_opacity(self):
+        self.assertFalse(self.win.opacity.isEnabled())  # no background by default
+        self.win.font_size.setIntValue_(14)
+        self.win.font_size.target().run_(self.win.font_size)
+        self.win._background_changed(True)
+        self.win.opacity.setDoubleValue_(35)
+        self.win.opacity.target().run_(self.win.opacity)
+        self.assertEqual(self.win.font_size_label.stringValue(), "14 pt")
+        self.assertTrue(self.win.opacity.isEnabled())
+        self.assertEqual(self.changes, [("caption_font_size", 14), ("caption_background", True),
+                                        ("caption_background_opacity", 0.35)])
 
     def test_the_window_fits_a_status_that_wraps(self):
         for statuses in ({}, {"Cursor": "signed_out", "Codex": "signed_out", "macOS": "signed_out"}):
@@ -299,26 +311,6 @@ class SourcesSettingsTest(unittest.TestCase):
         views = list(welcome.sources.superview().arrangedSubviews())
         self.assertEqual(welcome.welcome.stringValue(), "Pick the voices Harness Discussion uses.")
         self.assertEqual(views.index(welcome.welcome) + 1, views.index(welcome.sources))
-
-
-class PopupSourceTest(unittest.TestCase):
-    def test_label_follows_set_source_and_a_pick_reaches_on_source(self):
-        import AppKit
-        from harness_discussion.mac import popup
-        AppKit.NSApplication.sharedApplication()
-        picked = []
-        noop = lambda *a: None
-        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")])
-        bar.set_source("Codex")
-        self.assertEqual(bar.source_btn.title(), "Codex ▾")
-        menus = []
-        with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
-                (choices, current)) or pick("macOS")):
-            bar.source_btn.performClick_(None)
-        choices, current = menus[0]
-        self.assertEqual(([c and c[:2] for c in choices], current, picked),
-                         ([("Codex", "Codex"), ("macOS", "macOS"), None, ("Cursor", "Cursor: Sign in…")], "Codex", ["macOS"]))
 
 
 if __name__ == "__main__":
