@@ -67,16 +67,15 @@ class PcmPlayer:
         self._on_audio = None
         self._output_pending = False
         # 20 ms blocks: left to choose, CoreAudio calls back every 15 samples and any stall is a gap
-        try:
-            self._stream = self._open(rate, channels)
-        except sd.PortAudioError:  # PortAudio lists devices once, so a headset or dock change leaves them stale
-            with _live_lock:
+        with _live_lock:  # opening and listing at once, so no reset lands between them
+            try:
+                self._stream = self._open(rate, channels)
+            except sd.PortAudioError:  # PortAudio lists devices once, so a headset or dock change leaves them stale
                 if _live:
                     raise
                 sd._terminate()
                 sd._initialize()
-            self._stream = self._open(rate, channels)
-        with _live_lock:
+                self._stream = self._open(rate, channels)
             _live.add(self._stream)
 
     def _open(self, rate, channels):

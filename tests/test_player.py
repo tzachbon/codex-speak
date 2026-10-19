@@ -40,6 +40,14 @@ class Player(unittest.TestCase):
             PcmPlayer().close()
         self.assertEqual((listed, stream in audio._live), ([True], False))
 
+    def test_a_stream_opens_and_is_listed_under_the_reset_lock(self):
+        stream, locked = mock.Mock(), []
+        stream.start.side_effect = lambda: locked.append(audio._live_lock.locked())
+        with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream):
+            p = PcmPlayer()
+        self.assertEqual((locked, stream in audio._live), ([True], True))
+        p.close()
+
     def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
         p = PcmPlayer.__new__(PcmPlayer)
         p._buf, p._lock, p._width, p._paused = bytearray(), threading.Lock(), 2, threading.Event()
