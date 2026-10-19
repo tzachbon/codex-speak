@@ -230,6 +230,7 @@ class SettingsWindow(CaptionsPage):
         self.update_button.setEnabled_(installed and not busy)
         self.auto_update.setEnabled_(installed)
         self.download_button.setHidden_(self.app.available_version() is None)
+        self.download_button.setEnabled_(installed and not busy)
         self.update_status.setStringValue_(text if installed else "Updates are available in installed builds.")
 
     def set_speed(self, speed):
@@ -350,7 +351,7 @@ class SettingsWindow(CaptionsPage):
 
     def _download(self):
         version = self.app.available_version()
-        if version:
+        if version and not self.app.install_update():
             AppKit.NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_(RELEASES.format(version)))
 
     def _test(self):

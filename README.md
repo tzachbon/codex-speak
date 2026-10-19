@@ -55,7 +55,7 @@ Requirements: Windows 11, 64-bit.
 
 Requirements: macOS 13 or later on Apple silicon.
 
-On a Mac, the voices are Cursor, Codex, and then the built-in macOS voice, which stays on your Mac. Edge voices are Windows only for now. *Start Harness Discussion when I log in* adds a LaunchAgent. Settings are kept in `~/Library/Application Support/harness-discussion`. Updates are not installed automatically: Settings shows when a new version is out, and *Download* opens the release page.
+On a Mac, the voices are Cursor, Codex, and then the built-in macOS voice, which stays on your Mac. Edge voices are Windows only for now. *Start Harness Discussion when I log in* adds a LaunchAgent. Settings are kept in `~/Library/Application Support/harness-discussion`. Updates are not installed automatically: Settings shows when a new version is out, and *Download* downloads it, checks its SHA-256 digest, replaces the app, and reopens it. If the app can't replace itself, for example when it runs from the dmg or a folder you can't write to, *Download* opens the release page instead.
 
 After an update, macOS can stop trusting the app even though System Settings still lists it as allowed. Harness Discussion detects this, and the guide's *Fix permission* button clears the old entry so you can grant it again.
 
