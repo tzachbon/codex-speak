@@ -25,6 +25,14 @@ class AvRateTest(unittest.TestCase):
         self.assertLessEqual(rates[-1], voice.AVSpeechUtteranceMaximumSpeechRate)
 
 
+class WordOffsetTest(unittest.TestCase):
+    def test_an_emoji_counts_once_in_python(self):
+        text = "Hi 👋 there. Next."
+        self.assertEqual(voice.py_offset(text, text.encode("utf-16-le").index("N".encode("utf-16-le")) // 2),
+                         text.index("N"))
+        self.assertEqual(voice.py_offset(text, 0), 0)
+
+
 class StartupTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.TemporaryDirectory()

@@ -277,6 +277,12 @@ class Sequence(unittest.TestCase):
         a.pause()
         a.resume()
         self.assertEqual((a.popup.caption, len(timers)), ("Three.", 1))
+        a.pause()
+        a.chain.on_progress(len("Twenty chars here. Three. F"))  # queued as the user paused
+        pump(a)
+        self.assertEqual(a.popup.caption, "Three.")
+        a.resume()
+        self.assertEqual(a.popup.caption, "Four.")
 
     def test_prepare_is_opt_in_and_new_selection_replaces_exact_first_text(self):
         a = app()

@@ -20,11 +20,16 @@ def av_rate(speed):
     return min(max(rate, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
 
 
+def py_offset(text, utf16):
+    """A Python index into `text` from an NSString (UTF-16) index, which counts an emoji twice."""
+    return len(text.encode("utf-16-le")[:utf16 * 2].decode("utf-16-le", "ignore"))
+
+
 class _Words(NSObject, protocols=[objc.protocolNamed("AVSpeechSynthesizerDelegate")]):
     """Passes where each spoken word starts. AppKit's main run loop delivers it."""
 
     def speechSynthesizer_willSpeakRangeOfSpeechString_utterance_(self, synth, word, utterance):
-        self.on_progress(word.location)
+        self.on_progress(py_offset(self.text, word.location))
 
 
 class MacVoiceEngine(_Threaded):
@@ -39,7 +44,7 @@ class MacVoiceEngine(_Threaded):
         if voice is None:
             raise NoAudioError(f"macOS: no installed voice for {tag}")
         synth, words = AVSpeechSynthesizer.alloc().init(), _Words.alloc().init()
-        words.on_progress = lambda chars: not stop.is_set() and on_progress(chars)
+        words.text, words.on_progress = text, (lambda chars: not stop.is_set() and on_progress(chars))
         synth.setDelegate_(words)  # a weak reference: `words` lives as long as this run
         utterance = AVSpeechUtterance.speechUtteranceWithString_(text)
         utterance.setVoice_(voice)

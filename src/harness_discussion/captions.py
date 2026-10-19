@@ -41,7 +41,11 @@ class Captions:
         if rid != self._read_id or index != self._unit_index or not self._read_options:
             return
         self._caption_steps = self._caption_held = None
-        self._show_caption(sentences.at(self._units[index], chars))
+        text = sentences.at(self._units[index], chars)
+        if self.popup.paused:
+            self._held_caption = text  # a position queued as the user paused shows on resume
+        else:
+            self._show_caption(text)
 
     def _hold_captions(self):
         """Pause stops the step timer and keeps what was left of it."""
