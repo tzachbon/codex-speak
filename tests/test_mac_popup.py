@@ -60,7 +60,7 @@ class PopupSourceTest(unittest.TestCase):
         self.assertFalse(bar.caption.win.isVisible())
         bar.hide()
 
-    def test_a_long_caption_stays_three_lines_and_a_font_change_resizes_it(self):
+    def _playing_bar(self):
         import AppKit
         from harness_discussion.mac import popup
         AppKit.NSApplication.sharedApplication()
@@ -70,14 +70,52 @@ class PopupSourceTest(unittest.TestCase):
         self.addCleanup(bar.hide)
         bar.show("x", 400, 400)
         bar.set_playing(True)
+        return bar
+
+    def test_a_long_caption_is_one_line_and_a_font_change_resizes_it(self):
+        bar = self._playing_bar()
         bar.set_caption("Hi.")
         one_line = bar.caption.win.frame().size.height
+        self.assertIsNone(bar.caption._timer)  # short text is centered and still
         bar.set_caption("word " * 400)
-        self.assertLess(bar.caption.win.frame().size.height, one_line * 3.5)
+        self.assertEqual(bar.caption.win.frame().size.height, one_line)
+        self.assertEqual(bar.caption.win.frame().size.width, 340)
         bar.set_caption("Hi.")
         bar.configure_captions(20, False, 0.6)
         self.assertGreater(bar.caption.win.frame().size.height, one_line)
 
+    def test_a_long_caption_scrolls_to_its_end_pauses_and_keeps_its_place_as_it_grows(self):
+        bar = self._playing_bar()
+        c = bar.caption
+        with mock.patch("harness_discussion.mac.caption.time.monotonic", side_effect=[0.0, 1.0]):
+            bar.set_caption("word " * 40)
+            self.assertIsNotNone(c._timer)
+            start_x = c.field.frame().origin.x
+            c._tick()
+        self.assertAlmostEqual(c.offset, 18)
+        self.assertAlmostEqual(c.field.frame().origin.x, start_x - 18)
+        bar.set_caption_paused(True)
+        self.assertIsNone(c._timer)
+        bar.set_caption("word " * 41)
+        self.assertAlmostEqual(c.offset, 18)  # growing text keeps its place
+        self.assertIsNone(c._timer)  # and stays paused
+        bar.set_caption_paused(False)
+        self.assertIsNotNone(c._timer)
+        with mock.patch("harness_discussion.mac.caption.time.monotonic", return_value=1e6):
+            c._tick()
+        self.assertEqual(c.offset, c._end())
+        self.assertIsNone(c._timer)  # stops at the end
+        bar.set_caption("Another sentence " * 20)
+        self.assertEqual(c.offset, 0)
+
+    def test_a_right_to_left_caption_starts_at_its_end_and_scrolls_back(self):
+        bar = self._playing_bar()
+        c = bar.caption
+        with mock.patch("harness_discussion.mac.caption.time.monotonic", side_effect=[0.0, 1.0]):
+            bar.set_caption("שלום עולם " * 40)
+            self.assertEqual(c.offset, c._end())
+            c._tick()
+        self.assertAlmostEqual(c.offset, c._end() - 18)
 
 if __name__ == "__main__":
     unittest.main()

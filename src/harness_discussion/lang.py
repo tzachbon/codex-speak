@@ -1,4 +1,5 @@
 """Languages offered in the popup menu."""
+import unicodedata
 
 # tag -> (menu label / name given to Codex, Edge voice, SAPI voice prefix)
 LANGS = {
@@ -24,3 +25,12 @@ def detect(text: str) -> str:
     latin = sum(c.isascii() and c.isalpha() for c in text)
     tag, n = max(counts.items(), key=lambda kv: kv[1])
     return tag if n > latin else "en-US"
+
+
+def reading_rtl(text):
+    """Use the paragraph's first strong character, leaving bidi shaping to the platform."""
+    for char in text:
+        direction = unicodedata.bidirectional(char)
+        if direction in ("L", "R", "AL"):
+            return direction != "L"
+    return False

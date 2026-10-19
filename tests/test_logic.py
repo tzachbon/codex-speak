@@ -18,6 +18,11 @@ from harness_discussion.engines import Chain, EdgeEngine
 
 
 class Lang(unittest.TestCase):
+    def test_reading_rtl_follows_the_first_strong_character(self):
+        self.assertTrue(lang.reading_rtl("123 שלום world"))
+        self.assertFalse(lang.reading_rtl("hello שלום"))
+        self.assertFalse(lang.reading_rtl("123 ..."))
+
     def test_detect(self):
         self.assertEqual(lang.detect("שלום עולם"), "he-IL")
         self.assertEqual(lang.detect("hello world"), "en-US")

@@ -187,3 +187,15 @@ def tile(name, color, points=22):
         glyph.drawInRect_((((rect.size.width - w) / 2, (rect.size.height - h) / 2), (w, h)))
         return True
     return AppKit.NSImage.imageWithSize_flipped_drawingHandler_((points, points), False, draw)
+
+
+class Panel(AppKit.NSPanel):
+    def canBecomeKeyWindow(self):
+        return False
+
+    def canBecomeMainWindow(self):
+        return False
+
+
+def cg(color):
+    return color.CGColor()
