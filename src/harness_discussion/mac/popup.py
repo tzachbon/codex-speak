@@ -6,6 +6,7 @@ from .. import lang, settings
 from . import ui
 
 IDLE_HIDE_S = 4.0
+CAPTION_WIDTH = 340
 
 
 class _Panel(AppKit.NSPanel):
@@ -73,8 +74,8 @@ def _play_button(fn):
     return b
 
 
-def _text_button(title, fn):
-    """A rounded chip that opens a menu."""
+def _text_button(fn, title, titles, icon=lambda _t: None):
+    """A rounded chip that opens a menu, as wide as its widest title so a pick never moves the bar."""
     b = _Button.alloc().init()
     b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
     b.setBordered_(False)
@@ -84,14 +85,17 @@ def _text_button(title, fn):
     b.setImagePosition_(AppKit.NSImageLeading)
     b.setContentTintColor_(AppKit.NSColor.labelColor())
     b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
-    b.width = b.widthAnchor().constraintEqualToConstant_(40)
-    b.width.setActive_(True)
-    _set_title(b, title)
+    widest = 0
+    for option in titles:
+        _set_title(b, option, icon(option))
+        widest = max(widest, b.cell().cellSize().width)
+    b.widthAnchor().constraintEqualToConstant_(widest + 24).setActive_(True)
+    _set_title(b, title, icon(title) if title else None)
     return ui.bind(b, lambda s: fn(s))
 
 
 def _set_title(button, title, image=None):
-    """`title ▾` with a dimmed chevron, the chip sized to fit with padding."""
+    """`title ▾` with a dimmed chevron."""
     font = AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightMedium)
     text = AppKit.NSMutableAttributedString.alloc().initWithString_attributes_(
         title + " ", {AppKit.NSFontAttributeName: font, AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()})
@@ -100,7 +104,6 @@ def _set_title(button, title, image=None):
               AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithWhite_alpha_(1, 0.55)}))
     button.setImage_(image)
     button.setAttributedTitle_(text)
-    button.width.setConstant_(button.cell().cellSize().width + 18)
 
 
 def _divider():
@@ -123,6 +126,67 @@ def _screen_at(x, y):
     return AppKit.NSScreen.mainScreen()
 
 
+class _Caption:
+    """Read-along: the sentence being read, in a click-through panel just above the bar."""
+
+    def __init__(self):
+        field = self.field = AppKit.NSTextField.wrappingLabelWithString_("")
+        field.setAlignment_(AppKit.NSTextAlignmentCenter)
+        field.setTextColor_(AppKit.NSColor.whiteColor())
+        field.setPreferredMaxLayoutWidth_(CAPTION_WIDTH - 24)
+        field.widthAnchor().constraintLessThanOrEqualToConstant_(CAPTION_WIDTH - 24).setActive_(True)
+        shadow = AppKit.NSShadow.alloc().init()
+        shadow.setShadowBlurRadius_(3)
+        shadow.setShadowOffset_((0, -1))
+        shadow.setShadowColor_(AppKit.NSColor.colorWithWhite_alpha_(0, 0.9))
+        field.setShadow_(shadow)  # keeps white text readable over any page without a backdrop
+        box = self.box = AppKit.NSView.alloc().init()
+        box.setWantsLayer_(True)
+        box.layer().setCornerRadius_(10)
+        field.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        box.addSubview_(field)
+        for a, inset in (("leadingAnchor", 12), ("trailingAnchor", -12), ("topAnchor", 6), ("bottomAnchor", -6)):
+            getattr(field, a)().constraintEqualToAnchor_constant_(getattr(box, a)(), inset).setActive_(True)
+        style = AppKit.NSWindowStyleMaskBorderless | AppKit.NSWindowStyleMaskNonactivatingPanel
+        p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
+            ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
+        p.setContentView_(box)
+        p.setIgnoresMouseEvents_(True)
+        p.setLevel_(AppKit.NSStatusWindowLevel)
+        p.setOpaque_(False)
+        p.setBackgroundColor_(AppKit.NSColor.clearColor())
+        p.setHasShadow_(False)
+        p.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+                                 | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
+                                 | AppKit.NSWindowCollectionBehaviorTransient)
+        self.configure(10, False, 0.6)
+
+    def configure(self, font_size, background, background_opacity):
+        """font_size in Windows points, which render at 96 dpi: 4/3 of a Mac point."""
+        self.field.setFont_(AppKit.NSFont.systemFontOfSize_weight_(font_size * 4 / 3, AppKit.NSFontWeightMedium))
+        self.box.layer().setBackgroundColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(
+            0.1, background_opacity if background else 0)))
+
+    def show(self, text, bar, area):
+        """Centered above `bar`, or below it when the screen top is too close."""
+        text = " ".join(text.split())
+        if not text:
+            return self.hide()
+        self.field.setStringValue_(text)
+        self.win.setContentSize_(self.box.fittingSize())
+        w, h = self.win.frame().size.width, self.win.frame().size.height
+        x = bar.origin.x + (bar.size.width - w) / 2
+        x = max(area.origin.x, min(x, area.origin.x + area.size.width - w))
+        y = bar.origin.y + bar.size.height + 8
+        if y + h > area.origin.y + area.size.height:
+            y = bar.origin.y - 8 - h
+        self.win.setFrameOrigin_((x, y))
+        self.win.orderFrontRegardless()
+
+    def hide(self):
+        self.win.orderOut_(None)
+
+
 class Popup:
     def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
                  on_source, sources):
@@ -140,16 +204,16 @@ class Popup:
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
         for anchor in (self.spinner.widthAnchor(), self.spinner.heightAnchor()):
             anchor.constraintEqualToConstant_(30).setActive_(True)
-        self.lang_btn = _text_button("Auto", self._lang_menu)
-        self.speed_btn = _text_button(settings.speed_label(speed), self._speed_menu)
-        self.source_btn = _text_button("", self._source_menu)
+        self.lang_btn = _text_button(self._lang_menu, "Auto", ["Auto"] + [v[0] for v in lang.LANGS.values()])
+        self.speed_btn = _text_button(self._speed_menu, settings.speed_label(speed),
+                                      [settings.speed_label(s) for s in settings.SPEED_PRESETS])
+        self.source_btn = _text_button(self._source_menu, "", settings.DEFAULT_SOURCES, ui.source_icon)
         settings_btn = _icon_button("gearshape.fill", "Settings", self._open_settings)
         close_btn = _icon_button("xmark", "Close", self.close)
         row = ui.stack([self.btn, self.spinner, self.stop_btn, _divider(), self.source_btn, self.lang_btn,
                         self.speed_btn, _divider(), settings_btn, close_btn], vertical=False, spacing=6)
         row.setEdgeInsets_((6, 7, 6, 8))
         self.spinner.setHidden_(True)
-        self.stop_btn.setHidden_(True)
 
         effect = AppKit.NSVisualEffectView.alloc().init()
         effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
@@ -171,6 +235,7 @@ class Popup:
         p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
             ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
         p.setContentView_(hover)
+        self.caption = _Caption()
         p.setAppearance_(AppKit.NSAppearance.appearanceNamed_(AppKit.NSAppearanceNameVibrantDark))
         p.setLevel_(AppKit.NSStatusWindowLevel)
         p.setFloatingPanel_(True)
@@ -207,6 +272,7 @@ class Popup:
 
     def hide(self):
         self.cancel_hide()
+        self.caption.hide()
         self.win.orderOut_(None)
         self.on_stop()  # drops the Codex session warmed up for this popup
 
@@ -233,21 +299,25 @@ class Popup:
     def set_playing(self, playing, paused=False):
         self.playing, self.paused = playing, playing and paused
         if not playing:
+            self.caption.hide()
             self.set_loading(False)
         pausing = playing and not paused
         self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
-        self.stop_btn.setHidden_(not playing)
+        self.stop_btn.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
+        self.stop_btn.setAlphaValue_(1 if playing else 0.3)
         if not playing:
             self.schedule_hide()
 
     def set_caption(self, text):
-        pass  # captions are Windows only for now
+        if self.playing:
+            screen = self.win.screen() or AppKit.NSScreen.mainScreen()
+            self.caption.show(text, self.win.frame(), screen.visibleFrame())
 
     def set_caption_paused(self, paused):
-        pass
+        pass  # the caption has no motion to pause; core holds the next sentence
 
     def configure_captions(self, font_size, background, background_opacity):
-        pass
+        self.caption.configure(font_size, background, background_opacity)
 
     def set_speed(self, speed):
         self._speed = speed
@@ -256,8 +326,6 @@ class Popup:
     def set_source(self, name):
         self._source = name
         _set_title(self.source_btn, name, ui.source_icon(name))
-        if self.visible:  # names differ in width; show() sizes the panel otherwise
-            self.win.setContentSize_(self.win.contentView().fittingSize())
 
     def schedule_hide(self):
         self.cancel_hide()

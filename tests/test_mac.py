@@ -255,13 +255,25 @@ class SourcesSettingsTest(unittest.TestCase):
         self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
 
     def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
-        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True])
+        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True, True])
         self.assertTrue(self.win.nav[0].title().endswith("●"))  # Cursor is signed out
-        self.win.nav[3].performClick_(None)
-        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, False])
+        self.win.nav[4].performClick_(None)
+        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, True, False])
         self.app.statuses = {"Cursor": "ready", "Codex": "ready"}
         self.win.refresh_sources()
         self.assertFalse(self.win.nav[0].title().endswith("●"))
+
+    def test_the_captions_page_saves_font_size_background_and_opacity(self):
+        self.assertFalse(self.win.opacity.isEnabled())  # no background by default
+        self.win.font_size.setIntValue_(14)
+        self.win.font_size.target().run_(self.win.font_size)
+        self.win._background_changed(True)
+        self.win.opacity.setDoubleValue_(35)
+        self.win.opacity.target().run_(self.win.opacity)
+        self.assertEqual(self.win.font_size_label.stringValue(), "14 pt")
+        self.assertTrue(self.win.opacity.isEnabled())
+        self.assertEqual(self.changes, [("caption_font_size", 14), ("caption_background", True),
+                                        ("caption_background_opacity", 0.35)])
 
     def test_the_window_fits_a_status_that_wraps(self):
         for statuses in ({}, {"Cursor": "signed_out", "Codex": "signed_out", "macOS": "signed_out"}):
@@ -319,6 +331,41 @@ class PopupSourceTest(unittest.TestCase):
         choices, current = menus[0]
         self.assertEqual(([c and c[:2] for c in choices], current, picked),
                          ([("Codex", "Codex"), ("macOS", "macOS"), None, ("Cursor", "Cursor: Sign in…")], "Codex", ["macOS"]))
+
+    def test_the_bar_keeps_its_width_through_picks_and_playback(self):
+        import AppKit
+        from harness_discussion.mac import popup
+        AppKit.NSApplication.sharedApplication()
+        noop = lambda *a: None
+        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [])
+        bar.set_source("macOS")
+        self.assertEqual((bar.speed_btn.title(), bar.lang_btn.title()), ("1× ▾", "Auto ▾"))
+        width = lambda: bar.win.contentView().fittingSize().width
+        before = width()
+        bar.set_source("Codex")
+        bar.set_speed(1.75)
+        bar.set_playing(True)
+        self.assertEqual(width(), before)
+
+    def test_the_caption_shows_the_sentence_above_the_bar_while_playing(self):
+        import AppKit
+        from harness_discussion.mac import popup
+        AppKit.NSApplication.sharedApplication()
+        noop = lambda *a: None
+        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [])
+        bar.show("Hello there.", 400, 400)
+        bar.set_caption("Not playing yet.")
+        self.assertFalse(bar.caption.win.isVisible())
+        bar.set_playing(True)
+        bar.set_caption("Hello   there.")
+        self.assertTrue(bar.caption.win.isVisible())
+        self.assertEqual(bar.caption.field.stringValue(), "Hello there.")
+        self.assertGreater(bar.caption.win.frame().origin.y, bar.win.frame().origin.y)
+        bar.set_playing(False)
+        self.assertFalse(bar.caption.win.isVisible())
+        bar.hide()
 
 
 if __name__ == "__main__":
