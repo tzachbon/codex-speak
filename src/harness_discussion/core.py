@@ -25,6 +25,16 @@ SPEECH_KEYS = ("sources", "voices", "speed", "prefetch")  # captured for the ent
 PIECE_CHARS = 5000
 
 
+def _causes(err):
+    """"NoAudioError from HTTPError 401": type names and HTTP codes only, since messages could echo the text."""
+    names = []
+    while err is not None and len(names) < 5:
+        code = getattr(err, "code", None)
+        names.append(f"{type(err).__name__} {code}" if isinstance(code, int) else type(err).__name__)
+        err = err.__cause__ or err.__context__
+    return " from ".join(names)
+
+
 class App(Captions, Sources):
     def __init__(self, host):
         self.host = host
@@ -324,7 +334,7 @@ class App(Captions, Sources):
         t0, first, speed = time.monotonic(), [], self.cfg["speed"]
 
         def done(err):  # never the text, nor an error message, which could echo the text
-            error = f"{type(err).__name__} from {type(err.__cause__).__name__}" if err else None
+            error = _causes(err) if err else None
             log.info("read %d chars with %s in %.1fs (first audio %s) at %sx, error: %s", len(text),
                      self.chain.last, time.monotonic() - t0, f"{first[0]:.1f}s" if first else "-",
                      speed, error)

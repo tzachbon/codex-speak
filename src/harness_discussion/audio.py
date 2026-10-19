@@ -64,9 +64,18 @@ class PcmPlayer:
         self._on_audio = None
         self._output_pending = False
         # 20 ms blocks: left to choose, CoreAudio calls back every 15 samples and any stall is a gap
-        self._stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
-                                          blocksize=rate // 50, callback=self._fill)
-        self._stream.start()
+        try:
+            self._stream = self._open(rate, channels)
+        except sd.PortAudioError:  # PortAudio lists devices once, so a headset or dock change leaves them stale
+            sd._terminate()
+            sd._initialize()
+            self._stream = self._open(rate, channels)
+
+    def _open(self, rate, channels):
+        stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
+                                    blocksize=rate // 50, callback=self._fill)
+        stream.start()
+        return stream
 
     def _fill(self, out, frames, _time, _status):
         n = frames * self._width

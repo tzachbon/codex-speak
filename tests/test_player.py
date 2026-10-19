@@ -8,6 +8,17 @@ from harness_discussion.audio import PcmPlayer
 
 
 class Player(unittest.TestCase):
+    def test_a_stale_device_list_is_refreshed_once(self):
+        stream = mock.Mock()
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=[audio.sd.PortAudioError("gone"), stream]), \
+                mock.patch.object(audio.sd, "_terminate") as terminate, \
+                mock.patch.object(audio.sd, "_initialize") as initialize:
+            p = PcmPlayer()
+        self.assertIs(p._stream, stream)
+        stream.start.assert_called_once()
+        terminate.assert_called_once()
+        initialize.assert_called_once()
+
     def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
         p = PcmPlayer.__new__(PcmPlayer)
         p._buf, p._lock, p._width, p._paused = bytearray(), threading.Lock(), 2, threading.Event()
