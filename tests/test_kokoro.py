@@ -72,6 +72,27 @@ class Download(unittest.TestCase):
                 self.download()
             self.assertEqual(os.listdir(self.dir), [])
 
+    def test_a_corrupt_file_of_the_right_size_is_fetched_again(self):
+        self.download()
+        (self.dir / "model.onnx").write_bytes(b"model bytez")
+        self.requests.clear()
+        self.download()
+        self.assertEqual(self.requests, ["model.onnx"])
+        self.assertEqual((self.dir / "model.onnx").read_bytes(), FILES["model.onnx"])
+
+    def test_a_model_that_fails_to_load_drops_only_its_corrupt_files(self):
+        self.download()
+        (self.dir / "voices.bin").write_bytes(b"voice bytez")
+        e = kokoro_tts.KokoroEngine()
+        e._load = lambda: (_ for _ in ()).throw(RuntimeError("bad model"))
+        done, result = threading.Event(), []
+        with patch.object(kokoro_tts, "DIR", self.dir):
+            e.speak("Hello.", "en-US", lambda err: (result.append(err), done.set()))
+            self.assertTrue(done.wait(5))
+            self.assertIsInstance(result[0], NoAudioError)
+            self.assertEqual(os.listdir(self.dir), ["model.onnx"])
+            self.assertEqual(kokoro_tts.status(), "not_downloaded")
+
     def test_an_untrusted_download_location_is_refused(self):
         self.url = "https://example.com/model.onnx"
         with self.assertRaisesRegex(ValueError, "location"):
@@ -112,6 +133,13 @@ class FakeModel:
 
 
 class Engine_(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        p = patch.object(kokoro_tts, "DIR", Path(folder.name))  # never this computer's real model
+        p.start()
+        self.addCleanup(p.stop)
+
     def read(self, text, tag="en-US", model=None, voice=None):
         e = kokoro_tts.KokoroEngine()
         e.Player, e.voice, e.speed = FakePlayer, voice, 1.25

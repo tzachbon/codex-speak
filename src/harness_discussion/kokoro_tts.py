@@ -32,12 +32,29 @@ def downloaded(directory=DIR):
                for name, (size, _) in FILES.items())
 
 
+def _verified(path, digest):
+    sha = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1024 * 1024):
+            sha.update(chunk)
+    return sha.hexdigest() == digest
+
+
+def drop_corrupt(directory=DIR):
+    """Deletes files whose SHA-256 no longer matches, so the row offers Download… again. Hashing ~120 MB is too
+    slow for every status check, so this runs only after the model fails to load."""
+    for name, (_, digest) in FILES.items():
+        path = directory / name
+        if path.is_file() and not _verified(path, digest):
+            path.unlink(missing_ok=True)
+
+
 def download(directory=DIR):
     """Fetches each missing file and keeps it only when its size and SHA-256 match."""
     directory.mkdir(parents=True, exist_ok=True)
     for name, (size, digest) in FILES.items():
         path = directory / name
-        if path.is_file() and path.stat().st_size == size:
+        if path.is_file() and path.stat().st_size == size and _verified(path, digest):
             continue
         part = path.with_name(name + ".part")
         try:
@@ -117,6 +134,8 @@ class KokoroEngine(_Threaded):
             import numpy as np
             model = self._load()
         except Exception as e:
+            if downloaded(DIR):
+                drop_corrupt(DIR)
             raise NoAudioError(f"Kokoro: {type(e).__name__}") from e
         pieces, speed = queue.Queue(), self.speed
 
