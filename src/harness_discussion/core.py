@@ -7,12 +7,12 @@ on the main thread through `pump`.
 import logging
 import os
 import queue
-import shutil
 import sys
 import threading
 import time
 
-from . import lang, sentences, settings, stt_server, updates
+from . import lang, sentences, settings, stt_server
+from .app_updates import Updates
 from .captions import Captions
 from .sources import Sources
 
@@ -35,7 +35,7 @@ def _causes(err):
     return " from ".join(names)
 
 
-class App(Captions, Sources):
+class App(Captions, Sources, Updates):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -46,7 +46,7 @@ class App(Captions, Sources):
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
-        self._pending_update, self.update_version = None, None
+        self._pending_update, self.update_asset = None, None
         self._update_text = ("Checks at startup and daily when enabled." if sys.platform == "darwin"
                              else "Checks at startup and daily when enabled. Updates restart this app.")
         from .engines import Chain
@@ -154,83 +154,6 @@ class App(Captions, Sources):
                 self.check_update(manual=False)
             elif not self._update_manual:
                 self._discard_update()
-
-    def update_state(self):
-        return self._update_text, self._update_busy or self._pending_update is not None
-
-    def available_version(self):
-        """macOS only: the newer release found by the last check, or None."""
-        return self.update_version
-
-    def _update_status(self, text):
-        self._update_text = text
-        if self.settings_win and self.settings_win.alive:
-            self.settings_win.refresh_updates()
-
-    def check_update(self, manual=True):
-        if (not getattr(sys, "frozen", False) or self._closing or self._update_busy
-                or self._pending_update is not None):
-            return
-        self._update_busy, self._update_manual = True, manual
-        self._update_status("Checking for updates…")
-
-        if sys.platform == "darwin":  # no in-app install: Settings links to the release page
-            def work():
-                try:
-                    asset = updates.check()
-                    version = asset["version"] if asset else None
-                    text = f"v{version} is available." if asset else "You are up to date."
-                except Exception as e:
-                    version, text = None, f"Could not check for updates: {e}"
-                self.events.put(("update_available", version, text))
-        else:
-            def work():
-                try:
-                    asset = updates.check()
-                    if asset:
-                        self.events.put(("update_status", f"Downloading v{asset['version']}…"))
-                        path = updates.download(asset)
-                        text = f"v{asset['version']} is ready to install."
-                    else:
-                        path, text = None, "You are up to date."
-                except Exception as e:
-                    path, text = None, f"Could not update: {e}"
-                self.events.put(("update_result", path, text))
-        threading.Thread(target=work, daemon=True).start()
-
-    def _auto_update(self):
-        if self.cfg["auto_update"]:
-            self.check_update(manual=False)
-        self.host.after(24 * 60 * 60 * 1000, self._auto_update)
-
-    def _discard_update(self):
-        if self._pending_update:
-            shutil.rmtree(self._pending_update.parent, ignore_errors=True)
-            self._pending_update = None
-            self._update_status("Automatic update cancelled.")
-
-    def _try_update(self):
-        if not self._pending_update or self._closing:
-            return
-        if not self._update_manual and not self.cfg["auto_update"]:
-            self._discard_update()
-            return
-        server = self.stt
-        if (self._read_options or self.chain.busy or self._draining_stt
-                or (server and not server.busy.acquire(blocking=False))):
-            self._update_status("Update ready. Waiting for speech and transcription to finish…")
-            self.host.after(1000, self._try_update)
-            return
-        try:
-            settings.save(self.cfg)
-            updates.install(self._pending_update)
-        except Exception as e:
-            if server:
-                server.busy.release()
-            self._discard_update()
-            self._update_status(f"Could not install update: {e}")
-            return
-        self._handle("quit")
 
     def _popup_speed(self, speed):
         self.change("speed", speed)
@@ -361,7 +284,7 @@ class App(Captions, Sources):
             self._update_status(args[0])
         elif kind == "update_available":
             self._update_busy = False
-            self.update_version = args[0]
+            self.update_asset = args[0]
             self._update_status(args[1])
         elif kind == "update_result":
             self._update_busy = False

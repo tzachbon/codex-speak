@@ -106,12 +106,41 @@ def download(asset):
         raise
 
 
+# Runs after the app quits: $1 pid, $2 dmg, $3 the .app to replace. The app reopens whether or not the swap worked.
+MAC_INSTALL = r"""
+pid=$1 dmg=$2 app=$3 new="$3.new" old="$3.old"
+for _ in $(seq 150); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+kill -0 "$pid" 2>/dev/null && { echo "app did not quit"; exit 1; }
+mount=$(mktemp -d)
+trap 'hdiutil detach -quiet "$mount"; rmdir "$mount"; open "$app"' EXIT
+rm -rf "$new" "$old"
+hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mount" "$dmg" \
+    && ditto "$mount/Harness Discussion.app" "$new" \
+    && codesign --verify --deep --strict "$new" \
+    && mv "$app" "$old" \
+    && { mv "$new" "$app" || { mv "$old" "$app"; false; }; } \
+    && rm -rf "$old" && echo "installed" || { echo "install failed"; rm -rf "$new"; }
+"""
+
+
+def mac_target():
+    """The running .app bundle, when this copy can replace itself."""
+    app = Path(sys.executable).resolve().parents[2]  # .../Harness Discussion.app/Contents/MacOS/Harness Discussion
+    if app.suffix != ".app" or "AppTranslocation" in app.parts or not os.access(app.parent, os.W_OK):
+        raise ValueError("This copy can't replace itself, so the release page will open. "
+                         "Move Harness Discussion to Applications to update in place.")
+    return app
+
+
 def install(path):
     if not getattr(sys, "frozen", False):
         raise ValueError("Source runs cannot install updates")
-    if sys.platform != "win32":
-        raise ValueError("Updates install from the release page on this platform")
     if path.name != ASSET or not path.resolve().is_relative_to(CACHE.resolve()) or not path.is_file():
         raise ValueError("Invalid installer path")
+    if sys.platform == "darwin":
+        with (path.parent / "install.log").open("ab") as log:
+            subprocess.Popen(["/bin/sh", "-c", MAC_INSTALL, "sh", str(os.getpid()), str(path), str(mac_target())],
+                             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+        return
     # No /DIR: setup picks the folder, so a Codex Speak install moves to the new default.
     subprocess.Popen([str(path), "/SP-", "/SILENT", "/NORESTART", f"/LOG={path.parent / 'setup.log'}"], shell=False)

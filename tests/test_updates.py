@@ -124,6 +124,76 @@ class Installation(unittest.TestCase):
             launch.assert_not_called()
 
 
+def _bundle(folder, version):
+    app = Path(folder) / "Harness Discussion.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    (app / "Contents" / "Info.plist").write_text(
+        f'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>test.hd</string>'
+        f'<key>CFBundleShortVersionString</key><string>{version}</string>'
+        f'<key>CFBundleExecutable</key><string>Harness Discussion</string></dict></plist>')
+    exe = app / "Contents" / "MacOS" / "Harness Discussion"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True, capture_output=True)
+    return app
+
+
+@unittest.skipUnless(sys.platform == "darwin", "the macOS helper uses hdiutil and codesign")
+class MacInstallation(unittest.TestCase):
+    def run_helper(self, tamper=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installed = _bundle(root / "Applications", "1.0.0")
+            source = _bundle(root / "dmg", "2.0.0")
+            if tamper:
+                (source / "Contents" / "MacOS" / "Harness Discussion").write_text("#!/bin/sh\necho changed\n")
+            dmg = root / updates.ASSET
+            subprocess.run(["hdiutil", "create", "-quiet", "-srcfolder", str(root / "dmg"), "-format", "UDZO",
+                            str(dmg)], check=True)
+            (root / "bin").mkdir()
+            opener = root / "bin" / "open"
+            opener.write_text(f'#!/bin/sh\necho "$1" > "{root}/opened"\n')
+            opener.chmod(0o755)
+            gone = subprocess.Popen(["true"])
+            gone.wait()
+            env = {**os.environ, "PATH": f"{root / 'bin'}:{os.environ['PATH']}"}
+            subprocess.run(["/bin/sh", "-c", updates.MAC_INSTALL, "sh", str(gone.pid), str(dmg), str(installed)],
+                           env=env, check=True, capture_output=True, timeout=60)
+            version = subprocess.run(["defaults", "read", str(installed / "Contents" / "Info"),
+                                      "CFBundleShortVersionString"], capture_output=True, text=True).stdout.strip()
+            leftovers = sorted(p.name for p in installed.parent.iterdir())
+            return version, (root / "opened").read_text().strip() == str(installed), leftovers
+
+    def test_helper_swaps_the_app_and_reopens_it(self):
+        self.assertEqual(self.run_helper(), ("2.0.0", True, ["Harness Discussion.app"]))
+
+    def test_a_bad_signature_keeps_the_old_app_and_reopens_it(self):
+        self.assertEqual(self.run_helper(tamper=True), ("1.0.0", True, ["Harness Discussion.app"]))
+
+    def test_install_starts_the_helper_detached_for_the_running_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory).resolve() / "Harness Discussion.app"
+            path = Path(directory) / "updates" / "update-123" / updates.ASSET
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"abc")
+            with patch.object(updates, "CACHE", Path(directory) / "updates"), patch.object(
+                    sys, "frozen", True, create=True), patch.object(
+                    sys, "executable", str(app / "Contents" / "MacOS" / "Harness Discussion")), patch(
+                    "subprocess.Popen") as launch:
+                updates.install(path)
+            args = launch.call_args.args[0]
+            self.assertEqual(args, ["/bin/sh", "-c", updates.MAC_INSTALL, "sh", str(os.getpid()), str(path), str(app)])
+            self.assertTrue(launch.call_args.kwargs["start_new_session"])
+
+    def test_copies_that_cannot_replace_themselves_are_refused(self):
+        for executable in ("/private/var/folders/x/AppTranslocation/ID/d/Harness Discussion.app/Contents/MacOS/x",
+                           "/usr/bin/python3",
+                           "/System/Applications/Harness Discussion.app/Contents/MacOS/x"):
+            with self.subTest(executable=executable), patch.object(sys, "executable", executable):
+                with self.assertRaisesRegex(ValueError, "release page"):
+                    updates.mac_target()
+
+
 class Packaging(unittest.TestCase):
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell 7 is needed for the build script")
     def test_build_rejects_a_mismatched_tag_without_changing_workflow_permissions(self):

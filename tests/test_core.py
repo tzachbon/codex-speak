@@ -244,6 +244,31 @@ class CoreTest(unittest.TestCase):
         self.assertIsNone(app._pending_update)
         self.assertEqual(app.update_state(), ("v9.0.0 is available.", False))
 
+    def test_macos_download_installs_the_found_release_and_quits(self):
+        app = self.make(Engine("Codex"))
+        app.update_asset = {"version": "9.0.0", "name": "HarnessDiscussion.dmg"}
+        path = Path("update-1") / "HarnessDiscussion.dmg"
+        with patch.object(sys, "platform", "darwin"), patch.object(sys, "frozen", True, create=True), \
+                patch.object(updates, "mac_target"), patch.object(updates, "download", return_value=path), \
+                patch.object(updates, "install") as install, patch.object(settings, "save"):
+            self.assertTrue(app.install_update())
+            for _ in range(100):
+                if not app.events.empty():
+                    break
+                threading.Event().wait(0.01)
+            app.pump()
+        install.assert_called_once_with(path)
+        self.assertEqual(self.host.quits, 1)
+
+    def test_macos_download_falls_back_when_the_app_cannot_replace_itself(self):
+        app = self.make(Engine("Codex"))
+        app.update_asset = {"version": "9.0.0", "name": "HarnessDiscussion.dmg"}
+        with patch.object(updates, "mac_target", side_effect=ValueError("release page")), \
+                patch.object(updates, "download") as download:
+            self.assertFalse(app.install_update())
+        download.assert_not_called()
+        self.assertEqual(app.update_state(), ("release page", False))
+
 
 class Causes(unittest.TestCase):
     def test_the_log_names_every_cause_and_http_code_but_no_message(self):
