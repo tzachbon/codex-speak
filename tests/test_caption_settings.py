@@ -191,12 +191,14 @@ class CaptionSettingsUi(unittest.TestCase):
         rows, changes, _ = self.sources_window()
         self.assertTrue(rows["Cursor"][3][4].instate(["disabled"]))  # already first
         rows["Codex"][3][4].invoke()
-        self.assertEqual(changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["Edge", True], ["Windows", True]]))
+        self.assertEqual(changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["Kokoro", True], ["Edge", True],
+                                                   ["Windows", True]]))
         self.assertEqual(int(rows["Codex"][3][0].grid_info()["row"]), 0)
         rows["Codex"][3][5].invoke()
-        self.assertEqual([n for n, _ in changes[-1][1]], ["Cursor", "Codex", "Edge", "Windows"])
+        self.assertEqual([n for n, _ in changes[-1][1]], ["Cursor", "Codex", "Kokoro", "Edge", "Windows"])
         rows["Edge"][3][0].invoke()
-        self.assertEqual(changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["Edge", False], ["Windows", True]]))
+        self.assertEqual(changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["Kokoro", True], ["Edge", False],
+                                                   ["Windows", True]]))
 
     def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
         rows, changes, played = self.sources_window()

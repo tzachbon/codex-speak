@@ -138,11 +138,11 @@ class PopupSettings(unittest.TestCase):
         menu = popup.sources_menu
         self.assertEqual([menu.type(i) == "separator" or menu.entrycget(i, "label")
                           for i in range(menu.index("end") + 1)],
-                         ["Codex", "Edge", "Windows", True, "Cursor: Sign in…"])
+                         ["Codex", "Kokoro", "Edge", "Windows", True, "Cursor: Sign in…"])
         with patch.object(settings, "save") as save:  # its default path is the real profile
-            menu.invoke(2)
+            menu.invoke(3)
         save.assert_called_once()
-        self.assertEqual([n for n, _ in self.app.cfg["sources"]], ["Windows", "Cursor", "Codex", "Edge"])
+        self.assertEqual([n for n, _ in self.app.cfg["sources"]], ["Windows", "Cursor", "Codex", "Kokoro", "Edge"])
         self.assertEqual(popup.source_btn.parts[1]["text"], "Windows")
 
     def test_opening_settings_while_already_paused_does_not_resume(self):
