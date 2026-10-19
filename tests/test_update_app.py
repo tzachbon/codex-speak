@@ -36,6 +36,7 @@ class UpdateApp(unittest.TestCase):
         a._read_id = 0
         a._closing, a._update_busy, a._update_manual = False, False, False
         a._pending_update, a._update_text = None, "Ready to check."
+        a._init_summaries()
         self.frozen = patch.object(sys, "frozen", True, create=True)
         self.frozen.start()
 
