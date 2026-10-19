@@ -54,6 +54,9 @@ class Stretcher:
             out += bytes(f.planes[0])[: f.samples * 2]
 
 
+_live, _live_lock = set(), threading.Lock()  # open players' streams, which a PortAudio reset would close
+
+
 class PcmPlayer:
     _hold, _holding, _last_write = 0, False, 0.0  # no cushion for players built without a sound device
 
@@ -67,14 +70,23 @@ class PcmPlayer:
         try:
             self._stream = self._open(rate, channels)
         except sd.PortAudioError:  # PortAudio lists devices once, so a headset or dock change leaves them stale
-            sd._terminate()
-            sd._initialize()
+            with _live_lock:
+                if _live:
+                    raise
+                sd._terminate()
+                sd._initialize()
             self._stream = self._open(rate, channels)
+        with _live_lock:
+            _live.add(self._stream)
 
     def _open(self, rate, channels):
         stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
                                     blocksize=rate // 50, callback=self._fill)
-        stream.start()
+        try:
+            stream.start()
+        except sd.PortAudioError:
+            stream.close()
+            raise
         return stream
 
     def _fill(self, out, frames, _time, _status):
@@ -128,5 +140,7 @@ class PcmPlayer:
         with self._lock:
             self._buf.clear()
             self._on_audio = None
+        with _live_lock:
+            _live.discard(self._stream)
         self._stream.abort()
         self._stream.close()

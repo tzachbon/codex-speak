@@ -18,6 +18,20 @@ class Player(unittest.TestCase):
         stream.start.assert_called_once()
         terminate.assert_called_once()
         initialize.assert_called_once()
+        p.close()
+
+    def test_no_reset_while_another_player_is_open_and_a_failed_start_is_closed(self):
+        playing, broken = mock.Mock(), mock.Mock()
+        broken.start.side_effect = audio.sd.PortAudioError("gone")
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=[playing, broken]), \
+                mock.patch.object(audio.sd, "_terminate") as terminate:
+            first = PcmPlayer()
+            with self.assertRaises(audio.sd.PortAudioError):
+                PcmPlayer()
+        broken.close.assert_called_once()
+        terminate.assert_not_called()
+        playing.close.assert_not_called()
+        first.close()
 
     def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
         p = PcmPlayer.__new__(PcmPlayer)
