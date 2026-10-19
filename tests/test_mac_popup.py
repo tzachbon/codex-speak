@@ -125,5 +125,15 @@ class PopupSourceTest(unittest.TestCase):
             c._tick()
         self.assertAlmostEqual(c.offset, c._end() - 18)
 
+    def test_a_growing_right_to_left_caption_keeps_its_right_edge_and_scrolls(self):
+        bar = self._playing_bar()
+        c = bar.caption
+        bar.set_caption("שלום")
+        self.assertEqual(c.offset, 0)  # fits, so it does not scroll
+        bar.set_caption("שלום " + "עולם " * 40)
+        self.assertEqual(c.offset, c._end())  # still showing its start, on the right
+        self.assertIsNotNone(c._timer)
+
+
 if __name__ == "__main__":
     unittest.main()

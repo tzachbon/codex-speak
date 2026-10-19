@@ -70,6 +70,7 @@ class Caption:
         if not text:
             return self.hide()
         growing = self.text and text.startswith(self.text)  # a Codex caption growing word by word keeps scrolling
+        old_end = self._end() if growing else 0.0
         self.text = text
         self.field.setStringValue_(text)
         self._place = bar, area
@@ -80,6 +81,8 @@ class Caption:
         if not growing:
             self._cancel()
             self.offset = self._end() if lang.reading_rtl(text) else 0.0
+        elif lang.reading_rtl(text):
+            self.offset += self._end() - old_end  # RTL grows on the left, so keep the right edge in place
         self._layout()
         self.win.setContentSize_((CAPTION_WIDTH, h + 12))
         w = CAPTION_WIDTH
