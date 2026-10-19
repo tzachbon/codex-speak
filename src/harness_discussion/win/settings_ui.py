@@ -4,30 +4,23 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox, ttk
 
-from PIL import ImageDraw, ImageTk
+from PIL import ImageTk
 
 from .. import icons, settings, updates
 from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
 from .sources_ui import CARD, SourcesSection
+from .summarize_page import SummarizePage
 
 PAGE, BORDER, SUBTLE, SELECTED = "#f3f3f3", "#e5e5e5", "#5f5f5f", "#e6e6e6"
-PAGES = ("Voices", "Captions", "Reading", "Speech to Text", "General")
+PAGES = ("Voices", "Captions", "Reading", "Summarize", "Speech to Text", "General")
 
 
-def _badged(image):
-    """The sidebar mark with an orange dot, for a page that needs attention."""
-    image = image.copy()
-    size = image.width
-    ImageDraw.Draw(image).ellipse((size * 0.62, 0, size - 1, size * 0.38), fill="#f7630c", outline="white")
-    return image
-
-
-class SettingsWindow(SourcesSection):
+class SettingsWindow(SourcesSection, SummarizePage):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
                  update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
-                 statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None):
+                 statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None, summarizer=None):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
         self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
         self.on_fix = on_fix
@@ -52,7 +45,7 @@ class SettingsWindow(SourcesSection):
         tk.Label(sidebar, image=self._app_icon, text="  Harness Discussion", compound="left", bg=PAGE,
                  font=(text, 11, "bold"), anchor="w").pack(fill="x", padx=6, pady=(0, 14))
         self._tiles = {name: (ImageTk.PhotoImage(icons.page_image(name, 20), master=w),
-                              ImageTk.PhotoImage(_badged(icons.page_image(name, 20)), master=w)) for name in PAGES}
+                              ImageTk.PhotoImage(icons.badged(icons.page_image(name, 20)), master=w)) for name in PAGES}
         self.nav = [tk.Button(sidebar, text="   " + name, image=self._tiles[name][0], compound="left", anchor="w",
                               relief="flat", bd=0, bg=PAGE, activebackground=SELECTED, font=(text, 10),
                               width=190, padx=10, pady=7, cursor="hand2", command=lambda i=i: self.show_page(i))
@@ -84,7 +77,7 @@ class SettingsWindow(SourcesSection):
         self.title = tk.Label(self.content, bg=PAGE, font=(text.replace("Text", "Display"), 20, "bold"), anchor="w")
         self.title.pack(fill="x", pady=(0, 8))
         self.pages = [tk.Frame(self.content, bg=PAGE) for _ in PAGES]
-        voices, captions, reading, stt, general = self.pages
+        voices, captions, reading, summary, stt, general = self.pages
 
         card = self._card(voices, "Sources")
         self._sources_section(card, text, welcome)
@@ -168,6 +161,8 @@ class SettingsWindow(SourcesSection):
         ttk.Label(card, text="Sends the first sentence to Cursor or Microsoft before you press play. "
                   "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
+
+        self._summarize_page(summary, text, summarizer)
 
         card = self._card(stt, "OpenAI-compatible server")
         self.stt_on = tk.BooleanVar(w, cfg.get("stt_server", False))

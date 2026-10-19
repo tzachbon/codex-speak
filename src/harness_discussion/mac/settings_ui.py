@@ -9,6 +9,7 @@ from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
 from .captions_page import CaptionsPage
+from .summarize_page import SummarizePage
 
 WIDTH = 460  # inside a card
 SIDEBAR = 200
@@ -16,7 +17,7 @@ RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
 STATUS_COLOR = {"ready": "systemGreenColor", "missing": "systemRedColor", None: "tertiaryLabelColor"}
 # (title, SF Symbol, tile color) per sidebar page, in sidebar order
 PAGES = (("Voices", "waveform", "systemPurpleColor"), ("Captions", "captions.bubble.fill", "systemTealColor"),
-         ("Reading", "text.cursor", "systemBlueColor"),
+         ("Reading", "text.cursor", "systemBlueColor"), ("Summarize", "sparkles", "systemPinkColor"),
          ("Speech to Text", "mic.fill", "systemOrangeColor"), ("General", "gearshape.fill", "systemGrayColor"))
 
 
@@ -65,7 +66,7 @@ def _nav_button(title, symbol, color, fn):
     return b
 
 
-class SettingsWindow(CaptionsPage):
+class SettingsWindow(CaptionsPage, SummarizePage):
     def __init__(self, app, show_guide, welcome=False):
         self.app, self.cfg = app, dict(app.cfg)
         self._save_timer = None
@@ -103,6 +104,8 @@ class SettingsWindow(CaptionsPage):
                              "When Cursor reads first, sends the first sentence to Cursor before you press "
                              "Play, so speech starts sooner.", self.cfg["prefetch"], lambda on: self._set("prefetch", on), WIDTH)
         reading = [_card([hidden, _divider(), early])]
+
+        summary = self._summarize_page()
 
         # Speech to Text
         self.stt_fields, self.stt_copy = {}, []
@@ -150,7 +153,7 @@ class SettingsWindow(CaptionsPage):
             warning, ui.label("Harness Discussion can't read selected text yet.", 12, width=WIDTH - 130),
             ui.button("Fix this", show_guide, primary=True)], vertical=False, spacing=10)])
         self.pages = [ui.stack([ui.label(title, 20, bold=True), *views], spacing=10)
-                      for (title, _, _), views in zip(PAGES, (voices, captions, reading, stt, general))]
+                      for (title, _, _), views in zip(PAGES, (voices, captions, reading, summary, stt, general))]
         rest = AppKit.NSView.alloc().init()  # takes the spare height, so cards keep their own
         rest.setContentHuggingPriority_forOrientation_(1, AppKit.NSLayoutConstraintOrientationVertical)
         area = ui.stack([self.permission_row, *self.pages, rest], spacing=16)
@@ -173,6 +176,7 @@ class SettingsWindow(CaptionsPage):
         sidebar.heightAnchor().constraintEqualToAnchor_(self.content.heightAnchor()).setActive_(True)
         self._page = 0
         self.refresh_sources()
+        self.refresh_summarize()
         tallest = 0
         for i in range(len(PAGES)):  # one window height for every page, so switching never resizes it
             self.show_page(i)

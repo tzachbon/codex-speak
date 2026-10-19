@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from harness_discussion import core, settings
 from harness_discussion.audio import NoAudioError
-from harness_discussion.win import host as win_host, settings_ui
+from harness_discussion.win import host as win_host, popup as win_popup, settings_ui
 
 
 class Speech:
@@ -144,6 +144,30 @@ class PopupSettings(unittest.TestCase):
         save.assert_called_once()
         self.assertEqual([n for n, _ in self.app.cfg["sources"]], ["Windows", "Cursor", "Codex", "Edge"])
         self.assertEqual(popup.source_btn.parts[1]["text"], "Windows")
+
+    def test_summarize_reads_the_summary_and_settings_shows_the_model(self):
+        popup, app = self.app.popup, self.app
+        app._summarize_status = "ready"
+        app.summary_server = type("Fake", (), {"summarize": lambda self, text, language: "A short summary.",
+                                               "stop": lambda self: None})()
+        label = popup.ai_btn.parts[1]
+        label.event_generate("<ButtonPress-1>", x=2, y=2)
+        label.event_generate("<ButtonRelease-1>", x=2, y=2)
+        self.assertTrue(popup.playing and popup.loading)
+        self.assertEqual(label["fg"], win_popup.ACCENT)
+        app._handle(*app.events.get(timeout=5))  # the summary, from the worker thread
+        for _ in range(2):  # speech events, then the caption they schedule
+            while not app.events.empty():
+                app._handle(*app.events.get_nowait())
+            self.host.root.update()
+        self.assertEqual(self.speaking().name, "Codex")
+        self.assertEqual(popup.caption.text, "A short summary.")
+        popup.set_summarize_progress(0.42)
+        self.assertEqual(label["text"], "42%")
+        popup.set_summarize_progress(None)
+        self.click(popup.settings_btn)
+        self.app.settings_win.nav[3].invoke()
+        self.assertEqual(self.app.settings_win.summary_status["text"], "Ready")
 
     def test_opening_settings_while_already_paused_does_not_resume(self):
         popup = self.app.popup

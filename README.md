@@ -28,6 +28,7 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **Reads with the sign-in you already have.** First Cursor, with any of its 28 voices, through the Cursor desktop app's sign-in. Then the Codex realtime voice through the [Codex CLI](https://github.com/openai/codex) sign-in, which uses your ChatGPT plan's Codex access and counts toward its limits.
 - **Then local voices.** If neither can speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over.
 - **You set the order.** Settings → Voices lists the sources in reading order. Turn each one on or off, move it up or down, pick its voice, and test it. A source that needs installing or a sign-in shows a button that opens the download page or starts the sign-in. The bar's source menu moves a source to the top.
+- **Summarize.** ✦ next to Play summarizes the selection on your computer with Qwen3-4B through [llama.cpp](https://github.com/ggml-org/llama.cpp), then reads the summary. The first click asks to download the model once (2.5 GB, verified by SHA-256). Settings → Summarize shows its status and removes it.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Speed on the bar.** 0.5× to 2×, saved and shared with Settings.
 - **Read-along captions.** The current sentence appears above the bar as it plays.

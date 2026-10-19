@@ -40,6 +40,33 @@ class PopupSourceTest(unittest.TestCase):
         bar.set_speed(1.75)
         bar.set_playing(True)
         self.assertEqual(width(), before)
+        bar.set_summarize_progress(0.4)
+        self.assertEqual((width(), bar.ai_btn.isHidden(), bar.ai_progress.doubleValue()), (before, True, 0.4))
+        bar.set_summarize_progress(None)
+        bar.set_summary()
+        self.assertEqual((width(), bar.ai_btn.isHidden(), bar.spinner.isHidden()), (before, False, False))
+
+    def test_summarize_sits_after_stop_and_sends_the_selection(self):
+        import AppKit
+        from harness_discussion.mac import popup
+        AppKit.NSApplication.sharedApplication()
+        noop, asked = (lambda *a: None), []
+        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [],
+                          on_summarize=lambda text, tag: asked.append((text, tag)))
+        self.addCleanup(bar.hide)
+        bar.show("Some text.", 400, 400)
+        views = list(bar.btn.superview().arrangedSubviews())
+        self.assertEqual(views.index(bar.ai_btn), views.index(bar.stop_btn) + 1)
+        bar.ai_btn.performClick_(None)
+        self.assertEqual(asked, [("Some text.", None)])
+        self.assertIsNotNone(bar._hide_timer)  # nothing started, so the bar still hides on its own
+        import Quartz
+        alpha = lambda: Quartz.CGColorGetAlpha(bar.ai_btn.layer().backgroundColor())
+        bar.set_summary()
+        self.assertGreater(alpha(), 0)  # marked while the summary reads
+        bar.set_playing(False)
+        self.assertEqual(alpha(), 0)
 
     def test_the_caption_shows_the_sentence_above_the_bar_while_playing(self):
         import AppKit
