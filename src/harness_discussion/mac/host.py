@@ -6,6 +6,7 @@ from Foundation import NSObject
 from .. import icons, settings, updates
 from ..codex_rt import CodexEngine
 from ..cursor_tts import CursorEngine
+from ..kokoro_tts import KokoroEngine
 from . import selection, ui
 from .popup import Popup
 from .settings_ui import SettingsWindow
@@ -133,7 +134,7 @@ class MacHost:
             win.refresh_permission()
 
     def engines(self):
-        return [CursorEngine(), CodexEngine(), MacVoiceEngine()]
+        return [CursorEngine(), CodexEngine(), KokoroEngine(), MacVoiceEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(speed, **callbacks)

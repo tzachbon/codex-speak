@@ -8,6 +8,7 @@ from ..codex_rt import CodexEngine
 from ..cursor_tts import CursorEngine
 from ..engines import EdgeEngine
 from ..icons import icon_image
+from ..kokoro_tts import KokoroEngine
 from . import selection
 from .popup import Popup
 from .settings_ui import SettingsWindow
@@ -32,7 +33,7 @@ class TkHost:
             pystray.MenuItem("Quit", put("quit")))
 
     def engines(self):
-        return [CursorEngine(), CodexEngine(), EdgeEngine(), SapiEngine()]
+        return [CursorEngine(), CodexEngine(), KokoroEngine(), EdgeEngine(), SapiEngine()]
 
     def make_popup(self, speed, **callbacks):
         return Popup(self.root, speed, **callbacks)

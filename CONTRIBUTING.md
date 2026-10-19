@@ -86,6 +86,7 @@ Paths are under `src/harness_discussion/`. Windows-only code is in `win/`, macOS
 | Cursor speech through `TextToSpeech`, with the token read from Cursor's desktop sign-in | `cursor_tts.py`, `cursor_auth.py` |
 | Codex realtime over `codex app-server`, using WebRTC v3 (the only transport that works without an API key) | `codex_rt.py`, `prompts.py` |
 | Edge, plus the ordered chain that tries sources in turn | `engines.py`, `edge_stream.py` |
+| Kokoro: the on-request model download and the ONNX voice, read sentence by sentence | `kokoro_tts.py` |
 | Offline voices: SAPI on Windows, AVSpeechSynthesizer on macOS | `win/voice.py`, `mac/voice.py` |
 | Speaker output and the slow-down time stretch (ffmpeg `atempo`) | `audio.py` |
 | Update checks and installs | `updates.py` |

@@ -349,6 +349,8 @@ class App(Captions, Sources, Updates):
             if self.chain.busy:  # an attempt that started before a stop is not shown
                 p.set_source(args[0])
         elif kind == "statuses":
+            if "downloading" in self.statuses.values():
+                self.host.after(2000, self.refresh_statuses)  # until the model download ends
             self._show_source()
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.refresh_sources()
