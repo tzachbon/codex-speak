@@ -135,8 +135,11 @@ class KokoroEngine(_Threaded):
             import numpy as np
             model = self._load()
         except Exception as e:
-            if downloaded(DIR):
-                drop_corrupt(DIR)
+            try:
+                if downloaded(DIR):
+                    drop_corrupt(DIR)
+            except OSError as cleanup:  # a locked or unreadable file must not block the next source
+                log.warning("kokoro cleanup failed: %s", type(cleanup).__name__)
             raise NoAudioError(f"Kokoro: {type(e).__name__}") from e
         pieces, speed = queue.Queue(), self.speed
 

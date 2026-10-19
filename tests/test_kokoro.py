@@ -93,6 +93,18 @@ class Download(unittest.TestCase):
             self.assertEqual(os.listdir(self.dir), ["model.onnx"])
             self.assertEqual(kokoro_tts.status(), "not_downloaded")
 
+    def test_a_failed_cleanup_still_hands_over_to_the_next_source(self):
+        self.download()
+        e = kokoro_tts.KokoroEngine()
+        e._load = lambda: (_ for _ in ()).throw(RuntimeError("bad model"))
+        done, result = threading.Event(), []
+        with patch.object(kokoro_tts, "DIR", self.dir), \
+                patch.object(kokoro_tts, "_verified", side_effect=PermissionError()), \
+                self.assertLogs(kokoro_tts.log, "WARNING"):
+            e.speak("Hello.", "en-US", lambda err: (result.append(err), done.set()))
+            self.assertTrue(done.wait(5))
+        self.assertIsInstance(result[0], NoAudioError)
+
     def test_an_untrusted_download_location_is_refused(self):
         self.url = "https://example.com/model.onnx"
         with self.assertRaisesRegex(ValueError, "location"):
