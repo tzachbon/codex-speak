@@ -117,7 +117,7 @@ class FakePlayer:
 
     def __init__(self, rate, channels, paused):
         self.rate, self.paused, self.writes, self.closed = rate, paused, [], False
-        self.pending, self.active = False, True
+        self.pending, self.active, self.played = False, True, 0
         FakePlayer.opened.append(self)
 
     def arm(self, on_audio):
@@ -188,6 +188,28 @@ class EdgeEngineReads(unittest.TestCase):
         FakePlayer.opened[0].consume()
         self.assertTrue(done.wait(5))
         self.assertEqual((result, len(heard)), ([None], 1))
+
+    def test_position_follows_the_audio_played_once_its_length_is_known(self):
+        class Draining(FakePlayer):
+            def write(self, pcm):
+                super().write(pcm)
+                self.pending, self.total = True, getattr(self, "total", 0) + len(pcm)
+
+            @property
+            def played(self):  # each look finds another quarter played
+                self.looks = getattr(self, "looks", 0) + 1
+                self.pending = self.looks < 4
+                return self.total * self.looks // 4
+
+            @played.setter
+            def played(self, _):
+                pass
+
+        e, positions = engine(lambda: agen(pieces(tone_mp3()))), []
+        e.Player, done = Draining, threading.Event()
+        e.speak("x" * 100, "en-US", lambda err: done.set(), on_progress=positions.append)
+        self.assertTrue(done.wait(5))
+        self.assertEqual(positions, [25, 50, 75, 100])
 
     def test_audio_is_reported_at_the_first_chunk_while_the_request_is_still_running(self):
         data, release = list(pieces(tone_mp3())), threading.Event()

@@ -60,6 +60,7 @@ class _Threaded:
 
 class EdgeEngine(_Threaded):
     name = "Edge"
+    reports_progress = True  # speak() takes on_progress(chars): where in the text the speaker is
     Player = PcmPlayer  # tests swap in one without a sound device
 
     def __init__(self):
@@ -90,7 +91,7 @@ class EdgeEngine(_Threaded):
             request = self._request(text, lang_tag or lang.detect(text))
             self._pre = request, EdgeStream(self._source(*request))
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, on_progress=lambda chars: None):
         tag = lang_tag or lang.detect(text)
         request, pre = self._request(text, tag), self._pre
         if pre and pre[0] == request and not pre[1].error:  # a prefetch that failed is not worth joining
@@ -98,14 +99,14 @@ class EdgeEngine(_Threaded):
         else:
             self.discard()
             stream = EdgeStream(self._source(*request))  # starts now, not when the worker gets the lock
-        self._start(lambda stop: self._play(stream, stop, on_audio), on_done, stream.cancel)
+        self._start(lambda stop: self._play(stream, stop, on_audio, len(text), on_progress), on_done, stream.cancel)
 
     def stop(self):
         self.discard()
         super().stop()
 
-    def _play(self, stream, stop, on_audio):
-        player = None
+    def _play(self, stream, stop, on_audio, chars=0, on_progress=lambda chars: None):
+        player, total = None, 0
         try:
             chunks = stream.read(stop)
             while True:
@@ -127,12 +128,14 @@ class EdgeEngine(_Threaded):
                         raise NoAudioError(f"{self.name}: {e}") from e
                     player.arm(on_audio)
                 player.write(pcm)
+                total += len(pcm)
             if stop.is_set():
                 return
             if player is None:
                 raise NoAudioError(f"{self.name}: no audio")
             while player.pending and player.active and not stop.wait(0.05):
-                pass  # the queue still holds speech after the download ends
+                # the queue still holds speech after the download ends; only now is the whole length known
+                on_progress(chars * player.played // total)  # shortcut: assumes an even pace across the text
         finally:
             stream.cancel()
             if player:
@@ -188,7 +191,8 @@ class Chain:
         if engine and engine.name != "Codex" and hasattr(engine, "prepare"):
             engine.prepare(lang_tag or fallback_tag, text)
 
-    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None, on_caption=None):
+    def speak(self, text, lang_tag, on_done, on_audio=lambda: None, *, fallback_tag=None, on_caption=None,
+              on_progress=None):
         self._gen += 1
         self._idle = idle = threading.Event()
         self._paused = False
@@ -216,6 +220,8 @@ class Chain:
 
             codex = engine.name == "Codex"
             kw = {"on_caption": lambda t: gen == self._gen and on_caption(t)} if codex and on_caption else {}
+            if getattr(engine, "reports_progress", False) and on_progress:
+                kw = {"on_progress": lambda chars: gen == self._gen and on_progress(chars)}
             engine.speak(text, lang_tag if codex else lang_tag or fallback_tag, done,
                          lambda: gen == self._gen and on_audio(), **kw)
             if gen == self._gen and self._paused:

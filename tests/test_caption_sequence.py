@@ -75,9 +75,10 @@ class Chain:
     def order(self):
         return [SimpleNamespace(name="Codex")]
 
-    def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None, on_caption=None):
+    def speak(self, text, tag, done, heard=lambda: None, *, fallback_tag=None, on_caption=None, on_progress=None):
         self.calls.append((text, tag, done, heard, self.only, self.engines[0].speed))
         self.fallback_tags.append(fallback_tag)
+        self.on_progress = on_progress
 
     def prepare(self, tag, text=None, *, fallback_tag=None):
         self.prepared.append((tag, text if self.prefetch else None))
@@ -258,6 +259,24 @@ class Sequence(unittest.TestCase):
         self.assertTrue(1100 <= timers[-1][0] <= 1200, timers[-1][0])  # what was left, not a fresh delay
         timers[-1][1]()
         self.assertEqual((a.popup.caption, timers[-1][0]), ("Three.", 400))  # at 1×, not the new 2×
+
+    def test_a_reported_position_replaces_the_estimated_steps(self):
+        a = app()
+        timers = []
+        a.host.after = lambda ms, fn: timers.append((ms, fn))
+        a.play("One. Twenty chars here. Three. Four.", None)
+        a.chain.calls[0][2](None)
+        pump(a)
+        a.chain.calls[1][3]()
+        pump(a)
+        a.chain.on_progress(len("Twenty chars here. Th"))  # the engine is already past the estimate
+        pump(a)
+        self.assertEqual(a.popup.caption, "Three.")
+        timers[-1][1]()  # the estimate's timer no longer moves the caption
+        self.assertEqual(a.popup.caption, "Three.")
+        a.pause()
+        a.resume()
+        self.assertEqual((a.popup.caption, len(timers)), ("Three.", 1))
 
     def test_prepare_is_opt_in_and_new_selection_replaces_exact_first_text(self):
         a = app()

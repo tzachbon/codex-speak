@@ -36,6 +36,13 @@ class Captions:
             step = self._caption_steps = (rid, index, parts, time.monotonic() + ms / 1000)
             self.host.after(ms, lambda: self._caption_steps is step and self._step_captions(rid, index, parts))
 
+    def _follow_progress(self, rid, index, chars):
+        """Shows the sentence the engine says it is speaking, which replaces the estimated steps."""
+        if rid != self._read_id or index != self._unit_index or not self._read_options:
+            return
+        self._caption_steps = self._caption_held = None
+        self._show_caption(sentences.at(self._units[index], chars))
+
     def _hold_captions(self):
         """Pause stops the step timer and keeps what was left of it."""
         step, self._caption_steps = self._caption_steps, None

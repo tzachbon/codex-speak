@@ -51,6 +51,16 @@ def _fit(unit, limit):
         yield unit
 
 
+def at(text, pos):
+    """The unit holding character `pos` of `text`; past the end, the last unit."""
+    end, units = 0, split(text) or [text]
+    for unit in units:
+        end = text.find(unit, end) + len(unit)
+        if pos < end:
+            return unit
+    return units[-1]
+
+
 def current(text):
     """The sentence being spoken at the end of a growing transcript, with a list number kept on its item."""
     units = split(text)
