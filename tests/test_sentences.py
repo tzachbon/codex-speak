@@ -64,3 +64,10 @@ class Current(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class At(unittest.TestCase):
+    def test_the_unit_holding_a_position(self):
+        text = "One. Two words.\n\nThree"
+        self.assertEqual([sentences.at(text, i) for i in (0, 3, 5, 14, 17, 99)],
+                         ["One.", "One.", "Two words.", "Two words.", "Three", "Three"])

@@ -221,7 +221,8 @@ class App(Captions, Sources, Updates):
                          lambda err: self.events.put(("sentence_done", err, rid, index)),
                          lambda: (heard(), self.events.put(("audio", rid, index))),
                          fallback_tag=self._read_options[3],
-                         on_caption=lambda text: self.events.put(("caption", rid, index, text)))
+                         on_caption=lambda text: self.events.put(("caption", rid, index, text)),
+                         on_progress=lambda chars: self.events.put(("progress", rid, index, chars)))
 
     def _restore_speech_options(self):
         self._read_options = None
@@ -317,6 +318,8 @@ class App(Captions, Sources, Updates):
                 if self._unit_index + 1 < len(self._units):
                     self.chain.prepare_next(self._units[self._unit_index + 1], self._read_options[0],
                                             fallback_tag=self._read_options[3])
+        elif kind == "progress":
+            self._follow_progress(*args)
         elif kind == "caption":
             self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":

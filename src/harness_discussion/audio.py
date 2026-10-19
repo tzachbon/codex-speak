@@ -59,6 +59,7 @@ _live, _live_lock = set(), threading.Lock()  # open players' streams, which a Po
 
 class PcmPlayer:
     _hold, _holding, _last_write = 0, False, 0.0  # no cushion for players built without a sound device
+    played = 0  # bytes that reached the speaker, which places the caption
 
     def __init__(self, rate: int = 24000, channels: int = 1, paused: threading.Event | None = None):
         self._buf, self._lock, self._width = bytearray(), threading.Lock(), 2 * channels
@@ -104,6 +105,7 @@ class PcmPlayer:
             else:
                 chunk = bytes(self._buf[:n])
                 del self._buf[:n]
+                self.played += len(chunk)
                 self._holding = len(chunk) < n
             self._output_pending = bool(chunk)  # drain cannot complete ahead of the start notification
             on_audio = self._on_audio if peak(chunk) > VOICED else None
