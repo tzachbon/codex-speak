@@ -7,6 +7,7 @@ from . import ui
 
 IDLE_HIDE_S = 4.0
 CAPTION_WIDTH = 340
+CAPTION_LINES = 3  # a sentence with no stops would otherwise grow the panel off the screen
 
 
 class _Panel(AppKit.NSPanel):
@@ -134,6 +135,8 @@ class _Caption:
         field.setAlignment_(AppKit.NSTextAlignmentCenter)
         field.setTextColor_(AppKit.NSColor.whiteColor())
         field.setPreferredMaxLayoutWidth_(CAPTION_WIDTH - 24)
+        field.setMaximumNumberOfLines_(CAPTION_LINES)
+        field.cell().setTruncatesLastVisibleLine_(True)
         field.widthAnchor().constraintLessThanOrEqualToConstant_(CAPTION_WIDTH - 24).setActive_(True)
         shadow = AppKit.NSShadow.alloc().init()
         shadow.setShadowBlurRadius_(3)
@@ -151,6 +154,7 @@ class _Caption:
         p = self.win = _Panel.alloc().initWithContentRect_styleMask_backing_defer_(
             ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
         p.setContentView_(box)
+        self._place = None
         p.setIgnoresMouseEvents_(True)
         p.setLevel_(AppKit.NSStatusWindowLevel)
         p.setOpaque_(False)
@@ -166,6 +170,8 @@ class _Caption:
         self.field.setFont_(AppKit.NSFont.systemFontOfSize_weight_(font_size * 4 / 3, AppKit.NSFontWeightMedium))
         self.box.layer().setBackgroundColor_(_cg(AppKit.NSColor.colorWithWhite_alpha_(
             0.1, background_opacity if background else 0)))
+        if self.win.isVisible():  # a font change from Settings resizes the caption on screen
+            self.show(self.field.stringValue(), *self._place)
 
     def show(self, text, bar, area):
         """Centered above `bar`, or below it when the screen top is too close."""
@@ -173,6 +179,7 @@ class _Caption:
         if not text:
             return self.hide()
         self.field.setStringValue_(text)
+        self._place = bar, area
         self.win.setContentSize_(self.box.fittingSize())
         w, h = self.win.frame().size.width, self.win.frame().size.height
         x = bar.origin.x + (bar.size.width - w) / 2
