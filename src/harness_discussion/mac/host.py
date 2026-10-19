@@ -3,7 +3,7 @@ import AppKit
 import objc
 from Foundation import NSObject
 
-from .. import icons
+from .. import icons, settings, updates
 from ..codex_rt import CodexEngine
 from ..cursor_tts import CursorEngine
 from . import selection, ui
@@ -47,22 +47,54 @@ class MacHost:
         self.menu.setAutoenablesItems_(False)
         self.menu.setDelegate_(self.delegate)
         put = lambda *event: lambda _s: self.app.events.put(event)
-        self._add("Settings…", put("settings"))
-        self.permission_item = self._add("Permission needed…", lambda _s: self.watcher and self.watcher.show_guide())
+        self.status_item = self._add("", None)
+        self.pause_item = self._add("Pause", lambda _s: self.app.popup.playing and self.app.popup._toggle())
+        self.stop_item = self._add("Stop", lambda _s: self.app.popup.playing and self.app.popup._stop())
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self.engine_item = self._add("Last voice source: -", None)
+        self.speed_menu = self._submenu("Speed")
+        self.source_menu = self._submenu("Voice Source")
+        # one target per submenu: rebuilt items carry their value, so opening the menu adds no targets
+        self._pick_speed = ui.target(lambda s: self.app.change("speed", float(s.representedObject())))
+        self._pick_source = ui.target(lambda s: self.app._popup_source(str(s.representedObject())))
+        self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
+        # off until turned on again or the app restarts, so a forgotten toggle can't keep it off
+        self.listen_item = self._add("Show Popup on Selection", lambda _s: self.stop_trigger() if self.trigger
+                                     else self.start_trigger(*self._trigger_args))
+        self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
+        self._add("Settings…", put("settings"), ",")
+        self.permission_item = self._add("Permission needed…", lambda _s: self.watcher and self.watcher.show_guide())
         self.error_item = self._add("", None)
         self.menu.addItem_(AppKit.NSMenuItem.separatorItem())
-        self._add("Quit Harness Discussion", put("quit"))
+        self._add(f"Harness Discussion {updates.current_version()}", None)
+        self._add("Quit Harness Discussion", put("quit"), "q")
         self.item.setMenu_(self.menu)
         self.refresh_menu()
 
-    def _add(self, title, fn):
-        item = self.menu.addItemWithTitle_action_keyEquivalent_(title, "run:" if fn else None, "")
+    def _add(self, title, fn, key="", menu=None):
+        item = (menu or self.menu).addItemWithTitle_action_keyEquivalent_(title, "run:" if fn else None, key)
         if fn:
             item.setTarget_(ui.target(fn))
         item.setEnabled_(fn is not None)
         return item
+
+    def _submenu(self, title):
+        menu = AppKit.NSMenu.alloc().init()
+        menu.setAutoenablesItems_(False)
+        self.menu.setSubmenu_forItem_(menu, self.menu.addItemWithTitle_action_keyEquivalent_(title, None, ""))
+        return menu
+
+    def _fill(self, menu, choices, current, target):
+        """choices: [(value, title)], None for a separator. Rebuilt on each open, as sign-ins change."""
+        menu.removeAllItems()
+        for choice in choices:
+            if choice is None:
+                menu.addItem_(AppKit.NSMenuItem.separatorItem())
+                continue
+            value, title = choice
+            item = menu.addItemWithTitle_action_keyEquivalent_(title, "run:", "")
+            item.setTarget_(target)
+            item.setRepresentedObject_(value)
+            item.setState_(1 if value == current else 0)
 
     def refresh_menu(self):
         image = (ui.symbol("exclamationmark.triangle.fill", "Harness Discussion") if self._missing
@@ -72,9 +104,26 @@ class MacHost:
         self.item.button().setToolTip_("Harness Discussion needs Accessibility permission" if self._missing
                                        else "Harness Discussion")
         self.permission_item.setHidden_(not self._missing)
-        self.engine_item.setTitle_(f"Last voice source: {(self.app and self.app.chain.last) or '-'}")
         self.error_item.setHidden_(self._error is None)
         self.error_item.setTitle_(f"Last error: {self._error or ''}")
+        app = self.app
+        if app is None:  # the first call comes from __init__, before App exists
+            return
+        p = app.popup
+        source = app.chain.last or app.chain.order()[0].name
+        self.status_item.setTitle_("Paused" if p.paused else f"Reading with {source}" if p.playing
+                                   else "Ready: select text to read")
+        self.pause_item.setTitle_("Resume" if p.paused else "Pause")
+        self.pause_item.setHidden_(not p.playing)
+        self.stop_item.setHidden_(not p.playing)
+        self._fill(self.speed_menu, [(s, settings.speed_label(s)) for s in settings.SPEED_PRESETS],
+                   app.cfg["speed"], self._pick_speed)
+        choices = app._source_choices()
+        ready = [(name, name) for name, fix in choices if not fix]
+        fixes = [(name, f"{name}: {fix}") for name, fix in choices if fix]
+        self._fill(self.source_menu, ready + ([None] if ready and fixes else []) + fixes,
+                   app.chain.order()[0].name, self._pick_source)
+        self.listen_item.setState_(1 if self.trigger else 0)
 
     def set_permission_missing(self, missing):
         self._missing = missing
@@ -96,6 +145,7 @@ class MacHost:
         return selection.read(clipboard_fallback)
 
     def start_trigger(self, on_selection, on_press):
+        self._trigger_args = on_selection, on_press
         if self.trigger is None:
             self.trigger = SelectionTrigger(on_selection, on_press)
             self.trigger.start()

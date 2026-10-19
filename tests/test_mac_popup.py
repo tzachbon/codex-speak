@@ -137,3 +137,74 @@ class PopupSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def host_module():
+    from harness_discussion.mac import host
+    return host
+
+
+class MenuBarMenuTest(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from harness_discussion.mac import host
+        self.host = host.MacHost()
+        self.addCleanup(lambda: __import__("AppKit").NSStatusBar.systemStatusBar().removeStatusItem_(self.host.item))
+        self.changes, self.picks = [], []
+        source = SimpleNamespace(name="Codex")
+        self.popup = SimpleNamespace(playing=False, paused=False, toggles=0)
+        self.popup._toggle = lambda: setattr(self.popup, "toggles", self.popup.toggles + 1)
+        self.host.app = SimpleNamespace(
+            popup=self.popup, cfg={"speed": 1.25}, chain=SimpleNamespace(last=None, order=lambda: [source]),
+            _source_choices=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")],
+            change=lambda key, value: self.changes.append((key, value)), _popup_source=self.picks.append)
+
+    def titles(self, menu):
+        return [i.title() for i in menu.itemArray() if not i.isHidden() and not i.isSeparatorItem()]
+
+    def pick(self, menu, title):
+        item = next(i for i in menu.itemArray() if i.title() == title)
+        item.target().run_(item)
+
+    def test_idle_menu_lists_controls_and_hides_playback(self):
+        self.host.refresh_menu()
+        titles = self.titles(self.host.menu)
+        self.assertEqual(titles[0], "Ready: select text to read")
+        self.assertNotIn("Pause", titles)
+        self.assertNotIn("Stop", titles)
+        for title in ("Speed", "Voice Source", "Show Popup on Selection", "Settings…", "Quit Harness Discussion"):
+            self.assertIn(title, titles)
+        speed = self.host.speed_menu
+        self.assertEqual([i.title() for i in speed.itemArray() if i.state()], ["1.25×"])
+        sources = self.host.source_menu
+        self.assertEqual(self.titles(sources), ["Codex", "macOS", "Cursor: Sign in…"])
+        self.assertEqual([i.title() for i in sources.itemArray() if i.state()], ["Codex"])
+
+    def test_picks_reach_the_app(self):
+        self.host.refresh_menu()
+        self.pick(self.host.speed_menu, "1.5×")
+        self.pick(self.host.source_menu, "Cursor: Sign in…")
+        self.assertEqual((self.changes, self.picks), ([("speed", 1.5)], ["Cursor"]))
+
+    def test_toggle_stops_and_restarts_the_selection_trigger(self):
+        with mock.patch.object(host_module(), "SelectionTrigger") as trigger:
+            self.host.start_trigger("on_selection", "on_press")
+            self.host.refresh_menu()
+            self.assertEqual(self.host.listen_item.state(), 1)
+            self.pick(self.host.menu, "Show Popup on Selection")
+            self.host.refresh_menu()
+            self.assertEqual((self.host.trigger, self.host.listen_item.state()), (None, 0))
+            trigger.return_value.stop.assert_called_once()
+            self.pick(self.host.menu, "Show Popup on Selection")
+            self.assertEqual(trigger.call_args_list, [mock.call("on_selection", "on_press")] * 2)
+
+    def test_reading_shows_pause_then_resume(self):
+        self.popup.playing = True
+        self.host.app.chain.last = "Cursor"
+        self.host.refresh_menu()
+        self.assertEqual(self.titles(self.host.menu)[:3], ["Reading with Cursor", "Pause", "Stop"])
+        self.pick(self.host.menu, "Pause")
+        self.assertEqual(self.popup.toggles, 1)
+        self.popup.paused = True
+        self.host.refresh_menu()
+        self.assertEqual(self.titles(self.host.menu)[:3], ["Paused", "Resume", "Stop"])
