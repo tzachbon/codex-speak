@@ -29,9 +29,34 @@ plutil -replace CFBundleVersion -string "$version" "$plist"
 plutil -replace LSUIElement -bool true "$plist"
 plutil -replace LSMinimumSystemVersion -string 13.0 "$plist"
 plutil -replace HarnessDiscussionBuild -string "$version+$commit" "$plist"
-# The local identity from setup_signing_mac.sh keeps the Accessibility grant across rebuilds. CI signs ad hoc.
+# A Developer ID from the MACOS_* secrets gives a notarized dmg that Gatekeeper opens without a warning.
+# Otherwise the local identity from setup_signing_mac.sh keeps the Accessibility grant across rebuilds,
+# and anything else is signed ad hoc.
 keychain="$HOME/Library/Keychains/harness-discussion-signing.keychain-db"
-if [[ -f "$keychain" ]] && password=$(security find-generic-password -s harness-discussion-signing -a "$USER" -w); then
+if [[ -n "${MACOS_CERTIFICATE:-}" ]]; then
+    : "${MACOS_CERTIFICATE_PASSWORD:?}" "${MACOS_NOTARY_KEY:?}" "${MACOS_NOTARY_KEY_ID:?}" "${MACOS_NOTARY_ISSUER_ID:?}"
+    work=$(mktemp -d)
+    keychain="$work/signing.keychain-db"
+    trap 'security delete-keychain "$keychain" 2>/dev/null; rm -rf "$work"' EXIT
+    password=$(openssl rand -hex 24)
+    security create-keychain -p "$password" "$keychain"
+    security set-keychain-settings -lut 3600 "$keychain"
+    security unlock-keychain -p "$password" "$keychain"
+    base64 --decode <<<"$MACOS_CERTIFICATE" > "$work/id.p12"
+    security import "$work/id.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+    # codesign finds an identity only in a keychain on the search list
+    listed=()
+    while read -r path; do
+        path=${path#\"}
+        listed+=("${path%\"}")
+    done < <(security list-keychains -d user)
+    security list-keychains -d user -s "$keychain" "${listed[@]}"
+    identity=$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ {print $2; exit}')
+    [[ -n "$identity" ]] || { echo "MACOS_CERTIFICATE has no Developer ID Application identity" >&2; exit 1; }
+    codesign --force --deep --options runtime --timestamp --entitlements packaging/entitlements.plist \
+        --keychain "$keychain" --sign "$identity" "$app"
+elif [[ -f "$keychain" ]] && password=$(security find-generic-password -s harness-discussion-signing -a "$USER" -w); then
     security unlock-keychain -p "$password" "$keychain"
     codesign --force --deep --keychain "$keychain" --sign "Harness Discussion Local Signing" "$app"
     security lock-keychain "$keychain"
@@ -44,4 +69,19 @@ mkdir -p build/dmg
 cp -R "$app" build/dmg/
 ln -s /Applications build/dmg/Applications
 hdiutil create -volname "Harness Discussion" -srcfolder build/dmg -fs HFS+ -format UDZO -ov dist/HarnessDiscussion.dmg
+if [[ -n "${identity:-}" ]]; then
+    dmg=dist/HarnessDiscussion.dmg
+    codesign --force --timestamp --keychain "$keychain" --sign "$identity" "$dmg"
+    printf '%s\n' "$MACOS_NOTARY_KEY" > "$work/notary.p8"
+    notary=(--key "$work/notary.p8" --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID")
+    submission=$(xcrun notarytool submit "$dmg" "${notary[@]}" --wait --output-format json) || true
+    id=$(plutil -extract id raw - <<<"$submission")
+    if [[ $(plutil -extract status raw - <<<"$submission") != Accepted ]]; then
+        xcrun notarytool log "$id" "${notary[@]}" >&2
+        exit 1
+    fi
+    xcrun stapler staple "$dmg"
+    spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+    spctl --assess --type execute --verbose "$app"
+fi
 ls -l dist/HarnessDiscussion.dmg

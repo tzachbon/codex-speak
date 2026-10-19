@@ -49,7 +49,10 @@ Requirements: Windows 11, 64-bit.
 ## macOS
 
 1. Download **[HarnessDiscussion.dmg](https://github.com/tzachbon/harness-discussion/releases/latest/download/HarnessDiscussion.dmg)**, open it, and drag Harness Discussion to Applications.
-2. The app is ad-hoc signed, not notarized. The first time, right-click it in Applications and choose *Open*, then *Open* again. On macOS 15 and later, open *System Settings > Privacy & Security* and choose *Open Anyway*.
+2. Open Harness Discussion from Applications. If macOS says it "could not verify" the app, the build isn't notarized yet:
+   - On macOS 15 and later, choose *Done*, open *System Settings > Privacy & Security*, scroll to *Security*, choose *Open Anyway* next to Harness Discussion, then confirm with your password.
+   - On macOS 13 and 14, right-click the app, choose *Open*, then *Open* again.
+   - Or run `xattr -dr com.apple.quarantine "/Applications/Harness Discussion.app"` in Terminal, then open the app.
 3. Harness Discussion lives in the menu bar. It asks for **Accessibility** access, which it needs to read the selected text. A guide window opens System Settings for you and closes once access is granted. While access is missing, the menu bar icon shows a warning.
 4. Optional: sign in to Cursor, or install the Codex CLI and run `codex login`, as on Windows.
 
