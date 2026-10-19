@@ -155,7 +155,7 @@ class MenuBarMenuTest(unittest.TestCase):
         self.popup = SimpleNamespace(playing=False, paused=False, toggles=0)
         self.popup._toggle = lambda: setattr(self.popup, "toggles", self.popup.toggles + 1)
         self.host.app = SimpleNamespace(
-            popup=self.popup, cfg={"speed": 1.25}, chain=SimpleNamespace(last=None, order=lambda: [source]),
+            popup=self.popup, cfg={"speed": 1.25}, chain=SimpleNamespace(active_name=None, last=None, order=lambda: [source]),
             _source_choices=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")],
             change=lambda key, value: self.changes.append((key, value)), _popup_source=self.picks.append)
 
@@ -200,9 +200,9 @@ class MenuBarMenuTest(unittest.TestCase):
 
     def test_reading_shows_pause_then_resume(self):
         self.popup.playing = True
-        self.host.app.chain.last = "Cursor"
+        self.host.app.chain.last, self.host.app.chain.active_name = "Cursor", "Codex"  # Cursor failed over
         self.host.refresh_menu()
-        self.assertEqual(self.titles(self.host.menu)[:3], ["Reading with Cursor", "Pause", "Stop"])
+        self.assertEqual(self.titles(self.host.menu)[:3], ["Reading with Codex", "Pause", "Stop"])
         self.pick(self.host.menu, "Pause")
         self.assertEqual(self.popup.toggles, 1)
         self.popup.paused = True

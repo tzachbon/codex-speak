@@ -110,7 +110,7 @@ class MacHost:
         if app is None:  # the first call comes from __init__, before App exists
             return
         p = app.popup
-        source = app.chain.last or app.chain.order()[0].name
+        source = app.chain.active_name or app.chain.last or app.chain.order()[0].name  # the fallback speaking now
         self.status_item.setTitle_("Paused" if p.paused else f"Reading with {source}" if p.playing
                                    else "Ready: select text to read")
         self.pause_item.setTitle_("Resume" if p.paused else "Pause")
