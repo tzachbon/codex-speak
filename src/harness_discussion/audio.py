@@ -140,7 +140,9 @@ class PcmPlayer:
         with self._lock:
             self._buf.clear()
             self._on_audio = None
-        with _live_lock:
-            _live.discard(self._stream)
-        self._stream.abort()
-        self._stream.close()
+        with _live_lock:  # a reset waits until this stream is closed, not just unlisted
+            try:
+                self._stream.abort()
+                self._stream.close()
+            finally:
+                _live.discard(self._stream)

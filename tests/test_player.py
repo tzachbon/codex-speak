@@ -33,6 +33,13 @@ class Player(unittest.TestCase):
         playing.close.assert_not_called()
         first.close()
 
+    def test_a_stream_stays_listed_until_it_is_closed(self):
+        stream, listed = mock.Mock(), []
+        stream.close.side_effect = lambda: listed.append(stream in audio._live)
+        with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream):
+            PcmPlayer().close()
+        self.assertEqual((listed, stream in audio._live), ([True], False))
+
     def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
         p = PcmPlayer.__new__(PcmPlayer)
         p._buf, p._lock, p._width, p._paused = bytearray(), threading.Lock(), 2, threading.Event()
