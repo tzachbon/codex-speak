@@ -57,6 +57,18 @@ Requires PowerShell 7.4+ (`pwsh`) and [Inno Setup 6](https://jrsoftware.org/isin
 
 With the local identity, a rebuilt app keeps its Accessibility grant. Without it, the build is signed ad hoc, as in CI, and macOS asks for Accessibility again after every rebuild.
 
+CI signs ad hoc unless these repository secrets are set. With all five, `build_mac.sh` signs with a Developer ID and the hardened runtime (`packaging/entitlements.plist`), notarizes and staples the dmg, and Gatekeeper opens the app without a warning. With only some set, the build fails.
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_CERTIFICATE` | A *Developer ID Application* certificate and key exported as `.p12`, base64-encoded: `base64 -i id.p12 \| pbcopy` |
+| `MACOS_CERTIFICATE_PASSWORD` | The `.p12` export password |
+| `MACOS_NOTARY_KEY` | The contents of an App Store Connect API key (`AuthKey_<id>.p8`, *Developer* access) |
+| `MACOS_NOTARY_KEY_ID` | That key's ID |
+| `MACOS_NOTARY_ISSUER_ID` | The issuer ID shown above the keys in App Store Connect |
+
+The first notarized release has a new code signature, so macOS asks for Accessibility once more after that update.
+
 ## Code map
 
 Paths are under `src/harness_discussion/`. Windows-only code is in `win/`, macOS-only code in `mac/`.

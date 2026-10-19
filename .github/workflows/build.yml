@@ -62,6 +62,12 @@ jobs:
       - name: Build the dmg
         env:
           RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+          # Optional: with all five set, the dmg is Developer ID signed and notarized. See CONTRIBUTING.md.
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: ./packaging/build_mac.sh
       - uses: actions/upload-artifact@v4
         with:
