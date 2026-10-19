@@ -16,7 +16,7 @@ class PopupSourceTest(unittest.TestCase):
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
                           on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")])
         bar.set_source("Codex")
-        self.assertEqual(bar.source_btn.title(), "Codex ▾")
+        self.assertEqual(bar.source_btn.title(), "\ufffc Codex ▾")
         menus = []
         with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
                 (choices, current)) or pick("macOS")):

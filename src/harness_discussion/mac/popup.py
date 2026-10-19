@@ -70,7 +70,6 @@ def _text_button(fn, title, titles, icon=lambda _t: None):
     b.setWantsLayer_(True)
     b.layer().setCornerRadius_(8)
     b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.1)))
-    b.setImagePosition_(AppKit.NSImageLeading)
     b.setContentTintColor_(AppKit.NSColor.labelColor())
     b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
     widest = 0
@@ -83,14 +82,23 @@ def _text_button(fn, title, titles, icon=lambda _t: None):
 
 
 def _set_title(button, title, image=None):
-    """`title ▾` with a dimmed chevron."""
+    """`[icon] title ▾` with a dimmed chevron; the icon is inline so it centers with the title."""
     font = AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightMedium)
-    text = AppKit.NSMutableAttributedString.alloc().initWithString_attributes_(
-        title + " ", {AppKit.NSFontAttributeName: font, AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()})
+    text = AppKit.NSMutableAttributedString.alloc().init()
+    if image:
+        icon = AppKit.NSTextAttachment.alloc().init()
+        icon.setImage_(image)
+        size = image.size()
+        icon.setBounds_(((0, (font.capHeight() - size.height) / 2), (size.width, size.height)))
+        text.appendAttributedString_(AppKit.NSAttributedString.attributedStringWithAttachment_(icon))
+        title = " " + title
     text.appendAttributedString_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
-        "▾", {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_(10),
-              AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithWhite_alpha_(1, 0.55)}))
-    button.setImage_(image)
+        title + " ", {AppKit.NSFontAttributeName: font,
+                       AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()}))
+    text.appendAttributedString_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        "▾", {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_(9),
+              AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithWhite_alpha_(1, 0.55),
+              AppKit.NSBaselineOffsetAttributeName: 1}))
     button.setAttributedTitle_(text)
 
 
