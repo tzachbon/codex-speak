@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -151,6 +152,27 @@ class Engine_(unittest.TestCase):
     def test_an_error_after_speech_started_is_not_handed_over(self):
         err, _ = self.read("One. Two.", model=FakeModel(fail_at=2))
         self.assertIs(type(err), RuntimeError)
+
+    def test_stop_closes_playback_while_the_next_sentence_renders(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        class Slow(FakeModel):
+            def create(self, *args, **kw):
+                if self.calls:
+                    release.wait(5)
+                return super().create(*args, **kw)
+        e = kokoro_tts.KokoroEngine()
+        e.Player, e._load = FakePlayer, lambda: Slow()
+        FakePlayer.opened = []
+        done = threading.Event()
+        e.speak("One. Two.", "en-US", lambda err: done.set())
+        deadline = time.monotonic() + 5
+        while not FakePlayer.opened and time.monotonic() < deadline:
+            time.sleep(0.01)
+        e.stop()
+        self.assertTrue(done.wait(1))
+        self.assertTrue(FakePlayer.opened[0].closed)
 
     def test_voices_are_english_with_a_readable_label(self):
         ids = dict(kokoro_tts.VOICES)

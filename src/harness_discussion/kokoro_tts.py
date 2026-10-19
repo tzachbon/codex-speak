@@ -2,6 +2,7 @@
 import hashlib
 import logging
 import os
+import queue
 import threading
 import time
 from pathlib import Path
@@ -117,19 +118,36 @@ class KokoroEngine(_Threaded):
             model = self._load()
         except Exception as e:
             raise NoAudioError(f"Kokoro: {type(e).__name__}") from e
+        pieces, speed = queue.Queue(), self.speed
+
+        def synthesize():  # its own thread, so Stop ends playback without waiting for a sentence to render
+            try:
+                for sentence in sentences.split(text):
+                    if stop.is_set():
+                        return
+                    try:
+                        pieces.put(model.create(sentence, voice=voice, speed=speed, lang=LANGS[tag])[0])
+                    except ValueError:
+                        pass  # nothing to pronounce, such as a lone symbol
+                pieces.put(None)
+            except Exception as e:
+                pieces.put(e)
+        threading.Thread(target=synthesize, daemon=True).start()
         player = None
         try:
-            for sentence in sentences.split(text):  # the next sentence renders while this one plays
-                if stop.is_set():
-                    return
+            while True:
                 try:
-                    samples, _ = model.create(sentence, voice=voice, speed=self.speed, lang=LANGS[tag])
-                except ValueError:
-                    continue  # nothing to pronounce, such as a lone symbol
-                except Exception as e:
+                    samples = pieces.get(timeout=0.05)
+                except queue.Empty:
+                    if stop.is_set():
+                        return
+                    continue
+                if samples is None or stop.is_set():
+                    break
+                if isinstance(samples, Exception):
                     if player is None:
-                        raise NoAudioError(f"Kokoro: {type(e).__name__}") from e
-                    raise  # speech already started: the chain must not restart it on another engine
+                        raise NoAudioError(f"Kokoro: {type(samples).__name__}") from samples
+                    raise samples  # speech already started: the chain must not restart it on another engine
                 if player is None:
                     try:
                         player = self.Player(24000, 1, self.paused)
