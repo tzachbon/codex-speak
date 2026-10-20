@@ -258,6 +258,12 @@ class CoreTest(unittest.TestCase):
         app._caption(app._read_id, 0, "Go. Go.")
         self.assertEqual(app._sentence, 1)
 
+    def test_codex_captions_track_a_numbered_item(self):
+        app = self.make(Engine("macOS"))
+        app.play("One. 2. Two. End.", None)
+        app._caption(app._read_id, 0, "One. 2. Two.")
+        self.assertEqual(app._sentences[app._sentence], "Two.")
+
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)

@@ -15,9 +15,10 @@ class Captions:
         if rid != self._read_id or index != self._unit_index or not self._read_options:
             return
         units, text = sentences.split(transcript), sentences.current(transcript)
-        if text != self._heard[1] or (len(units) > self._heard[0] and units[-1] == text):  # "Go. Go." moves on
-            self._track(text)
-        self._heard = (len(units), text)
+        unit = text if text in units else units[-1]  # "2. Two." joins two units; track the item's own
+        if unit != self._heard[1] or (len(units) > self._heard[0] and units[-1] == unit):  # "Go. Go." moves on
+            self._track(unit)
+        self._heard = (len(units), unit)
         if self.popup.paused:
             self._held_caption = text
         else:
