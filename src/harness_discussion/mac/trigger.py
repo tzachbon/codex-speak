@@ -67,18 +67,24 @@ def event_spec(event):
 
 
 class HotKey:
-    """Watches key-downs in other apps for one shortcut. It can't swallow the key, so the front app sees it too."""
+    """Watches key-downs for one shortcut. In another app it can't swallow the key, so that app sees it too."""
 
     def __init__(self, spec, on_hotkey):
         self.keys, self.on_hotkey = hotkeys.parse(spec), on_hotkey  # parsed, so modifier order doesn't matter
-        self._monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-            AppKit.NSEventMaskKeyDown, self._event)
+        self._monitors = [AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSEventMaskKeyDown, self._event)]
+
+        def local(event):  # keys while one of our windows is active, which the global monitor never sees
+            self._event(event)
+            return event
+        self._monitors.append(AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSEventMaskKeyDown, local))
 
     def _event(self, event):
         if not event.isARepeat() and hotkeys.parse(event_spec(event)) == self.keys:
             self.on_hotkey()
 
     def stop(self):
-        if self._monitor:
-            AppKit.NSEvent.removeMonitor_(self._monitor)
-            self._monitor = None
+        for monitor in self._monitors:
+            AppKit.NSEvent.removeMonitor_(monitor)
+        self._monitors = []

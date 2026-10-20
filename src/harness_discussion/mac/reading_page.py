@@ -33,8 +33,12 @@ class ReadingPage:
         if self._recorder:
             return
         self.hotkey_label.setStringValue_("Press keys…")
+        self.app.host.set_hotkey("", None)  # so pressing the current shortcut records it instead of reading
 
         def key(event):
+            if not self.win.isVisible():  # Settings closed while recording: let keys through again
+                self._stop_recording()
+                return event
             if event.keyCode() == 53:  # Esc
                 self._stop_recording()
             elif spec := trigger.event_spec(event):
@@ -46,6 +50,7 @@ class ReadingPage:
         if self._recorder:
             AppKit.NSEvent.removeMonitor_(self._recorder)
             self._recorder = None
+            self.app.apply("hotkey", self.cfg["hotkey"])
             self.hotkey_label.setStringValue_(hotkeys.label(self.cfg["hotkey"]))
 
     def _set_hotkey(self, spec):
