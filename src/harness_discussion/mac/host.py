@@ -155,7 +155,6 @@ class MacHost:
         if self.trigger:
             self.trigger.stop()
             self.trigger = None
-        self.set_hotkey("", None)
 
     def set_hotkey(self, spec, on_hotkey):
         """Replaces the read shortcut; "" turns it off."""

@@ -199,6 +199,28 @@ class CoreTest(unittest.TestCase):
         app._track("One.")  # never moves back on a caption
         self.assertEqual(app._sentence, 1)
 
+    def test_skip_tracks_the_second_of_two_identical_sentences(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        app.play("Go. Go. Stop.", None)
+        app._show_caption("Go.", step=True)
+        app._show_caption("Go.", step=True)
+        self.assertEqual(app._sentence, 1)
+        app.skip(1)
+        self.assertEqual(engine.spoken[-1], "Stop.")
+
+    def test_hotkey_stops_a_paused_read(self):
+        app = self.make(Engine("macOS"))
+        self.host.hotkey[1]()
+        app.pump()
+        self.wait_event(app)
+        app.pump()
+        app.popup.paused = True
+        self.host.hotkey[1]()
+        app.pump()
+        self.assertFalse(app.popup.playing)
+        self.assertIsNone(app._read_options)
+
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)

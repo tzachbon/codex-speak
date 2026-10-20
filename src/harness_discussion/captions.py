@@ -29,7 +29,7 @@ class Captions:
             if self.popup.paused:
                 self._caption_held = (rid, index, parts, None)
                 return
-            self._show_caption(parts[0])
+            self._show_caption(parts[0], step=True)
             ms = int(len(parts[0]) / (CAPTION_CHARS_S * self._read_options[2]) * 1000)  # the read's own speed
             parts = parts[1:]
         if parts:
@@ -58,8 +58,10 @@ class Captions:
         if held:
             self._step_captions(*held)
 
-    def _show_caption(self, text):
+    def _show_caption(self, text, step=False):
+        """step: a new sentence of the estimated steps, tracked even when it repeats the one before."""
+        if step or text != self._last_caption:
+            self._track(text)
         if text != self._last_caption:
             self._last_caption = text
             self.popup.set_caption(text)
-            self._track(text)

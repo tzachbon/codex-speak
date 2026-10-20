@@ -53,6 +53,7 @@ class App(Captions, Sources, Updates, Summaries):
         self._continuous, self._last_caption, self._held_caption = False, "", ""
         self._caption_steps = self._caption_held = None
         self._read_text, self._sentences, self._sentence = "", [], 0  # what ⏮ and ⏭ step through
+        self._tracked = False  # whether a caption has matched _sentence yet in this read
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -216,6 +217,7 @@ class App(Captions, Sources, Updates, Summaries):
         if self._read_options:
             self.stop()
         self._read_text, self._sentences, self._sentence = text, sentences.split(text), start
+        self._tracked = False
         text = text[_offset(self._read_text, self._sentences, start):]
         self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
@@ -254,9 +256,12 @@ class App(Captions, Sources, Updates, Summaries):
         self.popup.set_loading(True)
 
     def _track(self, caption):
-        """Moves the skip position to the sentence shown; a caption that matches none (Codex rewords) keeps it."""
-        if caption in self._sentences[self._sentence:]:
-            self._sentence = self._sentences.index(caption, self._sentence)
+        """Moves the skip position to the sentence shown; a caption that matches none (Codex rewords) keeps it.
+
+        After the first match the search starts past the current sentence, so "Go. Go." moves to the second one."""
+        start = self._sentence + self._tracked
+        if caption in self._sentences[start:]:
+            self._sentence, self._tracked = self._sentences.index(caption, start), True
 
     def _hotkey_read(self, x, y):
         try:
@@ -362,15 +367,13 @@ class App(Captions, Sources, Updates, Summaries):
         elif kind == "progress":
             self._follow_progress(*args)
         elif kind == "hotkey":
-            if p.playing and not p.paused:
-                p.close()  # the shortcut also stops a read
+            if p.playing:
+                p.close()  # the shortcut also stops a read, paused or not
             else:
                 threading.Thread(target=self._hotkey_read, args=self.host.pointer(), daemon=True).start()
         elif kind == "hotkey_read":
             text, x, y = args
-            if text:
-                if p.playing:
-                    self.stop()  # replaces a paused read
+            if text and not p.playing:
                 p.show(text, x, y)
                 p.play()
         elif kind == "caption":
@@ -422,5 +425,6 @@ class App(Captions, Sources, Updates, Summaries):
             self._close_summaries()
             self._run_stt(False)
             self.host.stop_trigger()
+            self.host.set_hotkey("", None)
             self.chain.close()
             self.host.quit()
