@@ -11,7 +11,8 @@ import sys
 import threading
 import time
 
-from . import lang, sentences, settings, stt_server
+from . import app_skip, lang, sentences, settings, stt_server
+from .app_skip import Skips
 from .app_summarize import Summaries
 from .app_updates import Updates
 from .captions import Captions
@@ -36,15 +37,7 @@ def _causes(err):
     return " from ".join(names)
 
 
-def _offset(text, units, index):
-    """Where units[index] starts in text; units come from sentences.split, so each is found in order."""
-    at = 0
-    for unit in units[:index]:
-        at = text.index(unit, at) + len(unit)
-    return text.index(units[index], at) if index < len(units) else len(text)
-
-
-class App(Captions, Sources, Updates, Summaries):
+class App(Captions, Sources, Updates, Summaries, Skips):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -218,7 +211,7 @@ class App(Captions, Sources, Updates, Summaries):
             self.stop()
         self._read_text, self._sentences, self._sentence = text, sentences.split(text), start
         self._tracked = False
-        text = text[_offset(self._read_text, self._sentences, start):]
+        text = text[app_skip.offset(self._read_text, self._sentences, start):]
         self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
@@ -242,33 +235,6 @@ class App(Captions, Sources, Updates, Summaries):
                          fallback_tag=self._read_options[3],
                          on_caption=lambda text: self.events.put(("caption", rid, index, text)),
                          on_progress=lambda chars: self.events.put(("progress", rid, index, chars)))
-
-    def skip(self, delta):
-        """⏮ (-1) and ⏭ (+1): read again from the previous or next sentence; past the last one stops."""
-        if not self._read_options:
-            return
-        index = max(0, self._sentence + delta)
-        if index >= len(self._sentences):
-            self.stop()
-            return
-        self.play(self._read_text, self._read_options[0], start=index)
-        self.popup.set_playing(True)
-        self.popup.set_loading(True)
-
-    def _track(self, caption):
-        """Moves the skip position to the sentence shown; a caption that matches none (Codex rewords) keeps it.
-
-        After the first match the search starts past the current sentence, so "Go. Go." moves to the second one."""
-        start = self._sentence + self._tracked
-        if caption in self._sentences[start:]:
-            self._sentence, self._tracked = self._sentences.index(caption, start), True
-
-    def _hotkey_read(self, x, y):
-        try:
-            text = self.host.read_selection(self.cfg["clipboard_fallback"])
-        except Exception:
-            text = None
-        self.events.put(("hotkey_read", text, x, y))
 
     def _restore_speech_options(self):
         self._read_options = None

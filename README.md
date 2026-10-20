@@ -32,7 +32,7 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **Summarize.** ✦ next to Play summarizes the selection on your computer with Qwen3-4B through [llama.cpp](https://github.com/ggml-org/llama.cpp), then reads the summary. The first click asks to download the model once (2.5 GB, verified by SHA-256). Settings → Summarize shows its status and removes it.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Skip by sentence.** ⏮ and ⏭ on the bar read again from the previous or next sentence.
-- **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection without the bar. Press it again to stop. Change it or turn it off in Settings → Reading.
+- **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading.
 - **Speed on the bar.** 0.5× to 2×, saved and shared with Settings.
 - **Read-along captions.** The current sentence appears above the bar as it plays.
 - **Six languages.** Hebrew, English, Arabic, Russian, Spanish, and French.

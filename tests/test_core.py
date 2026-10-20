@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from harness_discussion import core, settings, updates
+from harness_discussion import app_skip, core, settings, updates
 from harness_discussion.audio import NoAudioError
 
 
@@ -224,7 +224,7 @@ class CoreTest(unittest.TestCase):
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)
-        self.assertEqual([text[core._offset(text, units, i):] for i in range(5)],
+        self.assertEqual([text[app_skip.offset(text, units, i):] for i in range(5)],
                          ["Yes. No. Yes. End", "No. Yes. End", "Yes. End", "End", ""])
 
     def wait_event(self, app):
