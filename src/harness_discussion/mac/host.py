@@ -10,7 +10,7 @@ from ..kokoro_tts import KokoroEngine
 from . import selection, ui
 from .popup import Popup
 from .settings_ui import SettingsWindow
-from .trigger import SelectionTrigger
+from .trigger import HotKey, SelectionTrigger, top_left
 from .voice import MacVoiceEngine
 
 
@@ -36,7 +36,7 @@ class MacHost:
     def __init__(self):
         self.app = None  # set by core.App
         self.watcher = None  # set by mac.main
-        self.trigger, self._missing, self._error = None, False, None
+        self.trigger, self.hotkey, self._missing, self._error = None, None, False, None
         self.ns = AppKit.NSApplication.sharedApplication()
         self.ns.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
         self.delegate = _Delegate.alloc().initWithHost_(self)
@@ -155,6 +155,15 @@ class MacHost:
         if self.trigger:
             self.trigger.stop()
             self.trigger = None
+
+    def set_hotkey(self, spec, on_hotkey):
+        """Replaces the read shortcut; "" turns it off."""
+        if self.hotkey:
+            self.hotkey.stop()
+        self.hotkey = HotKey(spec, on_hotkey) if spec else None
+
+    def pointer(self):
+        return top_left(AppKit.NSEvent.mouseLocation())
 
     def after(self, ms, fn):
         ui.timer(ms / 1000, fn)

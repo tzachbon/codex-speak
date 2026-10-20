@@ -124,8 +124,8 @@ def _screen_at(x, y):
 
 class Popup:
     def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
-                 on_source, sources, on_summarize=lambda text, tag: None):
-        """sources: returns the source names the menu offers; on_source(name) picks one."""
+                 on_source, sources, on_skip, on_summarize=lambda text, tag: None):
+        """sources: returns the source names the menu offers; on_source(name) picks one. on_skip(-1 or 1)."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
         self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_settings = on_lang, on_speed, on_settings
@@ -135,6 +135,8 @@ class Popup:
 
         self.btn = _play_button(self._toggle)
         self.stop_btn = _icon_button("stop.fill", "Stop", self._stop, tint=AppKit.NSColor.whiteColor())
+        self.back_btn = _icon_button("backward.fill", "Previous sentence", lambda: on_skip(-1))
+        self.next_btn = _icon_button("forward.fill", "Next sentence", lambda: on_skip(1))
         self.spinner = AppKit.NSProgressIndicator.alloc().init()
         self.spinner.setStyle_(AppKit.NSProgressIndicatorStyleSpinning)
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
@@ -157,9 +159,9 @@ class Popup:
         self.source_btn = _text_button(self._source_menu, "", settings.DEFAULT_SOURCES, ui.source_icon)
         settings_btn = _icon_button("gearshape.fill", "Settings", self._open_settings)
         close_btn = _icon_button("xmark", "Close", self.close)
-        row = ui.stack([self.btn, self.spinner, self.stop_btn, self.ai_btn, self.ai_progress, _divider(),
-                        self.source_btn, self.lang_btn, self.speed_btn, _divider(), settings_btn, close_btn],
-                       vertical=False, spacing=6)
+        row = ui.stack([self.btn, self.spinner, self.back_btn, self.next_btn, self.stop_btn, self.ai_btn,
+                        self.ai_progress, _divider(), self.source_btn, self.lang_btn, self.speed_btn, _divider(),
+                        settings_btn, close_btn], vertical=False, spacing=6)
         row.setEdgeInsets_((6, 7, 6, 8))
         self.spinner.setHidden_(True)
         self.ai_progress.setHidden_(True)
@@ -254,8 +256,9 @@ class Popup:
         self.caption.set_paused(self.paused)  # a read stopped while paused must not freeze the next one
         pausing = playing and not paused
         self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
-        self.stop_btn.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
-        self.stop_btn.setAlphaValue_(1 if playing else 0.3)
+        for button in (self.stop_btn, self.back_btn, self.next_btn):
+            button.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
+            button.setAlphaValue_(1 if playing else 0.3)
         if not playing:
             self.schedule_hide()
 
@@ -309,6 +312,11 @@ class Popup:
         if self._hide_timer:
             self._hide_timer.invalidate()
             self._hide_timer = None
+
+    def play(self):
+        """Starts reading the shown text, as ▶ does."""
+        if not self.playing:
+            self._toggle()
 
     def _toggle(self):
         if not self.playing:

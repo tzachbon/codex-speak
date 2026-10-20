@@ -9,6 +9,7 @@ from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
 from .captions_page import CaptionsPage
+from .reading_page import ReadingPage
 from .summarize_page import SummarizePage
 
 WIDTH = 460  # inside a card
@@ -69,10 +70,10 @@ def _nav_button(title, symbol, color, fn):
     return b
 
 
-class SettingsWindow(CaptionsPage, SummarizePage):
+class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
     def __init__(self, app, show_guide, welcome=False):
         self.app, self.cfg = app, dict(app.cfg)
-        self._save_timer = None
+        self._save_timer = self._recorder = None
 
         # Voices
         self.speed = AppKit.NSSlider.sliderWithValue_minValue_maxValue_target_action_(
@@ -99,14 +100,7 @@ class SettingsWindow(CaptionsPage, SummarizePage):
         # Captions
         captions = self._captions_page()
 
-        # Reading
-        hidden, _ = ui.option("Read apps that hide their selection",
-                              "Copies the selection with ⌘C, then puts your clipboard back.",
-                              self.cfg["clipboard_fallback"], lambda on: self._set("clipboard_fallback", on), WIDTH)
-        early, _ = ui.option("Prepare speech when I select text",
-                             "When Cursor reads first, sends the first sentence to Cursor before you press "
-                             "Play, so speech starts sooner.", self.cfg["prefetch"], lambda on: self._set("prefetch", on), WIDTH)
-        reading = [_card([hidden, _divider(), early])]
+        reading = self._reading_page()
 
         summary = self._summarize_page()
 
@@ -248,6 +242,7 @@ class SettingsWindow(CaptionsPage, SummarizePage):
 
     def close(self):
         self._flush()
+        self._stop_recording()
         self.win.close()
 
     def _source_row(self, name):

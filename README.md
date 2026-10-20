@@ -31,6 +31,8 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **You set the order.** Settings → Voices lists the sources in reading order. Turn each one on or off, move it up or down, pick its voice, and test it. A source that needs installing or a sign-in shows a button that opens the download page or starts the sign-in. The bar's source menu moves a source to the top. Picked during a read, it takes over from the sentence being read. Picked during a read, it takes over from the sentence being read.
 - **Summarize.** ✦ next to Play summarizes the selection on your computer with Qwen3-4B through [llama.cpp](https://github.com/ggml-org/llama.cpp), then reads the summary. The first click asks to download the model once (2.5 GB, verified by SHA-256). Settings → Summarize shows its status and removes it.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
+- **Skip by sentence.** ⏮ and ⏭ on the bar read again from the previous or next sentence.
+- **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading.
 - **Speed on the bar.** 0.5× to 2×, saved and shared with Settings.
 - **Read-along captions.** The current sentence appears above the bar as it plays.
 - **Six languages.** Hebrew, English, Arabic, Russian, Spanish, and French.
@@ -71,7 +73,8 @@ After an update, macOS can stop trusting the app even though System Settings sti
 1. Select text with the mouse (drag or double-click).
 2. Press ▶ on the bar. The language menu defaults to Auto.
 3. Pick a speed from the bar's speed menu, and a source from its source menu.
-4. ⏸ pauses and ▶ continues. ■ stops. Selecting new text while paused replaces the paused read.
+4. ⏸ pauses and ▶ continues. ■ stops. ⏮ and ⏭ move by a sentence. Selecting new text while paused replaces the paused read.
+5. Or press the read shortcut (Ctrl+Alt+R, or ⌥⌘R on a Mac) to read the selection at once.
 
 On a Mac, the menu bar icon's menu shows what is playing and has Pause, Stop, Speed, and Voice Source. *Show Popup on Selection* turns the bar off until you turn it back on or restart the app.
 

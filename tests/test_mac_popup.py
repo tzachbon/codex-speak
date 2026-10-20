@@ -14,7 +14,7 @@ class PopupSourceTest(unittest.TestCase):
         picked = []
         noop = lambda *a: None
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")])
+                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")], on_skip=noop)
         bar.set_source("Codex")
         self.assertEqual(bar.source_btn.title(), "\ufffc Codex ▾")
         menus = []
@@ -31,7 +31,7 @@ class PopupSourceTest(unittest.TestCase):
         AppKit.NSApplication.sharedApplication()
         noop = lambda *a: None
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [])
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [], on_skip=noop)
         bar.set_source("macOS")
         self.assertEqual((bar.speed_btn.title(), bar.lang_btn.title()), ("1× ▾", "Auto ▾"))
         width = lambda: bar.win.contentView().fittingSize().width
@@ -53,7 +53,7 @@ class PopupSourceTest(unittest.TestCase):
         noop, asked = (lambda *a: None), []
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
                           on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [],
-                          on_summarize=lambda text, tag: asked.append((text, tag)))
+                          on_summarize=lambda text, tag: asked.append((text, tag)), on_skip=noop)
         self.addCleanup(bar.hide)
         bar.show("Some text.", 400, 400)
         views = list(bar.btn.superview().arrangedSubviews())
@@ -74,7 +74,7 @@ class PopupSourceTest(unittest.TestCase):
         AppKit.NSApplication.sharedApplication()
         noop = lambda *a: None
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [])
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [], on_skip=noop)
         bar.show("Hello there.", 400, 400)
         bar.set_caption("Not playing yet.")
         self.assertFalse(bar.caption.win.isVisible())
@@ -93,7 +93,7 @@ class PopupSourceTest(unittest.TestCase):
         AppKit.NSApplication.sharedApplication()
         noop = lambda *a: None
         bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [])
+                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [], on_skip=noop)
         self.addCleanup(bar.hide)
         bar.show("x", 400, 400)
         bar.set_playing(True)

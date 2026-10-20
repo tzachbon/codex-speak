@@ -5,13 +5,15 @@ import unittest
 if sys.platform != "win32":
     raise unittest.SkipTest("Windows only")
 
+from pynput.keyboard import Key, KeyCode
 from pynput.mouse import Button
 
 from harness_discussion import settings
 from unittest import mock
 
 from harness_discussion.win import clipboard, selection
-from harness_discussion.win.trigger import SelectionTrigger
+from harness_discussion.win.shortcut_row import KEYS
+from harness_discussion.win.trigger import HotKey, SelectionTrigger
 from harness_discussion.win.voice import sapi_rate
 
 
@@ -207,3 +209,37 @@ class SapiRate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadShortcut(unittest.TestCase):
+    def make(self, spec):
+        hits = []
+        with mock.patch("harness_discussion.win.trigger.keyboard.Listener"):
+            return HotKey(spec, lambda: hits.append(1)), hits
+
+    def test_fires_after_release_by_virtual_key_under_any_layout(self):
+        hotkey, hits = self.make("<ctrl>+<alt>+r")
+        hotkey._press(Key.ctrl_l)
+        hotkey._press(Key.alt_l)
+        hotkey._press(KeyCode(vk=0x52, char="ר"))  # R on a Hebrew layout
+        self.assertEqual(hits, [])  # not while the keys are down
+        for key in (KeyCode(vk=0x52), Key.alt_l, Key.ctrl_l):
+            hotkey._release(key)
+        self.assertEqual(hits, [1])
+
+    def test_extra_modifier_and_function_keys(self):
+        hotkey, hits = self.make("<ctrl>+<alt>+r")
+        for key in (Key.ctrl_l, Key.shift, Key.alt_l, KeyCode(vk=0x52)):
+            hotkey._press(key)
+        for key in (KeyCode(vk=0x52), Key.alt_l, Key.shift, Key.ctrl_l):
+            hotkey._release(key)
+        self.assertEqual(hits, [])
+        hotkey, hits = self.make("<shift>+<f5>")
+        hotkey._press(Key.shift_r)
+        hotkey._press(Key.f5)
+        hotkey._release(Key.f5)
+        hotkey._release(Key.shift_r)
+        self.assertEqual(hits, [1])
+
+    def test_settings_record_the_virtual_key(self):
+        self.assertEqual((KEYS[0x52], KEYS[0x30], KEYS[0x74]), ("r", "0", "f5"))

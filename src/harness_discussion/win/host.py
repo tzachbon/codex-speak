@@ -1,5 +1,7 @@
 """Windows host: Tk on the main thread, pystray in the tray, UI Automation for the selection."""
+import ctypes
 import threading
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import messagebox
 
@@ -13,7 +15,7 @@ from ..kokoro_tts import KokoroEngine
 from . import selection
 from .popup import Popup
 from .settings_ui import SettingsWindow
-from .trigger import SelectionTrigger
+from .trigger import HotKey, SelectionTrigger
 from .voice import SapiEngine
 
 
@@ -22,7 +24,7 @@ class TkHost:
         self.app = None  # set by core.App
         self.root = tk.Tk()
         self.root.withdraw()
-        self.trigger = None
+        self.trigger = self.hotkey = None
         self.icon = pystray.Icon("harness-discussion", icon_image(), "Harness Discussion", self._menu())
 
     def _menu(self):
@@ -45,7 +47,8 @@ class TkHost:
                               lambda: a.stt_error, a.update_state, a.check_update, engines=a.chain.engines,
                               statuses=lambda: a.statuses,
                               on_play=lambda name: a.play(f"This is {name}.", None, only=name), welcome=welcome,
-                             on_fix=a.fix_source, summarizer=a)
+                             on_fix=a.fix_source, summarizer=a,
+                              on_record=lambda on: a.apply("hotkey", "" if on else a.cfg["hotkey"]))
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)
@@ -57,6 +60,17 @@ class TkHost:
     def stop_trigger(self):
         if self.trigger:
             self.trigger.stop()
+
+    def set_hotkey(self, spec, on_hotkey):
+        """Replaces the read shortcut; "" turns it off."""
+        if self.hotkey:
+            self.hotkey.stop()
+        self.hotkey = HotKey(spec, on_hotkey) if spec else None
+
+    def pointer(self):
+        point = wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(point))
+        return point.x, point.y
 
     def after(self, ms, fn):
         self.root.after(ms, fn)

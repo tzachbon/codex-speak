@@ -11,7 +11,8 @@ import sys
 import threading
 import time
 
-from . import lang, sentences, settings, stt_server
+from . import app_skip, lang, sentences, settings, stt_server
+from .app_skip import Skips
 from .app_summarize import Summaries
 from .app_updates import Updates
 from .captions import Captions
@@ -36,7 +37,7 @@ def _causes(err):
     return " from ".join(names)
 
 
-class App(Captions, Sources, Updates, Summaries):
+class App(Captions, Sources, Updates, Summaries, Skips):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -44,6 +45,9 @@ class App(Captions, Sources, Updates, Summaries):
         self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
         self._continuous, self._last_caption, self._held_caption = False, "", ""
         self._caption_steps = self._caption_held = None
+        self._read_text, self._sentences, self._sentence = "", [], 0  # what ⏮ and ⏭ step through
+        self._tracked, self._hotkey_wait = False, None  # a caption matched _sentence; a shortcut read in flight
+        self._read_start, self._by_position = 0, False
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -71,7 +75,8 @@ class App(Captions, Sources, Updates, Summaries):
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
                                      on_settings=lambda: self.events.put(("settings",)),
-                                     on_source=self._popup_source, sources=self._source_choices)
+                                     on_source=self._popup_source, sources=self._source_choices,
+                                     on_skip=self.skip)
         self._configure_captions()
         self._show_source()
 
@@ -103,6 +108,8 @@ class App(Captions, Sources, Updates, Summaries):
             self.chain.prefetch = value
         elif key == "stt_server":
             self._run_stt(value)
+        elif key == "hotkey":
+            self.host.set_hotkey(value, lambda: self.events.put(("hotkey",)))
 
     def _configure_captions(self):
         self.popup.configure_captions(self.cfg["caption_font_size"], self.cfg["caption_background"],
@@ -199,16 +206,20 @@ class App(Captions, Sources, Updates, Summaries):
             return []
         return [first, *sentences.chunks(text[text.index(first) + len(first):], PIECE_CHARS)]
 
-    def play(self, text, lang_tag, only=None):
-        """only: read through that engine alone, as a Settings Test button does."""
+    def play(self, text, lang_tag, only=None, start=0):
+        """only: read through that engine alone, as a Settings Test button does. start: the sentence to begin at."""
         if self._read_options:
             self.stop()
+        self._read_text, self._sentences, self._sentence = text, sentences.split(text), start
+        self._read_start, self._tracked, self._by_position = start, False, False
+        text = text[app_skip.offset(self._read_text, self._sentences, start):]
         self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
         self._continuous = self.chain.continuous()
         self._units, self._unit_index, self._pending_next = self._units_for(text), 0, False
         self._last_caption = self._held_caption = ""
+        self._heard = (0, "")
         self._read_options = (lang_tag, self.cfg["sources"], self.cfg["speed"], lang.detect(text))
         self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.popup.set_caption("")
@@ -235,6 +246,7 @@ class App(Captions, Sources, Updates, Summaries):
     def stop(self):
         self._read_id += 1  # invalidate callbacks before asynchronous engine cleanup
         self._units, self._pending_next = [], False
+        self._hotkey_wait = None  # a shortcut read still fetching its selection is cancelled too
         self.chain.stop()
         self._restore_speech_options()
         self.popup.set_playing(False)
@@ -249,7 +261,7 @@ class App(Captions, Sources, Updates, Summaries):
         self.popup.set_caption_paused(False)
         held, self._held_caption = self._held_caption, ""
         if held:
-            self._show_caption(held)
+            self._display(held)  # tracked when it arrived
         self._resume_captions()
         self.chain.resume()
         if self._pending_next:
@@ -323,6 +335,10 @@ class App(Captions, Sources, Updates, Summaries):
                                             fallback_tag=self._read_options[3])
         elif kind == "progress":
             self._follow_progress(*args)
+        elif kind == "hotkey":
+            self._hotkey()
+        elif kind == "hotkey_read":
+            self._hotkey_shown(*args)
         elif kind == "caption":
             self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":
@@ -372,5 +388,6 @@ class App(Captions, Sources, Updates, Summaries):
             self._close_summaries()
             self._run_stt(False)
             self.host.stop_trigger()
+            self.host.set_hotkey("", None)
             self.chain.close()
             self.host.quit()

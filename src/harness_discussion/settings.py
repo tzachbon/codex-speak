@@ -6,6 +6,8 @@ import shutil
 import sys
 import tempfile
 
+from . import hotkeys
+
 if sys.platform == "win32":
     import winreg
 
@@ -25,7 +27,8 @@ SYSTEM_VOICES = ("Edge", "Windows", "macOS")
 DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "speed": 1.0,
             "clipboard_fallback": True, "stt_server": False, "prefetch": False,
             "auto_update": sys.platform == "darwin", "caption_font_size": 10,
-            "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None}
+            "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None,
+            "hotkey": hotkeys.DEFAULT}  # "" turns the read shortcut off
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Harness Discussion"  # the installer creates and removes it with `--startup on|off`
@@ -90,6 +93,8 @@ def load(path=PATH) -> dict:
             s[key] = DEFAULTS[key]
     if not isinstance(s["ax_granted_build"], (str, type(None))):
         s["ax_granted_build"] = None
+    if s["hotkey"] != "" and not hotkeys.parse(s["hotkey"]):
+        s["hotkey"] = DEFAULTS["hotkey"]
     return s
 
 
