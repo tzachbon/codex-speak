@@ -221,6 +221,18 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(app.popup.playing)
         self.assertIsNone(app._read_options)
 
+    def test_engine_progress_tells_repeated_sentences_apart(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        app.play("Go. Stop. Go. End.", None, start=1)  # units: "Stop.", then "Go. End."
+        app._follow_progress(app._read_id, 0, 0)
+        self.assertEqual(app._sentence, 1)
+        app._unit_index = 1
+        app._follow_progress(app._read_id, 1, 1)  # inside the second "Go."
+        self.assertEqual(app._sentence, 2)
+        app._track("Go.")  # text matching no longer moves it
+        self.assertEqual(app._sentence, 2)
+
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)

@@ -42,6 +42,7 @@ class Captions:
             return
         self._caption_steps = self._caption_held = None
         text = sentences.at(self._units[index], chars)
+        self._track_at(index, chars)
         if self.popup.paused:
             self._held_caption = text  # a position queued as the user paused shows on resume
         else:

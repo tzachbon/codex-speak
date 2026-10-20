@@ -14,7 +14,7 @@ class Parse(unittest.TestCase):
         self.assertEqual(hotkeys.parse("<cmd>+<f5>"), (frozenset({"cmd"}), "f5"))
 
     def test_invalid_shortcuts(self):
-        for spec in ("", "r", "<ctrl>", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", None, 3):
+        for spec in ("", "r", "<ctrl>", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", "<ctrl>+c", "<cmd>+c", None, 3):
             self.assertIsNone(hotkeys.parse(spec), spec)
 
     def test_spec_orders_modifiers_and_needs_one(self):

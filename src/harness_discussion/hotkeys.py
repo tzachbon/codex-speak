@@ -3,6 +3,7 @@ import sys
 
 MODS = ("ctrl", "alt", "shift", "cmd")  # display order
 KEYS = {*"abcdefghijklmnopqrstuvwxyz0123456789", *(f"f{n}" for n in range(1, 13))}
+COPY = {(frozenset({"ctrl"}), "c"), (frozenset({"cmd"}), "c")}  # the clipboard fallback sends these
 DEFAULT = "<cmd>+<alt>+r" if sys.platform == "darwin" else "<ctrl>+<alt>+r"
 
 
@@ -19,7 +20,8 @@ def parse(spec):
             keys.append(name)
         else:
             return None
-    return (frozenset(mods), keys[0]) if mods and len(keys) == 1 else None
+    parsed = (frozenset(mods), keys[0]) if mods and len(keys) == 1 else None
+    return None if parsed in COPY else parsed
 
 
 def spec(mods, key):

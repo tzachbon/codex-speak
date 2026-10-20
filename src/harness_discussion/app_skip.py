@@ -1,6 +1,8 @@
 """App's ⏮ and ⏭, and the read shortcut."""
 import threading
 
+from . import sentences
+
 
 def offset(text, units, index):
     """Where units[index] starts in text; units come from sentences.split, so each is found in order."""
@@ -26,10 +28,18 @@ class Skips:
         self.popup.schedule_hide()  # cancels the hide timer that stop() set
         self.popup.set_loading(True)
 
+    def _track_at(self, index, chars):
+        """An engine's reported position: exact, so "Go. Go." is told apart, and text matching stops for this read."""
+        before = self._read_start + sum(len(sentences.split(u)) for u in self._units[:index])
+        at = before + sentences.index_at(self._units[index], chars)
+        self._sentence, self._tracked, self._by_position = min(at, len(self._sentences) - 1), True, True
+
     def _track(self, caption):
         """Moves the skip position to the sentence shown; a caption that matches none (Codex rewords) keeps it.
 
         After the first match the search starts past the current sentence, so "Go. Go." moves to the second one."""
+        if self._by_position:
+            return
         start = self._sentence + self._tracked
         if caption in self._sentences[start:]:
             self._sentence, self._tracked = self._sentences.index(caption, start), True

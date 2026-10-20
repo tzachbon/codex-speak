@@ -53,12 +53,17 @@ def _fit(unit, limit):
 
 def at(text, pos):
     """The unit holding character `pos` of `text`; past the end, the last unit."""
+    return (split(text) or [text])[index_at(text, pos)]
+
+
+def index_at(text, pos):
+    """The index of the unit `at` returns."""
     end, units = 0, split(text) or [text]
-    for unit in units:
+    for i, unit in enumerate(units):
         end = text.find(unit, end) + len(unit)
         if pos < end:
-            return unit
-    return units[-1]
+            return i
+    return len(units) - 1
 
 
 def current(text):

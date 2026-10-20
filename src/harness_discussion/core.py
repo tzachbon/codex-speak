@@ -47,6 +47,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         self._caption_steps = self._caption_held = None
         self._read_text, self._sentences, self._sentence = "", [], 0  # what ⏮ and ⏭ step through
         self._tracked, self._hotkey_wait = False, None  # a caption matched _sentence; a shortcut read in flight
+        self._read_start, self._by_position = 0, False
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -210,7 +211,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         if self._read_options:
             self.stop()
         self._read_text, self._sentences, self._sentence = text, sentences.split(text), start
-        self._tracked = False
+        self._read_start, self._tracked, self._by_position = start, False, False
         text = text[app_skip.offset(self._read_text, self._sentences, start):]
         self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
