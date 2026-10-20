@@ -310,6 +310,20 @@ class Bar(unittest.TestCase):
         self.assertEqual((app.popup.playing, app.popup.source, app.chain.enabled), (True, "macOS", ["macOS", "Cursor"]))
         self.assertEqual(app._read_options[0], "he-IL")
 
+    def test_picking_a_source_mid_piece_starts_from_the_sentence_on_screen(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.set_playing(True)
+        app.play("One. Two. Three.", None)
+        app.pump()
+        cursor.done[0](None)
+        app.pump()
+        self.assertEqual((cursor.spoken, app.popup.caption), (["One.", "Two. Three."], "Two."))
+        app.host.timers[-1][1]()  # the caption steps to the next sentence
+        app.popup.callbacks["on_source"]("macOS")
+        app.pump()
+        self.assertEqual(macos.spoken, ["Three."])
+
     def test_picking_a_source_while_paused_keeps_the_read_paused(self):
         cursor, macos = Engine("Cursor"), Engine("macOS")
         app = self.make(cursor, macos)

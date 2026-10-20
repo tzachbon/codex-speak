@@ -29,7 +29,7 @@ class Captions:
             if self.popup.paused:
                 self._caption_held = (rid, index, parts, None)
                 return
-            self.popup.set_caption(parts[0])
+            self._show_caption(parts[0])
             ms = int(len(parts[0]) / (CAPTION_CHARS_S * self._read_options[2]) * 1000)  # the read's own speed
             parts = parts[1:]
         if parts:
