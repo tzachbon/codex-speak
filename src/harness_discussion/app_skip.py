@@ -30,8 +30,14 @@ class Skips:
 
     def _track_at(self, index, chars):
         """An engine's reported position: exact, so "Go. Go." is told apart, and text matching stops for this read."""
-        before = self._read_start + sum(len(sentences.split(u)) for u in self._units[:index])
-        at = before + sentences.index_at(self._units[index], chars)
+        from .core import PIECE_CHARS
+        at = self._read_start + sentences.index_at(self._units[0], chars) if index == 0 else self._read_start
+        if index:  # pieces after the first unsplit unit cut a sentence longer than a piece into fragments
+            left = sum(len(sentences.split(u)) for u in self._units[1:index]) + sentences.index_at(self._units[index], chars)
+            for at in range(self._read_start + 1, len(self._sentences)):
+                left -= len(list(sentences._fit(self._sentences[at], PIECE_CHARS)))
+                if left < 0:
+                    break
         self._sentence, self._tracked, self._by_position = min(at, len(self._sentences) - 1), True, True
 
     def _track(self, caption):

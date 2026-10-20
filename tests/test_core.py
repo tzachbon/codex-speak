@@ -233,6 +233,15 @@ class CoreTest(unittest.TestCase):
         app._track("Go.")  # text matching no longer moves it
         self.assertEqual(app._sentence, 2)
 
+    def test_engine_progress_counts_a_split_long_sentence_once(self):
+        app = self.make(Engine("macOS"))
+        long = "word " * 1500 + "end."  # longer than a piece, so it arrives as fragments
+        app.play("Start. " + long + " Last one. Final.", None)
+        last = len(app._units) - 1
+        app._unit_index = last
+        app._follow_progress(app._read_id, last, app._units[last].index("Last one."))
+        self.assertEqual(app._sentence, 2)
+
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)
