@@ -108,7 +108,7 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 - **Sources**: under Reading, the voice sources in reading order, by default Cursor, Codex, Kokoro, Edge, then Windows (Cursor, Codex, Kokoro, then macOS on a Mac). Kokoro is skipped until you press its **Download…**. The model goes to `%LOCALAPPDATA%\harness-discussion\kokoro` (`~/Library/Application Support/harness-discussion/kokoro` on a Mac), and its size and SHA-256 digest are checked. Each row shows whether the source is ready, its voice where it has a choice, an on/off box, Test, and ↑ ↓ to change the order. If one source can't read, the next one does.
 - **Captions**: font size (8 to 24 points), optional background, and background opacity. Changes apply to the visible caption right away.
 - **Read apps that hide their selection**: for apps such as VS Code, the app borrows Ctrl+C and then restores every clipboard format.
-- **Prepare speech as soon as I select text**: off by default. When Cursor or Edge reads first, the app requests the first sentence's audio as soon as the bar appears. This sends that sentence to Cursor or Microsoft before you press play.
+- **Prepare speech as soon as I select text**: off by default. When Cursor or Edge reads first, the app requests the opening's audio as soon as the bar appears. This sends those sentences to Cursor or Microsoft before you press play.
 - **Speech-to-text server**: see [STT.md](STT.md).
 
 Settings are saved in `%APPDATA%\harness-discussion\settings.json`, next to a small `harness-discussion.log`.
@@ -146,7 +146,7 @@ Use *Settings > Apps > Harness Discussion*. This removes the app, its sign-in ta
 
 - Codex's realtime API is marked experimental. A Codex update can break it, and the next source then reads.
 - Cursor speech uses the same call as the Cursor desktop app. A Cursor update can change it, and the next source then reads.
-- Codex reads a whole selection in one session, in pieces of up to 480 characters, with a short pause between pieces. It reads in its own words: links become site names, file paths become file names, and commit hashes are skipped. Other voices read the first sentence, then the rest in pieces of up to 5,000 characters. The next piece is prepared while the current one plays. Voice, language, and speed changes apply to the next complete selection.
+- Codex reads a whole selection in one session, in pieces of up to 480 characters, with a short pause between pieces. It reads in its own words: links become site names, file paths become file names, and commit hashes are skipped. Other voices read an opening of whole sentences, a third of the selection's words and at most about 30, then the rest in pieces of up to 5,000 characters. The next piece is prepared while the current one plays. Voice, language, and speed changes apply to the next complete selection.
 - In testing, 5 of 16 long Codex reads had a fault: 2 lost the connection, 1 stopped early, and 2 said "Read it." aloud between pieces. Silence falls back automatically. An early stop does not.
 - When Codex reads first, each popup shown pre-starts a short Codex voice session.
 - Choosing a language from the menu moves keyboard focus away from the source app. The text is already captured.
