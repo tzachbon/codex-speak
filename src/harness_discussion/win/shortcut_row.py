@@ -27,6 +27,7 @@ class ShortcutRow:
     def _record_hotkey(self):
         """Change…: the next key combination with a modifier becomes the shortcut; Esc keeps the old one."""
         self.hotkey_lbl["text"] = "Press keys…"
+        self.on_record(True)  # so pressing the current shortcut records it instead of reading
         self.win.focus_force()
         self.win.bind("<KeyPress>", self._hotkey_key)
 
@@ -43,4 +44,5 @@ class ShortcutRow:
         self.hotkey_lbl["text"] = hotkeys.label(spec)
         if spec != self.cfg["hotkey"]:
             self._set("hotkey", spec)
+        self.on_record(False)
 

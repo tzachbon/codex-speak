@@ -21,10 +21,11 @@ PAGES = ("Voices", "Captions", "Reading", "Summarize", "Speech to Text", "Genera
 class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
                  update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
-                 statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None, summarizer=None):
+                 statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None, summarizer=None,
+                 on_record=lambda recording: None):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
         self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
-        self.on_fix = on_fix
+        self.on_fix, self.on_record = on_fix, on_record
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE)
@@ -294,6 +295,7 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
 
     def close(self):
         self._flush_pending()
+        self.on_record(False)
         self.win.destroy()
 
     def _set(self, key, value):
