@@ -153,11 +153,12 @@ class PcmPlayer:
         # device at the same moment (a device change), which silences every voice until a restart.
         # The callback stops the stream instead; it is closed only after the IO thread has finished stopping.
         self._closing = True
-        stopped = self._stopped.wait(CLOSE_WAIT_S) or not self._stream.active
+        if not self._stopped.wait(CLOSE_WAIT_S):
+            # shortcut: a stream whose IO never finished stopping is leaked rather than risk the deadlock. It stays
+            # listed, so no PortAudio reset closes it either; after a device change the next source reads instead.
+            return
         with _live_lock:  # a reset waits until this stream is closed, not just unlisted
             try:
-                if stopped:
-                    self._stream.close()
-                # shortcut: a stream whose IO never called back is left open (leaked) rather than risk the deadlock
+                self._stream.close()
             finally:
                 _live.discard(self._stream)

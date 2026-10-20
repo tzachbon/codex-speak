@@ -310,6 +310,19 @@ class Bar(unittest.TestCase):
         self.assertEqual((app.popup.playing, app.popup.source, app.chain.enabled), (True, "macOS", ["macOS", "Cursor"]))
         self.assertEqual(app._read_options[0], "he-IL")
 
+    def test_picking_a_source_while_paused_keeps_the_read_paused(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.set_playing(True)
+        app.play("One. Two.", None)
+        app.pump()
+        app.popup.set_playing(True, paused=True)
+        app.pause()
+        app.popup.callbacks["on_source"]("macOS")
+        app.pump()
+        self.assertEqual((macos.spoken, macos.paused.is_set()), (["One."], True))
+        self.assertEqual((app.popup.playing, app.popup.paused), (True, True))
+
     def test_picking_a_source_while_idle_does_not_start_a_read(self):
         cursor, macos = Engine("Cursor"), Engine("macOS")
         app = self.make(cursor, macos)

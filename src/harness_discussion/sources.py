@@ -110,6 +110,9 @@ class Sources:
         tag = self._read_options[0] if rest else None
         self.change("sources", [[name, True]] + [s for s in sources if s[0] != name])
         if rest:  # a read in progress starts its unfinished piece over on the picked source
+            paused = self.popup.paused
             self.play(" ".join(rest), tag)
-            self.popup.set_playing(True)
-            self.popup.set_loading(True)
+            if paused:
+                self.pause()
+            self.popup.set_playing(True, paused=paused)
+            self.popup.set_loading(not paused)

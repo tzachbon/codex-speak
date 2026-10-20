@@ -84,14 +84,15 @@ class Player(unittest.TestCase):
         stream.close.assert_called_once()
         self.assertNotIn(stream, audio._live)
 
-    def test_a_stream_the_callback_never_stops_is_left_open_and_unlisted(self):
-        stream = mock.Mock(active=True)
+    def test_a_stream_that_never_finishes_stopping_is_left_open_and_listed(self):
+        stream = mock.Mock(active=False)  # inactive, but the IO thread has not finished its stop notification
         with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream), \
                 mock.patch.object(audio, "CLOSE_WAIT_S", 0.05):
             PcmPlayer().close()
         stream.abort.assert_not_called()
         stream.close.assert_not_called()
-        self.assertNotIn(stream, audio._live)
+        self.assertIn(stream, audio._live)  # so a PortAudio reset cannot close it either
+        audio._live.discard(stream)
 
     def test_a_closing_player_writes_silence_and_aborts_even_when_paused(self):
         p = PcmPlayer.__new__(PcmPlayer)
