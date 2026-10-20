@@ -103,8 +103,10 @@ def app():
     a._units, a._unit_index, a._pending_next, a._read_options = [], 0, False, None
     a._continuous, a._last_caption, a._held_caption = False, "", ""
     a._caption_steps = a._caption_held = None
+    a._hotkey_wait = None
     a.cfg = {"sources": [["Codex", True], ["Edge", True]], "voices": {}, "speed": 1.0, "prefetch": False}
     a.popup, a.chain, a.settings_win = Popup(), Chain(), None
+    a.chain.active_name = None
     a.refresh_statuses = lambda: None  # the status check has its own tests
     a.notifications = []
     a.host = SimpleNamespace(notify=lambda *args: a.notifications.append(args), after=lambda ms, fn: fn())

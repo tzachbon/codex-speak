@@ -35,7 +35,8 @@ class Captions:
             if self.popup.paused:
                 self._caption_held = (rid, index, parts, None)
                 return
-            self._show_caption(parts[0], step=True)
+            # a Codex fallback tracks its own transcript, so its estimated steps only show the caption
+            (self._display if self.chain.active_name == "Codex" else self._show_caption)(parts[0], step=True)
             ms = int(len(parts[0]) / (CAPTION_CHARS_S * self._read_options[2]) * 1000)  # the read's own speed
             parts = parts[1:]
         if parts:
@@ -71,7 +72,7 @@ class Captions:
             self._track(text)
         self._display(text)
 
-    def _display(self, text):
+    def _display(self, text, step=False):
         """Shows a caption already tracked."""
         if text != self._last_caption:
             self._last_caption = text
