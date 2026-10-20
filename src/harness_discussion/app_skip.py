@@ -1,4 +1,5 @@
-"""App's ⏮ and ⏭, and the read shortcut's selection read."""
+"""App's ⏮ and ⏭, and the read shortcut."""
+import threading
 
 
 def offset(text, units, index):
@@ -33,9 +34,27 @@ class Skips:
         if caption in self._sentences[start:]:
             self._sentence, self._tracked = self._sentences.index(caption, start), True
 
-    def _hotkey_read(self, x, y):
+    def _hotkey(self):
+        """A press stops a read, cancels a selection read still in flight, or starts one."""
+        if self.popup.playing:
+            self.popup.close()
+        elif self._hotkey_wait:
+            self._hotkey_wait = None
+        else:
+            wait = self._hotkey_wait = object()
+            threading.Thread(target=self._hotkey_read, args=(wait, *self.host.pointer()), daemon=True).start()
+
+    def _hotkey_read(self, wait, x, y):  # worker thread
         try:
             text = self.host.read_selection(self.cfg["clipboard_fallback"])
         except Exception:
             text = None
-        self.events.put(("hotkey_read", text, x, y))
+        self.events.put(("hotkey_read", wait, text, x, y))
+
+    def _hotkey_shown(self, wait, text, x, y):
+        if wait is not self._hotkey_wait:
+            return  # cancelled by another press
+        self._hotkey_wait = None
+        if text and not self.popup.playing:
+            self.popup.show(text, x, y)
+            self.popup.play()

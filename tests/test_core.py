@@ -248,6 +248,28 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(app.popup.playing)
         self.assertIsNone(app._read_options)
 
+    def test_a_second_press_cancels_a_selection_read_in_flight(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        app._hotkey()
+        app._hotkey()  # before the worker posts the selection
+        self.wait_event(app)
+        app.pump()
+        self.assertFalse(app.popup.visible)
+        self.assertEqual(engine.spoken, [])
+
+    def test_a_source_change_keeps_the_whole_selection_for_skip(self):
+        first, second = Engine("macOS"), Engine("Cursor")
+        app = self.make(first, second)
+        app.play("One. Two. Three.", None)
+        app._track("One.")
+        app._track("Two.")
+        app._popup_source("Cursor")
+        self.assertEqual(app._sentences, ["One.", "Two.", "Three."])
+        self.assertEqual((first.spoken + second.spoken)[-1], "Two.")
+        app.skip(-1)
+        self.assertEqual((first.spoken + second.spoken)[-1], "One.")
+
     def test_hotkey_setting_rearms_the_host(self):
         app = self.make(Engine("macOS"))
         app.change("hotkey", "")

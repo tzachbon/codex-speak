@@ -46,7 +46,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         self._continuous, self._last_caption, self._held_caption = False, "", ""
         self._caption_steps = self._caption_held = None
         self._read_text, self._sentences, self._sentence = "", [], 0  # what ⏮ and ⏭ step through
-        self._tracked = False  # whether a caption has matched _sentence yet in this read
+        self._tracked, self._hotkey_wait = False, None  # a caption matched _sentence; a shortcut read in flight
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -333,15 +333,9 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         elif kind == "progress":
             self._follow_progress(*args)
         elif kind == "hotkey":
-            if p.playing:
-                p.close()  # the shortcut also stops a read, paused or not
-            else:
-                threading.Thread(target=self._hotkey_read, args=self.host.pointer(), daemon=True).start()
+            self._hotkey()
         elif kind == "hotkey_read":
-            text, x, y = args
-            if text and not p.playing:
-                p.show(text, x, y)
-                p.play()
+            self._hotkey_shown(*args)
         elif kind == "caption":
             self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":
