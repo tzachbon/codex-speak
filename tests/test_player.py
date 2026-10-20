@@ -7,10 +7,23 @@ from harness_discussion import audio
 from harness_discussion.audio import PcmPlayer
 
 
+def opens(*results):
+    """RawOutputStream for tests: each call raises or returns the next result, whose IO has already stopped."""
+    results = iter(results)
+
+    def open_stream(**kw):
+        result = next(results)
+        if isinstance(result, Exception):
+            raise result
+        kw["finished_callback"]()
+        return result
+    return open_stream
+
+
 class Player(unittest.TestCase):
     def test_a_stale_device_list_is_refreshed_once(self):
         stream = mock.Mock()
-        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=[audio.sd.PortAudioError("gone"), stream]), \
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=opens(audio.sd.PortAudioError("gone"), stream)), \
                 mock.patch.object(audio.sd, "_terminate") as terminate, \
                 mock.patch.object(audio.sd, "_initialize") as initialize:
             p = PcmPlayer()
@@ -23,7 +36,7 @@ class Player(unittest.TestCase):
     def test_no_reset_while_another_player_is_open_and_a_failed_start_is_closed(self):
         playing, broken = mock.Mock(), mock.Mock()
         broken.start.side_effect = audio.sd.PortAudioError("gone")
-        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=[playing, broken]), \
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=opens(playing, broken)), \
                 mock.patch.object(audio.sd, "_terminate") as terminate:
             first = PcmPlayer()
             with self.assertRaises(audio.sd.PortAudioError):
@@ -36,17 +49,58 @@ class Player(unittest.TestCase):
     def test_a_stream_stays_listed_until_it_is_closed(self):
         stream, listed = mock.Mock(), []
         stream.close.side_effect = lambda: listed.append(stream in audio._live)
-        with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream):
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=opens(stream)):
             PcmPlayer().close()
         self.assertEqual((listed, stream in audio._live), ([True], False))
 
     def test_a_stream_opens_and_is_listed_under_the_reset_lock(self):
         stream, locked = mock.Mock(), []
         stream.start.side_effect = lambda: locked.append(audio._live_lock.locked())
-        with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream):
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=opens(stream)):
             p = PcmPlayer()
         self.assertEqual((locked, stream in audio._live), ([True], True))
         p.close()
+
+    def test_close_lets_the_callback_stop_the_stream_and_waits_for_the_stop_to_finish(self):
+        stream, opened = mock.Mock(active=True), {}
+        def open_stream(**kw):
+            opened.update(kw)
+            return stream
+        with mock.patch.object(audio.sd, "RawOutputStream", side_effect=open_stream):
+            p = PcmPlayer()
+        def io_thread():
+            while not p._closing:
+                pass
+            with self.assertRaises(audio.sd.CallbackAbort):
+                p._fill(bytearray(8), 4, None, None)
+            stream.active = False  # PortAudio reports inactive before its stop notification ends
+            stream.close.assert_not_called()
+            opened["finished_callback"]()
+        io = threading.Thread(target=io_thread, daemon=True)
+        io.start()
+        p.close()
+        io.join()
+        stream.abort.assert_not_called()
+        stream.close.assert_called_once()
+        self.assertNotIn(stream, audio._live)
+
+    def test_a_stream_the_callback_never_stops_is_left_open_and_unlisted(self):
+        stream = mock.Mock(active=True)
+        with mock.patch.object(audio.sd, "RawOutputStream", return_value=stream), \
+                mock.patch.object(audio, "CLOSE_WAIT_S", 0.05):
+            PcmPlayer().close()
+        stream.abort.assert_not_called()
+        stream.close.assert_not_called()
+        self.assertNotIn(stream, audio._live)
+
+    def test_a_closing_player_writes_silence_and_aborts_even_when_paused(self):
+        p = PcmPlayer.__new__(PcmPlayer)
+        p._buf, p._lock, p._width, p._paused = bytearray(b"\x01\x02" * 8), threading.Lock(), 2, threading.Event()
+        p._paused.set()
+        p._closing, out = True, bytearray(b"\xff" * 8)
+        with self.assertRaises(audio.sd.CallbackAbort):
+            p._fill(out, 4, None, None)
+        self.assertEqual(bytes(out), bytes(8))
 
     def test_drain_waits_until_the_output_start_notification_has_been_sent(self):
         p = PcmPlayer.__new__(PcmPlayer)
