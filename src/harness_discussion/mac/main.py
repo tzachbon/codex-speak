@@ -19,7 +19,9 @@ def _self_test():
     import AVFoundation
     from ApplicationServices import AXIsProcessTrusted
 
+    from .. import kokoro_tts
     from . import guide, host, pasteboard, permission, popup, selection, settings_ui, startup, trigger, voice  # noqa: F401
+    kokoro_tts.self_test()
     AXIsProcessTrusted()
     carbon = ctypes.CDLL("/System/Library/Frameworks/Carbon.framework/Carbon")
     carbon.IsSecureEventInputEnabled()

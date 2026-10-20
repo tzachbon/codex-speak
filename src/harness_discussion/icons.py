@@ -42,7 +42,8 @@ def _canvas(size):
 def source_image(name, size=32):
     """The voice source's mark on a rounded square, so the bar and Settings show sources at a glance."""
     img, d, g, k = _canvas(size)
-    back = {"Cursor": "#111111", "Codex": "#0d0d0d", "Edge": "#0b5cad", "Windows": "#0078d4"}.get(name, "#5e5ce6")
+    back = {"Cursor": "#111111", "Codex": "#0d0d0d", "Edge": "#0b5cad", "Windows": "#0078d4",
+            "Kokoro": "#e8590c"}.get(name, "#5e5ce6")
     d.rounded_rectangle(g(0, 0, 63.9, 63.9), radius=15 * k, fill=back)
     if name == "Cursor":  # an isometric cube, three shaded faces
         top, left, right, mid, low = g(32, 11), g(14, 21.5), g(50, 21.5), g(32, 32), g(32, 53)
@@ -59,7 +60,7 @@ def source_image(name, size=32):
     elif name == "Windows":
         for x, y in ((16, 16), (33, 16), (16, 33), (33, 33)):
             d.rectangle(g(x, y, x + 15, y + 15), fill="white")
-    else:  # macOS and any other on-device voice: a waveform
+    else:  # macOS, Kokoro and any other on-device voice: a waveform
         for x, half in ((14, 6), (22, 13), (30, 19), (38, 11), (46, 5)):
             d.rounded_rectangle(g(x, 32 - half, x + 5, 32 + half), radius=2.5 * k, fill="white")
     return img.resize((size, size), Image.LANCZOS)

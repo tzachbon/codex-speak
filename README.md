@@ -26,7 +26,8 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 
 - **Works in most apps.** Drag or double-click to select text in a browser, Notepad, VS Code, or most other apps. A small **▶ Auto ⌄ 1× ⌄ Cursor ⌄** bar appears next to the selection without taking focus.
 - **Reads with the sign-in you already have.** First Cursor, with any of its 28 voices, through the Cursor desktop app's sign-in. Then the Codex realtime voice through the [Codex CLI](https://github.com/openai/codex) sign-in, which uses your ChatGPT plan's Codex access and counts toward its limits.
-- **Then local voices.** If neither can speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over.
+- **Then Kokoro, on your computer.** Kokoro is an open-weight neural voice that runs offline. Settings → Voices downloads it once (about 120 MB). It reads English, Spanish, and French.
+- **Then local voices.** If none of those can speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over.
 - **You set the order.** Settings → Voices lists the sources in reading order. Turn each one on or off, move it up or down, pick its voice, and test it. A source that needs installing or a sign-in shows a button that opens the download page or starts the sign-in. The bar's source menu moves a source to the top.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Speed on the bar.** 0.5× to 2×, saved and shared with Settings.
@@ -58,7 +59,7 @@ Requirements: Windows 11, 64-bit.
 
 Requirements: macOS 13 or later on Apple silicon.
 
-On a Mac, the voices are Cursor, Codex, and then the built-in macOS voice, which stays on your Mac. Edge voices are Windows only for now. *Start Harness Discussion when I log in* adds a LaunchAgent. Settings are kept in `~/Library/Application Support/harness-discussion`. Updates are not installed automatically: Settings shows when a new version is out, and *Download* downloads it, checks its SHA-256 digest, replaces the app, and reopens it. If the app can't replace itself, for example when it runs from the dmg or a folder you can't write to, *Download* opens the release page instead.
+On a Mac, the voices are Cursor, Codex, Kokoro, and then the built-in macOS voice. Kokoro and the macOS voice stay on your Mac. Edge voices are Windows only for now. *Start Harness Discussion when I log in* adds a LaunchAgent. Settings are kept in `~/Library/Application Support/harness-discussion`. Updates are not installed automatically: Settings shows when a new version is out, and *Download* downloads it, checks its SHA-256 digest, replaces the app, and reopens it. If the app can't replace itself, for example when it runs from the dmg or a folder you can't write to, *Download* opens the release page instead.
 
 After an update, macOS can stop trusting the app even though System Settings still lists it as allowed. Harness Discussion detects this, and the guide's *Fix permission* button clears the old entry so you can grant it again.
 
@@ -81,15 +82,17 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 | --- | --- | --- | --- |
 | Cursor | Cursor desktop app, signed in | 0.5× to 2× | Cursor, through your Cursor sign-in |
 | Codex realtime | Codex CLI signed in with ChatGPT | 0.5× to 1×. Above 1×, the next source reads | OpenAI, through your Codex sign-in |
+| Kokoro | A one-time 120 MB download from Settings | 0.5× to 2× | Stays on your computer |
 | Edge neural (Windows) | Internet | 0.5× to 2× | Microsoft's Edge read-aloud service |
 | Windows | Nothing, it's built in | 0.5× to 2× | Stays on your PC |
 | macOS | Nothing, it's built in | 0.5× to 2× | Stays on your Mac |
 
-- Turn off every source except Windows or macOS in Settings to keep text on your computer.
+- Turn off every source except Kokoro and Windows or macOS in Settings to keep text on your computer.
 - Password fields are never read.
 - The Ctrl+C fallback is skipped in terminal windows, where it would interrupt a running command.
 - The log records the engine, timing, and errors, never the text itself.
-- In Auto, Cursor and Codex work out the language themselves. Edge and Windows pick Hebrew, Arabic, or Russian voices from the script and use English for everything else. Choose Spanish or French from the menu for those voices.
+- Kokoro has no Hebrew, Arabic, or Russian voice, so the next source reads those.
+- In Auto, Cursor and Codex work out the language themselves. Kokoro, Edge, and Windows pick Hebrew, Arabic, or Russian voices from the script and use English for everything else. Choose Spanish or French from the menu for those voices.
 
 ## Settings
 
@@ -98,7 +101,7 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 - **Start when I sign in to Windows**: adds or removes a Task Scheduler logon task named "Harness Discussion".
 - **Check and install update / Install updates automatically**: see [Updates](#updates).
 - **Speed**: 0.5× to 2×. Changes apply to the next read.
-- **Sources**: under Reading, the voice sources in reading order, by default Cursor, Codex, Edge, then Windows (Cursor, Codex, then macOS on a Mac). Each row shows whether the source is ready, its voice where it has a choice, an on/off box, Test, and ↑ ↓ to change the order. If one source can't read, the next one does.
+- **Sources**: under Reading, the voice sources in reading order, by default Cursor, Codex, Kokoro, Edge, then Windows (Cursor, Codex, Kokoro, then macOS on a Mac). Kokoro is skipped until you press its **Download…**. The model goes to `%LOCALAPPDATA%\harness-discussion\kokoro` (`~/Library/Application Support/harness-discussion/kokoro` on a Mac), and its size and SHA-256 digest are checked. Each row shows whether the source is ready, its voice where it has a choice, an on/off box, Test, and ↑ ↓ to change the order. If one source can't read, the next one does.
 - **Captions**: font size (8 to 24 points), optional background, and background opacity. Changes apply to the visible caption right away.
 - **Read apps that hide their selection**: for apps such as VS Code, the app borrows Ctrl+C and then restores every clipboard format.
 - **Prepare speech as soon as I select text**: off by default. When Cursor or Edge reads first, the app requests the first sentence's audio as soon as the bar appears. This sends that sentence to Cursor or Microsoft before you press play.
@@ -131,7 +134,7 @@ Update controls are disabled when running from source.
 <details>
 <summary><b>Uninstall</b></summary>
 
-Use *Settings > Apps > Harness Discussion*. This removes the app, its sign-in task, and its caches in `%TEMP%`. Your settings and log in `%APPDATA%\harness-discussion` are kept.
+Use *Settings > Apps > Harness Discussion*. This removes the app, its sign-in task, the Kokoro model, and its caches in `%TEMP%`. Your settings and log in `%APPDATA%\harness-discussion` are kept.
 
 </details>
 
@@ -144,6 +147,7 @@ Use *Settings > Apps > Harness Discussion*. This removes the app, its sign-in ta
 - When Codex reads first, each popup shown pre-starts a short Codex voice session.
 - Choosing a language from the menu moves keyboard focus away from the source app. The text is already captured.
 - Only mouse selections trigger the bar. Keyboard selections (Shift+arrows) don't.
+- Kokoro's first sentence after the app starts takes about 2 seconds while the model loads.
 - Pausing the Windows voice takes effect after about a second, because SAPI keeps playing audio it has already buffered. Codex and Edge pause at once.
 
 ## Run from source
@@ -163,3 +167,5 @@ Bug reports, fixes, and new language voices are welcome. Start with [CONTRIBUTIN
 ## License
 
 [MIT](LICENSE). Not affiliated with Cursor, OpenAI, Microsoft, or Apple.
+
+The Kokoro voice uses [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) (MIT) and the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) weights (Apache-2.0). The installers bundle [espeak-ng](https://github.com/espeak-ng/espeak-ng) for pronunciation, which is licensed under GPL-3.0.

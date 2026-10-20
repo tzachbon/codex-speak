@@ -292,12 +292,25 @@ class SourcesSettingsTest(unittest.TestCase):
     def test_up_down_and_enable_save_the_sources(self):
         self.assertFalse(self.rows["Cursor"][4][1].isEnabled())  # already first
         self.rows["Codex"][4][1].performClick_(None)
-        self.assertEqual(self.changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["macOS", True]]))
+        self.assertEqual(self.changes[-1], ("sources", [["Codex", True], ["Cursor", True], ["Kokoro", True],
+                                                        ["macOS", True]]))
         self.assertEqual(self.win.sources.arrangedSubviews()[0], self.rows["Codex"][3])
         self.rows["Codex"][4][2].performClick_(None)
-        self.assertEqual([n for n, _ in self.changes[-1][1]], ["Cursor", "Codex", "macOS"])
+        self.assertEqual([n for n, _ in self.changes[-1][1]], ["Cursor", "Codex", "Kokoro", "macOS"])
         self.rows["macOS"][0].performClick_(None)
-        self.assertEqual(self.changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["macOS", False]]))
+        self.assertEqual(self.changes[-1], ("sources", [["Cursor", True], ["Codex", True], ["Kokoro", True],
+                                                        ["macOS", False]]))
+
+    def test_kokoro_offers_its_download_until_it_is_ready(self):
+        fix = self.win.fix_buttons["Kokoro"]
+        for state, text, title in (("not_downloaded", "Not downloaded", "Download…"),
+                                   ("downloading", "Downloading…", None), ("ready", "Ready", None)):
+            self.app.statuses = {"Kokoro": state}
+            self.win.refresh_sources()
+            self.assertEqual(self.rows["Kokoro"][1].stringValue(), text)
+            self.assertEqual(fix.isHidden(), title is None)
+            if title:
+                self.assertEqual(fix.title(), title)
 
     def test_cursor_voice_saves_under_its_name_and_test_reads_one_source(self):
         voice = self.rows["Cursor"][2]

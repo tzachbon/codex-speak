@@ -59,6 +59,7 @@ Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\CodexSpeak-311"
 Type: filesandordirs; Name: "{%TEMP}\comtypes_cache\HarnessDiscussion-311"
 Type: filesandordirs; Name: "{%TEMP}\harness-discussion"
 Type: filesandordirs; Name: "{localappdata}\harness-discussion\updates"
+Type: filesandordirs; Name: "{localappdata}\harness-discussion\kokoro"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

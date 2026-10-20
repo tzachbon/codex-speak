@@ -6,11 +6,12 @@ authors = [
     { name = "tzachbon", email = "tzachbonfil@gmail.com" }
 ]
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "aiortc>=1.15.0",
     "comtypes>=1.4.17; sys_platform == 'win32'",
     "edge-tts>=7.2.8",
+    "kokoro-onnx==0.6.1",
     "pillow>=12.3.0",
     "pynput>=1.8.2; sys_platform == 'win32'",
     "pyobjc-framework-applicationservices>=11; sys_platform == 'darwin'",

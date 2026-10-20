@@ -352,6 +352,7 @@ class App(Captions, Sources, Updates):
             if self.chain.busy:  # an attempt that started before a stop is not shown
                 p.set_source(args[0])
         elif kind == "statuses":
+            self._poll_while_downloading()
             self._show_source()
             if self.settings_win and self.settings_win.alive:
                 self.settings_win.refresh_sources()

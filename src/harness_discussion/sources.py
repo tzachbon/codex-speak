@@ -5,6 +5,8 @@ import subprocess
 import threading
 import webbrowser
 
+from . import kokoro_tts
+
 log = logging.getLogger("harness_discussion")
 INSTALL = {"Codex": "https://github.com/openai/codex#quickstart", "Cursor": "https://cursor.com/download"}
 RECHECK_S = (5, 15, 30, 60, 120)  # after a fix: installs and sign-ins finish outside the app
@@ -33,6 +35,8 @@ def fix(name, status):
         return "Sign in…", lambda: webbrowser.open("cursor://")  # Cursor refreshes or asks for its sign-in
     if status in ("signed_out", "expired") and name == "Codex":
         return "Sign in…", _codex_login
+    if status == "not_downloaded" and name == "Kokoro":
+        return "Download…", kokoro_tts.start_download
     return None
 
 
@@ -57,6 +61,19 @@ class Sources:
                 self._checking.release()
             self.events.put(("statuses",))
         threading.Thread(target=work, daemon=True).start()
+
+    _poll_pending = False
+
+    def _poll_while_downloading(self):
+        """Main thread: one re-check every 2 s until the model download ends, however many checks report it."""
+        if "downloading" not in self.statuses.values() or self._poll_pending:
+            return
+        self._poll_pending = True
+
+        def poll():
+            self._poll_pending = False
+            self.refresh_statuses()
+        self.host.after(2000, poll)
 
     def _show_source(self):
         """Idle bar label: the source the next read starts with. While reading, engine events set it."""

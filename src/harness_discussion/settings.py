@@ -18,7 +18,9 @@ DIR = os.path.join(APPDATA, "harness-discussion")
 LOCAL_DIR = os.path.join(LOCALAPPDATA, "harness-discussion")  # the same folder on macOS
 PATH = os.path.join(DIR, "settings.json")
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "harness-discussion")  # uninstall deletes it
-DEFAULT_SOURCES = ["Cursor", "Codex", "macOS"] if sys.platform == "darwin" else ["Cursor", "Codex", "Edge", "Windows"]
+DEFAULT_SOURCES = (["Cursor", "Codex", "Kokoro", "macOS"] if sys.platform == "darwin"
+                   else ["Cursor", "Codex", "Kokoro", "Edge", "Windows"])
+SYSTEM_VOICES = ("Edge", "Windows", "macOS")
 # sources: [name, enabled] in reading order. voices: source name -> voice id, checked by core.
 DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "speed": 1.0,
             "clipboard_fallback": True, "stt_server": False, "prefetch": False,
@@ -56,7 +58,10 @@ def load(path=PATH) -> dict:
                 and item[0] not in seen and isinstance(item[1], bool)):
             seen.add(item[0])
             sources.append(list(item))
-    sources += [[n, True] for n in DEFAULT_SOURCES if n not in seen]
+    for n in DEFAULT_SOURCES:
+        if n not in seen:  # a saved order gains Kokoro ahead of its system voices, other new sources at the end
+            at = next((i for i, (m, _) in enumerate(sources) if n == "Kokoro" and m in SYSTEM_VOICES), len(sources))
+            sources.insert(at, [n, True])
     legacy = saved.get("engine") if isinstance(saved, dict) else None
     if legacy in DEFAULT_SOURCES and "sources" not in saved:  # Codex Speak saved one engine, or None for Auto
         sources = [[legacy, True]] + [[n, False] for n in DEFAULT_SOURCES if n != legacy]
@@ -131,7 +136,7 @@ def save(s: dict, path=PATH) -> None:
 
 WELCOME = "Pick the voices Harness Discussion uses."  # Settings header on first run, above Sources
 STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Not signed in",
-               "expired": "Sign-in expired"}
+               "expired": "Sign-in expired", "not_downloaded": "Not downloaded", "downloading": "Downloading…"}
 
 
 def status_text(status) -> str:
