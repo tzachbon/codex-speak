@@ -154,6 +154,7 @@ footer { padding: 48px 0 64px; text-align: center; font: 400 11px/1.8 var(--mono
   .feats, .steps { grid-template-columns: 1fr; gap: 48px; }
   .feat:nth-child(even), .feat.rv.in:nth-child(even) { transform: none; }
   .row { grid-template-columns: 1fr; gap: 4px; } .row:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } .rows .core { padding: 8px 22px; }
+  .row [data-label]::before { content: attr(data-label); content: attr(data-label) / ""; display: block; margin-top: 8px; font: 500 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
   .pill { gap: 9px; font-size: 11px; } .pill .hide { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
