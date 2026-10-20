@@ -231,17 +231,29 @@ class Sequence(unittest.TestCase):
         pump(a)
         self.assertEqual((a.popup.caption, len(a.chain.calls), a.notifications), ("Three.", 2, []))  # after() runs at once here
 
-    def test_the_first_sentence_reads_alone_and_the_rest_as_one_piece_fetched_early(self):
+    def test_the_opening_reads_alone_and_the_rest_as_one_piece_fetched_early(self):
         a = app()
-        a.play("One. Two.\n\nThree. Four.", None)
-        self.assertEqual(a._units, ["One.", "Two.\n\nThree. Four."])
+        a.play("One. Two.\n\nThree. Four. Five. Six.", None)
+        self.assertEqual(a._units, ["One. Two.", "Three. Four. Five. Six."])  # a third of the words
         a.chain.calls[0][3]()
         pump(a)
-        self.assertEqual(a.chain.next_pieces, ["Two.\n\nThree. Four."])  # fetched while "One." plays
+        self.assertEqual(a.chain.next_pieces, ["Three. Four. Five. Six."])  # fetched while the opening plays
         long = "A. " + "Word word word. " * 600
-        self.assertEqual([len(u) <= 5000 for u in a._units_for(long)], [True, True, True])
+        units = a._units_for(long)
+        self.assertEqual(units[0], "A. " + "Word word word. " * 9 + "Word word word.")  # capped at 30 words
+        self.assertEqual([len(u) <= 5000 for u in units], [True, True, True])
         self.assertEqual(a._units_for("  \n "), [])
 
+    def test_a_long_sentence_stays_out_of_the_opening(self):
+        a = app()
+        first = "This opening sentence is already longer than a third of everything here."
+        self.assertEqual(a._units_for(first + " Short. Done.")[0], first)
+        many = "Hi. " + " ".join(["word"] * 80) + "."
+        self.assertEqual(a._units_for(many), ["Hi.", " ".join(["word"] * 80) + "."])
+        for units in (a._units_for("Hi. " + "Short one here. " * 20), a._units_for(many)):
+            self.assertTrue(all(sentences.split(u)[-1].endswith(".") for u in units))
+
+    @patch("harness_discussion.core.FIRST_WORDS", 1)  # "One." reads alone
     def test_a_piece_captions_one_sentence_at_a_time_and_pause_holds_the_next(self):
         a = app()
         timers = []
@@ -262,6 +274,7 @@ class Sequence(unittest.TestCase):
         timers[-1][1]()
         self.assertEqual((a.popup.caption, timers[-1][0]), ("Three.", 400))  # at 1×, not the new 2×
 
+    @patch("harness_discussion.core.FIRST_WORDS", 1)  # "One." reads alone
     def test_a_reported_position_replaces_the_estimated_steps(self):
         a = app()
         timers = []

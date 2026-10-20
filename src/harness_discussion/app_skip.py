@@ -33,7 +33,8 @@ class Skips:
         from .core import PIECE_CHARS
         at = self._read_start + (sentences.index_at(self._units[0], chars) if index == 0 else 0)
         # later units pack fragments of the remaining sentences, so walk those rather than split the units again
-        frags = [(i, f) for i in range(self._read_start + 1, len(self._sentences))
+        opening = len(sentences.split(self._units[0])) or 1
+        frags = [(i, f) for i in range(self._read_start + opening, len(self._sentences))
                  for f in sentences._fit(self._sentences[i], PIECE_CHARS)]
         k = 0
         for n, unit in enumerate(self._units[1:index + 1], 1):

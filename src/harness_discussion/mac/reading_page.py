@@ -14,7 +14,7 @@ class ReadingPage:
                               "Copies the selection with ⌘C, then puts your clipboard back.",
                               self.cfg["clipboard_fallback"], lambda on: self._set("clipboard_fallback", on), WIDTH)
         early, _ = ui.option("Prepare speech when I select text",
-                             "When Cursor reads first, sends the first sentence to Cursor before you press "
+                             "When Cursor reads first, sends the opening sentences to Cursor before you press "
                              "Play, so speech starts sooner.", self.cfg["prefetch"], lambda on: self._set("prefetch", on), WIDTH)
         return [_card([hidden, _divider(), early, _divider(), self._shortcut_row()]),
                 _note("Reads the selected text without clicking the bar. Pressing it again stops the read.")]

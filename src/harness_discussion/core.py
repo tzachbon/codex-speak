@@ -22,9 +22,11 @@ log = logging.getLogger("harness_discussion")
 # Codex's transcript arrives about 0.4 s before its audio, which then waits in the 0.25 s jitter cushion.
 CAPTION_DELAY_S = 0.6
 SPEECH_KEYS = ("sources", "voices", "speed", "prefetch")  # captured for the entire selection
-# The first sentence goes alone so speech starts fast; the rest goes in large pieces, each fetched while
-# the one before plays, so no request waits on a line break.
+# A short opening goes alone so speech starts fast; the rest goes in large pieces, each fetched while
+# the one before plays, so no request waits on a line break. The opening is whole sentences reaching
+# a third of the words, at most FIRST_WORDS, so a one-word first line doesn't end before the next piece is ready.
 PIECE_CHARS = 5000
+FIRST_WORDS = 30
 
 
 def _causes(err):
@@ -198,13 +200,21 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             self.events.put(("show", text, x, y))
 
     def _units_for(self, text):
-        """Codex reads the whole selection in one session; other engines get the first sentence, then the rest."""
+        """Codex reads the whole selection in one session; other engines get the opening, then the rest."""
         if self.chain.continuous():
             return [text.strip()] if text.strip() else []
-        first = next(iter(sentences.split(text)), None)
-        if not first:
+        units = sentences.split(text)
+        if not units:
             return []
-        return [first, *sentences.chunks(text[text.index(first) + len(first):], PIECE_CHARS)]
+        goal, end, words = min(-(-len(text.split()) // 3), FIRST_WORDS), 0, 0
+        for unit in units:
+            stop = text.index(unit, end) + len(unit)
+            if words and (words + len(unit.split()) > 2 * FIRST_WORDS or stop > PIECE_CHARS):
+                break  # a long next sentence would delay the start more than a short opening does
+            end, words = stop, words + len(unit.split())
+            if words >= goal:
+                break
+        return [text[:end].strip(), *sentences.chunks(text[end:], PIECE_CHARS)]
 
     def play(self, text, lang_tag, only=None, start=0):
         """only: read through that engine alone, as a Settings Test button does. start: the sentence to begin at."""

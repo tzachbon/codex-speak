@@ -161,7 +161,7 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
                         variable=self.prefetch,
                         command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
         self._shortcut_row(card)
-        ttk.Label(card, text="Sends the first sentence to Cursor or Microsoft before you press play. "
+        ttk.Label(card, text="Sends the opening sentences to Cursor or Microsoft before you press play. "
                   "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 

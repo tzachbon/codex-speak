@@ -251,6 +251,14 @@ class CoreTest(unittest.TestCase):
         app._follow_progress(app._read_id, last, app._units[last].index("Next."))
         self.assertEqual(app._sentences[app._sentence], "Next.")
 
+    def test_engine_progress_after_an_opening_of_several_sentences(self):
+        app = self.make(Engine("macOS"))
+        app.play("One. Two. Three. Four. Five. Six.", None)  # units: "One. Two.", then the rest
+        self.assertEqual(app._units[0], "One. Two.")
+        app._unit_index = 1
+        app._follow_progress(app._read_id, 1, app._units[1].index("Four."))
+        self.assertEqual(app._sentence, 3)
+
     def test_codex_captions_move_past_a_repeated_sentence(self):
         app = self.make(Engine("macOS"))
         app.play("Go. Go. Stop.", None)
