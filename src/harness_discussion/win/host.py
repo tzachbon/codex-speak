@@ -1,5 +1,7 @@
 """Windows host: Tk on the main thread, pystray in the tray, UI Automation for the selection."""
+import ctypes
 import threading
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import messagebox
 
@@ -13,7 +15,7 @@ from ..kokoro_tts import KokoroEngine
 from . import selection
 from .popup import Popup
 from .settings_ui import SettingsWindow
-from .trigger import SelectionTrigger
+from .trigger import HotKey, SelectionTrigger
 from .voice import SapiEngine
 
 
@@ -22,7 +24,7 @@ class TkHost:
         self.app = None  # set by core.App
         self.root = tk.Tk()
         self.root.withdraw()
-        self.trigger = None
+        self.trigger = self.hotkey = None
         self.icon = pystray.Icon("harness-discussion", icon_image(), "Harness Discussion", self._menu())
 
     def _menu(self):
@@ -57,6 +59,18 @@ class TkHost:
     def stop_trigger(self):
         if self.trigger:
             self.trigger.stop()
+        self.set_hotkey("", None)
+
+    def set_hotkey(self, spec, on_hotkey):
+        """Replaces the read shortcut; "" turns it off."""
+        if self.hotkey:
+            self.hotkey.stop()
+        self.hotkey = HotKey(spec, on_hotkey) if spec else None
+
+    def pointer(self):
+        point = wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(point))
+        return point.x, point.y
 
     def after(self, ms, fn):
         self.root.after(ms, fn)

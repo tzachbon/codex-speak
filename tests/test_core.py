@@ -80,6 +80,16 @@ class Popup:
     def set_source(self, name):
         self.source = name
 
+    def play(self):
+        if not self.playing:
+            self.set_playing(True)
+            self.callbacks["on_play"](self.text, None)
+
+    def close(self):
+        self.set_playing(False)
+        self.hide()
+        self.callbacks["on_stop"]()
+
 
 class FakeHost:
     def __init__(self, engines):
@@ -106,6 +116,12 @@ class FakeHost:
 
     def stop_trigger(self):
         pass
+
+    def set_hotkey(self, spec, on_hotkey):
+        self.hotkey = (spec, on_hotkey)
+
+    def pointer(self):
+        return 10, 20
 
     def read_selection(self, clipboard_fallback):
         return "Selected."
@@ -148,6 +164,72 @@ class CoreTest(unittest.TestCase):
         app.pump()
         self.assertIsNone(app._read_options)
         self.assertEqual(self.host.notes, [])
+
+    def test_skip_moves_between_sentences_and_stops_past_the_last(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        app.skip(1)  # nothing reading: nothing happens
+        self.assertEqual(engine.spoken, [])
+        app.play("One. Two. Three.", None)
+        app.pump()
+        app.skip(1)
+        app.pump()
+        self.assertEqual(engine.spoken[-1], "Two.")
+        self.assertTrue(app.popup.playing)
+        app.skip(-1)
+        app.pump()
+        self.assertEqual(engine.spoken[-1], "One.")
+        app.skip(-1)  # at the first sentence: reads it again
+        app.pump()
+        self.assertEqual(engine.spoken[-1], "One.")
+        app.skip(1)
+        app.skip(1)
+        app.pump()
+        self.assertEqual(engine.spoken[-1], "Three.")
+        app.skip(1)
+        self.assertIsNone(app._read_options)
+
+    def test_skip_follows_the_caption_and_keeps_its_place_on_an_unknown_one(self):
+        app = self.make(Engine("macOS"))
+        app.play("One. Two. Three.", None)
+        app._track("Two.")
+        self.assertEqual(app._sentence, 1)
+        app._track("Reworded by Codex")
+        self.assertEqual(app._sentence, 1)
+        app._track("One.")  # never moves back on a caption
+        self.assertEqual(app._sentence, 1)
+
+    def test_offset_finds_repeated_sentences_in_order(self):
+        text = "Yes. No. Yes. End"
+        units = core.sentences.split(text)
+        self.assertEqual([text[core._offset(text, units, i):] for i in range(5)],
+                         ["Yes. No. Yes. End", "No. Yes. End", "Yes. End", "End", ""])
+
+    def wait_event(self, app):
+        for _ in range(200):
+            if not app.events.empty():
+                return
+            threading.Event().wait(0.01)
+
+    def test_hotkey_reads_the_selection_and_again_stops_it(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        self.assertEqual(self.host.hotkey[0], settings.DEFAULTS["hotkey"])
+        self.host.hotkey[1]()
+        app.pump()
+        self.wait_event(app)
+        app.pump()
+        self.assertTrue(app.popup.visible and app.popup.playing)
+        self.assertEqual(engine.spoken, ["Selected."])
+        self.host.hotkey[1]()
+        app.pump()
+        self.assertFalse(app.popup.playing)
+        self.assertIsNone(app._read_options)
+
+    def test_hotkey_setting_rearms_the_host(self):
+        app = self.make(Engine("macOS"))
+        app.change("hotkey", "")
+        self.assertEqual(self.host.hotkey[0], "")
 
     def test_stop_ignores_late_callbacks(self):
         engine = Engine("macOS")

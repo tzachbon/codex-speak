@@ -6,6 +6,7 @@ import time
 
 import AppKit
 
+from .. import hotkeys
 from ..clicks import Clicks
 
 MASK = AppKit.NSEventMaskLeftMouseDown | AppKit.NSEventMaskLeftMouseUp
@@ -46,3 +47,38 @@ class SelectionTrigger:
             self.on_press(x, y)
         elif self._clicks.up(x, y, time.monotonic()) and event.window() is None:
             self.on_selection(x, y)  # a drag or multi-click in another app
+
+
+FLAGS = {"ctrl": AppKit.NSEventModifierFlagControl, "alt": AppKit.NSEventModifierFlagOption,
+         "shift": AppKit.NSEventModifierFlagShift, "cmd": AppKit.NSEventModifierFlagCommand}
+# ANSI key codes, so the shortcut follows the physical key under any keyboard layout (Hebrew, Russian...)
+KEY_CODES = {0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: "c", 9: "v", 11: "b", 12: "q",
+             13: "w", 14: "e", 15: "r", 16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6", 23: "5",
+             25: "9", 26: "7", 28: "8", 29: "0", 31: "o", 32: "u", 34: "i", 35: "p", 37: "l", 38: "j", 40: "k",
+             45: "n", 46: "m", 122: "f1", 120: "f2", 99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7",
+             100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12"}
+
+
+def event_spec(event):
+    """The hotkeys string for a key-down event, or None for a key or combination a shortcut can't use."""
+    key = KEY_CODES.get(event.keyCode())
+    flags = event.modifierFlags()
+    return key and hotkeys.spec({name for name, flag in FLAGS.items() if flags & flag}, key)
+
+
+class HotKey:
+    """Watches key-downs in other apps for one shortcut. It can't swallow the key, so the front app sees it too."""
+
+    def __init__(self, spec, on_hotkey):
+        self.keys, self.on_hotkey = hotkeys.parse(spec), on_hotkey  # parsed, so modifier order doesn't matter
+        self._monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSEventMaskKeyDown, self._event)
+
+    def _event(self, event):
+        if not event.isARepeat() and hotkeys.parse(event_spec(event)) == self.keys:
+            self.on_hotkey()
+
+    def stop(self):
+        if self._monitor:
+            AppKit.NSEvent.removeMonitor_(self._monitor)
+            self._monitor = None

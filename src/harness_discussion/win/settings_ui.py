@@ -11,13 +11,14 @@ from ..sources import fix as source_fix
 from ..stt_server import connection as stt_connection
 from .popup import fonts, work_area
 from .sources_ui import CARD, SourcesSection
+from .shortcut_row import ShortcutRow
 from .summarize_page import SummarizePage
 
 PAGE, BORDER, SUBTLE, SELECTED = "#f3f3f3", "#e5e5e5", "#5f5f5f", "#e6e6e6"
 PAGES = ("Voices", "Captions", "Reading", "Summarize", "Speech to Text", "General")
 
 
-class SettingsWindow(SourcesSection, SummarizePage):
+class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
                  update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
                  statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None, summarizer=None):
@@ -158,6 +159,7 @@ class SettingsWindow(SourcesSection, SummarizePage):
         ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
                         variable=self.prefetch,
                         command=lambda: self._set("prefetch", self.prefetch.get())).pack(anchor="w", pady=(12, 0))
+        self._shortcut_row(card)
         ttk.Label(card, text="Sends the first sentence to Cursor or Microsoft before you press play. "
                   "Applies when Cursor or Edge reads first.", style="Sub.Card.TLabel",
                   wraplength=420).pack(anchor="w", pady=(4, 0))

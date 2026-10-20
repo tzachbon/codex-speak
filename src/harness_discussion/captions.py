@@ -62,3 +62,4 @@ class Captions:
         if text != self._last_caption:
             self._last_caption = text
             self.popup.set_caption(text)
+            self._track(text)

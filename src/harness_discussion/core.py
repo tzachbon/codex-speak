@@ -36,6 +36,14 @@ def _causes(err):
     return " from ".join(names)
 
 
+def _offset(text, units, index):
+    """Where units[index] starts in text; units come from sentences.split, so each is found in order."""
+    at = 0
+    for unit in units[:index]:
+        at = text.index(unit, at) + len(unit)
+    return text.index(units[index], at) if index < len(units) else len(text)
+
+
 class App(Captions, Sources, Updates, Summaries):
     def __init__(self, host):
         self.host = host
@@ -44,6 +52,7 @@ class App(Captions, Sources, Updates, Summaries):
         self._units, self._unit_index, self._pending_next, self._read_options = [], 0, False, None
         self._continuous, self._last_caption, self._held_caption = False, "", ""
         self._caption_steps = self._caption_held = None
+        self._read_text, self._sentences, self._sentence = "", [], 0  # what ⏮ and ⏭ step through
         self.stt, self.stt_error = None, None
         self._draining_stt = []
         self._closing, self._update_busy, self._update_manual = False, False, False
@@ -71,7 +80,8 @@ class App(Captions, Sources, Updates, Summaries):
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
                                      on_settings=lambda: self.events.put(("settings",)),
-                                     on_source=self._popup_source, sources=self._source_choices)
+                                     on_source=self._popup_source, sources=self._source_choices,
+                                     on_skip=self.skip)
         self._configure_captions()
         self._show_source()
 
@@ -103,6 +113,8 @@ class App(Captions, Sources, Updates, Summaries):
             self.chain.prefetch = value
         elif key == "stt_server":
             self._run_stt(value)
+        elif key == "hotkey":
+            self.host.set_hotkey(value, lambda: self.events.put(("hotkey",)))
 
     def _configure_captions(self):
         self.popup.configure_captions(self.cfg["caption_font_size"], self.cfg["caption_background"],
@@ -199,10 +211,12 @@ class App(Captions, Sources, Updates, Summaries):
             return []
         return [first, *sentences.chunks(text[text.index(first) + len(first):], PIECE_CHARS)]
 
-    def play(self, text, lang_tag, only=None):
-        """only: read through that engine alone, as a Settings Test button does."""
+    def play(self, text, lang_tag, only=None, start=0):
+        """only: read through that engine alone, as a Settings Test button does. start: the sentence to begin at."""
         if self._read_options:
             self.stop()
+        self._read_text, self._sentences, self._sentence = text, sentences.split(text), start
+        text = text[_offset(self._read_text, self._sentences, start):]
         self.chain.only = only  # after stop(), which clears it
         self._read_id += 1
         rid = self._read_id  # events from an older read are ignored when they arrive late
@@ -226,6 +240,30 @@ class App(Captions, Sources, Updates, Summaries):
                          fallback_tag=self._read_options[3],
                          on_caption=lambda text: self.events.put(("caption", rid, index, text)),
                          on_progress=lambda chars: self.events.put(("progress", rid, index, chars)))
+
+    def skip(self, delta):
+        """⏮ (-1) and ⏭ (+1): read again from the previous or next sentence; past the last one stops."""
+        if not self._read_options:
+            return
+        index = max(0, self._sentence + delta)
+        if index >= len(self._sentences):
+            self.stop()
+            return
+        self.play(self._read_text, self._read_options[0], start=index)
+        self.popup.set_playing(True)
+        self.popup.set_loading(True)
+
+    def _track(self, caption):
+        """Moves the skip position to the sentence shown; a caption that matches none (Codex rewords) keeps it."""
+        if caption in self._sentences[self._sentence:]:
+            self._sentence = self._sentences.index(caption, self._sentence)
+
+    def _hotkey_read(self, x, y):
+        try:
+            text = self.host.read_selection(self.cfg["clipboard_fallback"])
+        except Exception:
+            text = None
+        self.events.put(("hotkey_read", text, x, y))
 
     def _restore_speech_options(self):
         self._read_options = None
@@ -323,6 +361,18 @@ class App(Captions, Sources, Updates, Summaries):
                                             fallback_tag=self._read_options[3])
         elif kind == "progress":
             self._follow_progress(*args)
+        elif kind == "hotkey":
+            if p.playing and not p.paused:
+                p.close()  # the shortcut also stops a read
+            else:
+                threading.Thread(target=self._hotkey_read, args=self.host.pointer(), daemon=True).start()
+        elif kind == "hotkey_read":
+            text, x, y = args
+            if text:
+                if p.playing:
+                    self.stop()  # replaces a paused read
+                p.show(text, x, y)
+                p.play()
         elif kind == "caption":
             self.host.after(int(CAPTION_DELAY_S * 1000), lambda: self._caption(*args))
         elif kind == "sentence_done":

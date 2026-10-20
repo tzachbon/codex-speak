@@ -67,6 +67,7 @@ class Watcher:
             if build and self.app.cfg.get("ax_granted_build") != build:
                 self.app.change("ax_granted_build", build)
             host.set_permission_missing(False)
+            self.app.apply("hotkey", self.app.cfg["hotkey"])  # key monitors only receive events once trusted
             if self.guide:
                 self.guide.granted()
                 self.guide = None

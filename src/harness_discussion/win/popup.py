@@ -20,6 +20,7 @@ BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1
 SUBTLE = "#5f5f5f"
 PLAY, PAUSE, STOP, CHEVRON, CLOSE, SETTINGS = "\ue768", "\ue769", "\ue71a", "\ue70d", "\ue8bb", "\ue713"
 SPARKLE, SPARKLE_FONT = "✦", ("Segoe UI Symbol", 11)  # neither icon font has a sparkle on Windows 10
+PREVIOUS, NEXT = "\ue892", "\ue893"
 
 
 def fonts(root):
@@ -83,8 +84,8 @@ class _FlatButton(tk.Frame):
 
 class Popup:
     def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
-                 on_source, sources, on_summarize=lambda text, tag: None):
-        """sources: returns the source names the menu offers; on_source(name) picks one."""
+                 on_source, sources, on_skip, on_summarize=lambda text, tag: None):
+        """sources: returns the source names the menu offers; on_source(name) picks one. on_skip(-1 or 1)."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
         self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
@@ -103,6 +104,8 @@ class Popup:
         self.ai_btn = _FlatButton(w, self._summarize, (SPARKLE, SPARKLE_FONT, FG))
         self.ai_btn.pack(side="left", padx=0, pady="2p")
         self.stop_btn = _FlatButton(w, self._stop, (STOP, (icons, 11), FG))  # packed while reading
+        self.back_btn = _FlatButton(w, lambda: on_skip(-1), (PREVIOUS, (icons, 11), FG))  # these two as well
+        self.next_btn = _FlatButton(w, lambda: on_skip(1), (NEXT, (icons, 11), FG))
         self.spinner = tk.Canvas(w, bg=BG, highlightthickness=0)  # shown until speech starts
         self._spin_angle, self._spin_job, self.loading = 0, None, False
         self.divider = tk.Frame(w, bg=DIVIDER, width=1)
@@ -210,10 +213,12 @@ class Popup:
             self._highlight(False)
         self.caption.set_paused(self.paused)
         self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
-        if playing:
-            self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.ai_btn)
-        else:
-            self.stop_btn.pack_forget()
+        for button in (self.back_btn, self.next_btn, self.stop_btn):
+            if playing:
+                button.pack(side="left", padx=0, pady="2p", before=self.ai_btn)
+            else:
+                button.pack_forget()
+        if not playing:
             self.schedule_hide()
 
     def set_summary(self):
@@ -257,6 +262,11 @@ class Popup:
         area = work_area(x, y)
         return ((x, y, w.winfo_width(), w.winfo_height()),
                 (area.left, area.top, area.right, area.bottom))
+
+    def play(self):
+        """Starts reading the shown text, as ▶ does."""
+        if not self.playing:
+            self._toggle()
 
     def _toggle(self):
         if not self.playing:
