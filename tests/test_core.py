@@ -258,6 +258,16 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(app.popup.visible)
         self.assertEqual(engine.spoken, [])
 
+    def test_stopping_cancels_a_selection_read_in_flight(self):
+        engine = Engine("macOS")
+        app = self.make(engine)
+        app._hotkey()
+        app.stop()
+        self.wait_event(app)
+        app.pump()
+        self.assertFalse(app.popup.visible)
+        self.assertEqual(engine.spoken, [])
+
     def test_a_source_change_keeps_the_whole_selection_for_skip(self):
         first, second = Engine("macOS"), Engine("Cursor")
         app = self.make(first, second)

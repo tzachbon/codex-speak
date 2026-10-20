@@ -244,6 +244,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
     def stop(self):
         self._read_id += 1  # invalidate callbacks before asynchronous engine cleanup
         self._units, self._pending_next = [], False
+        self._hotkey_wait = None  # a shortcut read still fetching its selection is cancelled too
         self.chain.stop()
         self._restore_speech_options()
         self.popup.set_playing(False)
