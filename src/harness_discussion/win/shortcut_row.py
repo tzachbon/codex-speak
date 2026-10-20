@@ -4,8 +4,10 @@ from tkinter import ttk
 
 from .. import hotkeys
 from .sources_ui import CARD
+from .trigger import VK
 
 TK_MODS = {"shift": 0x1, "ctrl": 0x4, "alt": 0x20000}  # Tk's event.state bits on Windows
+KEYS = {vk: name for name, vk in VK.items()}  # Tk's keycode is the virtual key, the same under any layout
 
 
 class ShortcutRow:
@@ -31,7 +33,8 @@ class ShortcutRow:
     def _hotkey_key(self, event):
         if event.keysym == "Escape":
             self._set_hotkey(self.cfg["hotkey"])
-        elif spec := hotkeys.spec({m for m, bit in TK_MODS.items() if event.state & bit}, event.keysym):
+        elif (key := KEYS.get(event.keycode)) and (
+                spec := hotkeys.spec({m for m, bit in TK_MODS.items() if event.state & bit}, key)):
             self._set_hotkey(spec)
         return "break"
 

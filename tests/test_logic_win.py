@@ -12,6 +12,7 @@ from harness_discussion import settings
 from unittest import mock
 
 from harness_discussion.win import clipboard, selection
+from harness_discussion.win.shortcut_row import KEYS
 from harness_discussion.win.trigger import HotKey, SelectionTrigger
 from harness_discussion.win.voice import sapi_rate
 
@@ -239,3 +240,6 @@ class ReadShortcut(unittest.TestCase):
         hotkey._release(Key.f5)
         hotkey._release(Key.shift_r)
         self.assertEqual(hits, [1])
+
+    def test_settings_record_the_virtual_key(self):
+        self.assertEqual((KEYS[0x52], KEYS[0x30], KEYS[0x74]), ("r", "0", "f5"))
