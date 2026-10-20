@@ -242,6 +242,22 @@ class CoreTest(unittest.TestCase):
         app._follow_progress(app._read_id, last, app._units[last].index("Last one."))
         self.assertEqual(app._sentence, 2)
 
+    def test_engine_progress_keeps_a_numeric_tail_of_a_split_sentence(self):
+        app = self.make(Engine("macOS"))
+        long = "Step " + "x" * (core.PIECE_CHARS - 6) + " 2."  # its last fragment starts with the number
+        app.play("Start. " + long + " Next. Final.", None)
+        last = len(app._units) - 1
+        app._unit_index = last
+        app._follow_progress(app._read_id, last, app._units[last].index("Next."))
+        self.assertEqual(app._sentences[app._sentence], "Next.")
+
+    def test_codex_captions_move_past_a_repeated_sentence(self):
+        app = self.make(Engine("macOS"))
+        app.play("Go. Go. Stop.", None)
+        app._caption(app._read_id, 0, "Go.")
+        app._caption(app._read_id, 0, "Go. Go.")
+        self.assertEqual(app._sentence, 1)
+
     def test_offset_finds_repeated_sentences_in_order(self):
         text = "Yes. No. Yes. End"
         units = core.sentences.split(text)

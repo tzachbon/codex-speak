@@ -8,15 +8,20 @@ CAPTION_CHARS_S = 15  # shortcut: an estimate of spoken characters a second at 1
 
 class Captions:
     """Mixed into core.App, which owns popup, host, cfg and the read state."""
+    _heard = (0, "")  # Codex: sentences in the transcript and the caption tracked last; play() resets it
 
     def _caption(self, rid, index, transcript):
         """Shows the sentence Codex is speaking, held while paused because the transcript keeps arriving."""
         if rid != self._read_id or index != self._unit_index or not self._read_options:
             return
+        units, text = sentences.split(transcript), sentences.current(transcript)
+        if text != self._heard[1] or (len(units) > self._heard[0] and units[-1] == text):  # "Go. Go." moves on
+            self._track(text)
+        self._heard = (len(units), text)
         if self.popup.paused:
-            self._held_caption = sentences.current(transcript)
+            self._held_caption = text
         else:
-            self._show_caption(sentences.current(transcript))
+            self._display(text)
 
     def _step_captions(self, rid, index, parts, ms=None):
         """Steps a piece's caption sentence by sentence, as Cursor and Edge send no word timings.
@@ -46,7 +51,7 @@ class Captions:
         if self.popup.paused:
             self._held_caption = text  # a position queued as the user paused shows on resume
         else:
-            self._show_caption(text)
+            self._display(text)
 
     def _hold_captions(self):
         """Pause stops the step timer and keeps what was left of it."""
@@ -63,6 +68,10 @@ class Captions:
         """step: a new sentence of the estimated steps, tracked even when it repeats the one before."""
         if step or text != self._last_caption:
             self._track(text)
+        self._display(text)
+
+    def _display(self, text):
+        """Shows a caption already tracked."""
         if text != self._last_caption:
             self._last_caption = text
             self.popup.set_caption(text)

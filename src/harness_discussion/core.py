@@ -219,6 +219,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         self._continuous = self.chain.continuous()
         self._units, self._unit_index, self._pending_next = self._units_for(text), 0, False
         self._last_caption = self._held_caption = ""
+        self._heard = (0, "")
         self._read_options = (lang_tag, self.cfg["sources"], self.cfg["speed"], lang.detect(text))
         self._read_done, self._read_heard = self._logged(text, lambda err: self.events.put(("done", err, rid)))
         self.popup.set_caption("")
@@ -260,7 +261,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         self.popup.set_caption_paused(False)
         held, self._held_caption = self._held_caption, ""
         if held:
-            self._show_caption(held)
+            self._display(held)  # tracked when it arrived
         self._resume_captions()
         self.chain.resume()
         if self._pending_next:

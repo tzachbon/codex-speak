@@ -45,11 +45,15 @@ class ReadingPage:
                 self._set_hotkey(spec)
             return None  # keys pressed while recording don't reach the window
         self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(AppKit.NSEventMaskKeyDown, key)
+        # closing Settings with its red button ends recording; the key monitor sees no keys once the app is inactive
+        self._closed = AppKit.NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
+            AppKit.NSWindowWillCloseNotification, self.win, None, lambda _n: self._stop_recording())
 
     def _stop_recording(self):
         if self._recorder:
             AppKit.NSEvent.removeMonitor_(self._recorder)
             self._recorder = None
+            AppKit.NSNotificationCenter.defaultCenter().removeObserver_(self._closed)
             self.app.apply("hotkey", self.cfg["hotkey"])
             self.hotkey_label.setStringValue_(hotkeys.label(self.cfg["hotkey"]))
 
