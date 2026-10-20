@@ -57,8 +57,12 @@ class Stretcher:
 _live, _live_lock = set(), threading.Lock()  # open players' streams, which a PortAudio reset would close
 
 
+CLOSE_WAIT_S = 1.0  # how long close() waits for the callback to stop the stream
+
+
 class PcmPlayer:
     _hold, _holding, _last_write = 0, False, 0.0  # no cushion for players built without a sound device
+    _closing = False
     played = 0  # bytes that reached the speaker, which places the caption
 
     def __init__(self, rate: int = 24000, channels: int = 1, paused: threading.Event | None = None):
@@ -80,8 +84,9 @@ class PcmPlayer:
             _live.add(self._stream)
 
     def _open(self, rate, channels):
+        self._stopped = threading.Event()  # set at the end of PortAudio's stop notification on the IO thread
         stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16",
-                                    blocksize=rate // 50, callback=self._fill)
+                                    blocksize=rate // 50, callback=self._fill, finished_callback=self._stopped.set)
         try:
             stream.start()
         except sd.PortAudioError:
@@ -91,6 +96,9 @@ class PcmPlayer:
 
     def _fill(self, out, frames, _time, _status):
         n = frames * self._width
+        if self._closing:
+            out[:] = bytes(n)
+            raise sd.CallbackAbort  # PortAudio stops the unit on its own IO thread; see close()
         if self._paused.is_set():
             out[:] = bytes(n)
             return
@@ -141,9 +149,16 @@ class PcmPlayer:
         with self._lock:
             self._buf.clear()
             self._on_audio = None
+        # abort() from this thread can deadlock CoreAudio when the IO thread is starting or stopping the
+        # device at the same moment (a device change), which silences every voice until a restart.
+        # The callback stops the stream instead; it is closed only after the IO thread has finished stopping.
+        self._closing = True
+        if not self._stopped.wait(CLOSE_WAIT_S):
+            # shortcut: a stream whose IO never finished stopping is leaked rather than risk the deadlock. It stays
+            # listed, so no PortAudio reset closes it either; after a device change the next source reads instead.
+            return
         with _live_lock:  # a reset waits until this stream is closed, not just unlisted
             try:
-                self._stream.abort()
                 self._stream.close()
             finally:
                 _live.discard(self._stream)

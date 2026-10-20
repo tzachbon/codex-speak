@@ -294,6 +294,55 @@ class Bar(unittest.TestCase):
         self.assertEqual((app.cfg["sources"], seen, app.popup.source), (moved, [moved], "Edge"))
         settings.save.assert_called_once()
 
+    def test_picking_a_source_mid_read_reads_the_rest_with_it(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.set_playing(True)
+        app.play("One. Two. Three.", "he-IL")
+        app.pump()
+        self.assertEqual(cursor.spoken, ["One."])
+        app.popup.callbacks["on_source"]("macOS")
+        app.pump()
+        self.assertEqual(macos.spoken, ["One."])  # the unfinished piece starts over
+        macos.done[0](None)
+        app.pump()
+        self.assertEqual((cursor.spoken, macos.spoken), (["One."], ["One.", "Two. Three."]))
+        self.assertEqual((app.popup.playing, app.popup.source, app.chain.enabled), (True, "macOS", ["macOS", "Cursor"]))
+        self.assertEqual(app._read_options[0], "he-IL")
+
+    def test_picking_a_source_mid_piece_starts_from_the_sentence_on_screen(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.set_playing(True)
+        app.play("One. Two. Three.", None)
+        app.pump()
+        cursor.done[0](None)
+        app.pump()
+        self.assertEqual((cursor.spoken, app.popup.caption), (["One.", "Two. Three."], "Two."))
+        app.host.timers[-1][1]()  # the caption steps to the next sentence
+        app.popup.callbacks["on_source"]("macOS")
+        app.pump()
+        self.assertEqual(macos.spoken, ["Three."])
+
+    def test_picking_a_source_while_paused_keeps_the_read_paused(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.set_playing(True)
+        app.play("One. Two.", None)
+        app.pump()
+        app.popup.set_playing(True, paused=True)
+        app.pause()
+        app.popup.callbacks["on_source"]("macOS")
+        app.pump()
+        self.assertEqual((macos.spoken, macos.paused.is_set()), (["One."], True))
+        self.assertEqual((app.popup.playing, app.popup.paused), (True, True))
+
+    def test_picking_a_source_while_idle_does_not_start_a_read(self):
+        cursor, macos = Engine("Cursor"), Engine("macOS")
+        app = self.make(cursor, macos)
+        app.popup.callbacks["on_source"]("macOS")
+        self.assertEqual((macos.spoken, app.popup.playing), ([], False))
+
     def test_picking_a_turned_off_source_turns_it_on(self):
         app = self.make(Engine("Cursor"), Engine("Codex"))
         app.change("sources", [["Cursor", False], ["Codex", False]])
