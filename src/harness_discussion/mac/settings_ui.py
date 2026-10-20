@@ -13,6 +13,7 @@ from .summarize_page import SummarizePage
 
 WIDTH = 460  # inside a card
 SIDEBAR = 200
+TOP = 44  # clears the title bar, which the sidebar runs under
 RELEASES = "https://github.com/tzachbon/harness-discussion/releases/tag/v{}"
 STATUS_COLOR = {"ready": "systemGreenColor", "missing": "systemRedColor", None: "tertiaryLabelColor"}
 # (title, SF Symbol, tile color) per sidebar page, in sidebar order
@@ -26,8 +27,10 @@ def _card(views):
 
 
 def _note(text):
-    """Help text under a card."""
-    return ui.label(text, 11, secondary=True, width=WIDTH + 28)
+    """Help text under a card, lined up with the card's text."""
+    note = ui.stack([ui.label(text, 11, secondary=True, width=WIDTH)])
+    note.setEdgeInsets_((0, 14, 0, 14))
+    return note
 
 
 def _spacer():
@@ -57,7 +60,7 @@ def _nav_button(title, symbol, color, fn):
     b.setBordered_(False)
     b.setWantsLayer_(True)
     b.layer().setCornerRadius_(6)
-    b.setImage_(ui.tile(symbol, getattr(AppKit.NSColor, color)()))
+    b.setImage_(ui.inset(ui.tile(symbol, getattr(AppKit.NSColor, color)()), 6))
     b.setImagePosition_(AppKit.NSImageLeading)
     b.setAlignment_(AppKit.NSTextAlignmentLeft)
     b.setFont_(AppKit.NSFont.systemFontOfSize_(13))
@@ -157,7 +160,7 @@ class SettingsWindow(CaptionsPage, SummarizePage):
         rest = AppKit.NSView.alloc().init()  # takes the spare height, so cards keep their own
         rest.setContentHuggingPriority_forOrientation_(1, AppKit.NSLayoutConstraintOrientationVertical)
         area = ui.stack([self.permission_row, *self.pages, rest], spacing=16)
-        area.setEdgeInsets_((44, 24, 24, 24))  # clears the title bar, which the sidebar runs under
+        area.setEdgeInsets_((TOP, 24, 24, 24))
 
         self.nav = [_nav_button(title, symbol, color, lambda i=i: self.show_page(i))
                     for i, (title, symbol, color) in enumerate(PAGES)]
@@ -167,7 +170,7 @@ class SettingsWindow(CaptionsPage, SummarizePage):
         nav = ui.stack(self.nav, spacing=2)
         nav.setTranslatesAutoresizingMaskIntoConstraints_(False)
         sidebar.addSubview_(nav)
-        nav.topAnchor().constraintEqualToAnchor_constant_(sidebar.topAnchor(), 52).setActive_(True)
+        nav.topAnchor().constraintEqualToAnchor_constant_(sidebar.topAnchor(), TOP).setActive_(True)
         nav.leadingAnchor().constraintEqualToAnchor_constant_(sidebar.leadingAnchor(), 10).setActive_(True)
         sidebar.widthAnchor().constraintEqualToConstant_(SIDEBAR).setActive_(True)
 

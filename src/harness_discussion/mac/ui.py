@@ -189,6 +189,16 @@ def tile(name, color, points=22):
     return AppKit.NSImage.imageWithSize_flipped_drawingHandler_((points, points), False, draw)
 
 
+def inset(image, left):
+    """The image with `left` points of clear space before it."""
+    w, h = image.size()
+
+    def draw(rect):
+        image.drawInRect_(((left, 0), (w, h)))
+        return True
+    return AppKit.NSImage.imageWithSize_flipped_drawingHandler_((w + left, h), False, draw)
+
+
 class Panel(AppKit.NSPanel):
     def canBecomeKeyWindow(self):
         return False
