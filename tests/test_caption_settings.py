@@ -88,14 +88,36 @@ class CaptionSettingsUi(unittest.TestCase):
 
     def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
         self.make_window(dict(settings.DEFAULTS), lambda *args: None, statuses=lambda: {"Cursor": "signed_out"})
-        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages], [True, False, False, False, False])
+        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages],
+                         [True, False, False, False, False, False])
         self.assertEqual(str(self.window.nav[0]["image"]), str(self.window._tiles["Voices"][1]))
-        self.window.nav[3].invoke()
-        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages], [False, False, False, True, False])
+        self.window.nav[4].invoke()
+        self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages],
+                         [False, False, False, False, True, False])
         self.assertEqual(self.window.title["text"], "Speech to Text")
         self.window.statuses = lambda: {"Cursor": "ready"}
         self.window.refresh_sources()
         self.assertEqual(str(self.window.nav[0]["image"]), str(self.window._tiles["Voices"][0]))
+
+    def test_the_summarize_page_shows_each_state_and_its_button(self):
+        state, clicks = ["missing", None], []
+        app = SimpleNamespace(summarize_state=lambda: tuple(state), summarize_action=lambda: clicks.append(1))
+        w = self.make_window(dict(settings.DEFAULTS), lambda *args: None, summarizer=app)
+        w.nav[3].invoke()
+        self.assertEqual(w.title["text"], "Summarize")
+        shown = lambda: (w.summary_status["text"], w.summary_button["text"], bool(w.summary_bar.winfo_manager()))
+        self.assertEqual(shown(), ("Not downloaded", "Download", False))
+        state[:] = ["missing", 0.42]
+        w.refresh_summarize()
+        self.assertEqual(shown(), ("Downloading 42% of 2.5 GB", "Cancel", True))
+        state[:] = ["ready", None]
+        w.refresh_summarize()
+        self.assertEqual(shown(), ("Ready", "Remove", False))
+        w.summary_button.invoke()
+        self.assertEqual(clicks, [1])
+        state[:] = ["unsupported", None]
+        w.refresh_summarize()
+        self.assertFalse(w.summary_button.winfo_manager())
 
     def test_settings_scroll_to_fit_small_work_area(self):
         area = SimpleNamespace(left=0, top=0, right=1920, bottom=480)
@@ -109,7 +131,7 @@ class CaptionSettingsUi(unittest.TestCase):
         self.assertLess(self.window._scroll_canvas.winfo_height(), self.window.content.winfo_reqheight())
         self.assertTrue(self.window.close_button.winfo_viewable())
 
-        self.window.show_page(3)  # the tallest content sits at the end of Speech to Text
+        self.window.show_page(4)  # the tallest content sits at the end of Speech to Text
         self.window._scroll_canvas.yview_moveto(1)
         self.root.update_idletasks()
         content_bottom = self.window.stt_status.winfo_rooty() + self.window.stt_status.winfo_height()

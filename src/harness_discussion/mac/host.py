@@ -163,6 +163,15 @@ class MacHost:
         self._error = message[:80]
         self.refresh_menu()
 
+    def confirm(self, title, message):
+        alert = AppKit.NSAlert.alloc().init()
+        alert.setMessageText_(title)
+        alert.setInformativeText_(message)
+        alert.addButtonWithTitle_("Download")
+        alert.addButtonWithTitle_("Cancel")
+        self.ns.activateIgnoringOtherApps_(True)  # an accessory app's alert opens behind the active app otherwise
+        return alert.runModal() == AppKit.NSAlertFirstButtonReturn
+
     def run(self, pump):
         def tick():
             pump()

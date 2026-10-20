@@ -124,9 +124,10 @@ def _screen_at(x, y):
 
 class Popup:
     def __init__(self, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
-                 on_source, sources):
+                 on_source, sources, on_summarize=lambda text, tag: None):
         """sources: returns the source names the menu offers; on_source(name) picks one."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
+        self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_settings = on_lang, on_speed, on_settings
         self.on_source, self.sources = on_source, sources
         self.text, self.playing, self.paused, self.menu_open, self.loading = "", False, False, False, False
@@ -139,16 +140,29 @@ class Popup:
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
         for anchor in (self.spinner.widthAnchor(), self.spinner.heightAnchor()):
             anchor.constraintEqualToConstant_(30).setActive_(True)
+        self.ai_btn = _icon_button("sparkles", "Summarize", self._summarize, tint=AppKit.NSColor.whiteColor())
+        self.ai_btn.setToolTip_("Summarize")
+        self.ai_btn.setWantsLayer_(True)
+        self.ai_btn.layer().setCornerRadius_(8)
+        self.ai_progress = AppKit.NSProgressIndicator.alloc().init()  # a filling ring while the model downloads
+        self.ai_progress.setStyle_(AppKit.NSProgressIndicatorStyleSpinning)
+        self.ai_progress.setControlSize_(AppKit.NSControlSizeSmall)
+        self.ai_progress.setIndeterminate_(False)
+        self.ai_progress.setMaxValue_(1.0)
+        for anchor in (self.ai_progress.widthAnchor(), self.ai_progress.heightAnchor()):
+            anchor.constraintEqualToConstant_(26).setActive_(True)
         self.lang_btn = _text_button(self._lang_menu, "Auto", ["Auto"] + [v[0] for v in lang.LANGS.values()])
         self.speed_btn = _text_button(self._speed_menu, settings.speed_label(speed),
                                       [settings.speed_label(s) for s in settings.SPEED_PRESETS])
         self.source_btn = _text_button(self._source_menu, "", settings.DEFAULT_SOURCES, ui.source_icon)
         settings_btn = _icon_button("gearshape.fill", "Settings", self._open_settings)
         close_btn = _icon_button("xmark", "Close", self.close)
-        row = ui.stack([self.btn, self.spinner, self.stop_btn, _divider(), self.source_btn, self.lang_btn,
-                        self.speed_btn, _divider(), settings_btn, close_btn], vertical=False, spacing=6)
+        row = ui.stack([self.btn, self.spinner, self.stop_btn, self.ai_btn, self.ai_progress, _divider(),
+                        self.source_btn, self.lang_btn, self.speed_btn, _divider(), settings_btn, close_btn],
+                       vertical=False, spacing=6)
         row.setEdgeInsets_((6, 7, 6, 8))
         self.spinner.setHidden_(True)
+        self.ai_progress.setHidden_(True)
 
         effect = AppKit.NSVisualEffectView.alloc().init()
         effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
@@ -236,12 +250,35 @@ class Popup:
         if not playing:
             self.caption.hide()
             self.set_loading(False)
+            self._highlight(False)
         self.caption.set_paused(self.paused)  # a read stopped while paused must not freeze the next one
         pausing = playing and not paused
         self.btn.setImage_(ui.symbol("pause.fill" if pausing else "play.fill", "Pause" if pausing else "Play"))
         self.stop_btn.setEnabled_(playing)  # dimmed, not hidden, so the bar keeps its width
         self.stop_btn.setAlphaValue_(1 if playing else 0.3)
         if not playing:
+            self.schedule_hide()
+
+    def set_summary(self):
+        """A summary is on its way: the spinner until its first audio, and ✦ marked until it ends."""
+        self.cancel_hide()
+        self.set_playing(True)
+        self.set_loading(True)
+        self._highlight(True)
+
+    def _highlight(self, on):
+        self.ai_btn.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.14 if on else 0)))
+
+    def set_summarize_progress(self, fraction):
+        """0..1 while the model downloads, None after."""
+        self.ai_btn.setHidden_(fraction is not None)
+        self.ai_progress.setHidden_(fraction is None)
+        self.ai_progress.setDoubleValue_(fraction or 0)
+
+    def _summarize(self):
+        self.cancel_hide()
+        self.on_summarize(self.text, self._lang)
+        if not self.playing:  # nothing started, such as a cancelled download
             self.schedule_hide()
 
     def set_caption(self, text):

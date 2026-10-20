@@ -12,6 +12,7 @@ import threading
 import time
 
 from . import lang, sentences, settings, stt_server
+from .app_summarize import Summaries
 from .app_updates import Updates
 from .captions import Captions
 from .sources import Sources
@@ -35,7 +36,7 @@ def _causes(err):
     return " from ".join(names)
 
 
-class App(Captions, Sources, Updates):
+class App(Captions, Sources, Updates, Summaries):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -64,7 +65,9 @@ class App(Captions, Sources, Updates):
             self.events.put(("settings", True))  # show new users where the app lives, with a welcome
         for key, value in self.cfg.items():
             self.apply(key, value)
+        self._init_summaries()
         self.popup = host.make_popup(self.cfg["speed"], on_play=self.play, on_stop=self.stop,
+                                     on_summarize=self.summarize,
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
                                      on_settings=lambda: self.events.put(("settings",)),
@@ -351,6 +354,13 @@ class App(Captions, Sources, Updates):
         elif kind == "engine":
             if self.chain.busy:  # an attempt that started before a stop is not shown
                 p.set_source(args[0])
+        elif kind == "summary":
+            self._summary_done(*args)
+        elif kind == "summarize_progress":
+            if self._summarize_progress is not None:  # a late event after the download ended is dropped
+                self._set_summarize_progress(args[0])
+        elif kind == "summarize_done":
+            self._summarize_downloaded(args[0])
         elif kind == "statuses":
             self._poll_while_downloading()
             self._show_source()
@@ -359,6 +369,7 @@ class App(Captions, Sources, Updates):
         elif kind == "quit":
             self._closing = True
             self.stop()
+            self._close_summaries()
             self._run_stt(False)
             self.host.stop_trigger()
             self.chain.close()

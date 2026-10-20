@@ -80,8 +80,8 @@ def menu_bar_image(size=36):
     return img.resize((size, size), Image.LANCZOS)
 
 
-PAGE_COLORS = {"Voices": "#8e5cf0", "Captions": "#14a3a3", "Reading": "#2f7ff2", "Speech to Text": "#f08a24",
-               "General": "#7a7f8a"}
+PAGE_COLORS = {"Voices": "#8e5cf0", "Captions": "#14a3a3", "Reading": "#2f7ff2", "Summarize": "#e8467c",
+               "Speech to Text": "#f08a24", "General": "#7a7f8a"}
 
 
 def page_image(name, size=20):
@@ -100,6 +100,11 @@ def page_image(name, size=20):
         d.line([g(32, 14), g(32, 50)], fill="white", width=w)
         d.line([g(22, 14), g(42, 14)], fill="white", width=w)
         d.line([g(22, 50), g(42, 50)], fill="white", width=w)
+    elif name == "Summarize":  # a large and a small four-pointed sparkle
+        for cx, cy, r in ((27, 34, 17), (46, 17, 8)):
+            d.polygon([g(cx + dx, cy + dy) for dx, dy in ((0, -r), (r * 0.28, -r * 0.28), (r, 0), (r * 0.28, r * 0.28),
+                                                          (0, r), (-r * 0.28, r * 0.28), (-r, 0),
+                                                          (-r * 0.28, -r * 0.28))], fill="white")
     elif name == "Speech to Text":  # a microphone
         d.rounded_rectangle(g(24, 10, 40, 38), radius=8 * k, fill="white")
         d.arc(g(16, 22, 48, 46), 0, 180, fill="white", width=w)
@@ -112,3 +117,11 @@ def page_image(name, size=20):
         d.ellipse(g(14, 14, 50, 50), fill="white")
         d.ellipse(g(25, 25, 39, 39), fill=PAGE_COLORS["General"])
     return img.resize((size, size), Image.LANCZOS)
+
+
+def badged(image):
+    """The sidebar mark with an orange dot, for a page that needs attention."""
+    image = image.copy()
+    size = image.width
+    ImageDraw.Draw(image).ellipse((size * 0.62, 0, size - 1, size * 0.38), fill="#f7630c", outline="white")
+    return image

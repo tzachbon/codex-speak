@@ -19,6 +19,7 @@ IDLE_HIDE_MS = 4000
 BG, HOVER, PRESSED, FG, ACCENT, DIVIDER = "#f9f9f9", "#ededed", "#e4e4e4", "#1b1b1b", "#005fb8", "#e0e0e0"
 SUBTLE = "#5f5f5f"
 PLAY, PAUSE, STOP, CHEVRON, CLOSE, SETTINGS = "\ue768", "\ue769", "\ue71a", "\ue70d", "\ue8bb", "\ue713"
+SPARKLE, SPARKLE_FONT = "✦", ("Segoe UI Symbol", 11)  # neither icon font has a sparkle on Windows 10
 
 
 def fonts(root):
@@ -82,9 +83,10 @@ class _FlatButton(tk.Frame):
 
 class Popup:
     def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
-                 on_source, sources):
+                 on_source, sources, on_summarize=lambda text, tag: None):
         """sources: returns the source names the menu offers; on_source(name) picks one."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
+        self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
         self.on_settings = on_settings
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
@@ -97,6 +99,9 @@ class Popup:
         w.attributes("-topmost", True)
         self.btn = _FlatButton(w, self._toggle, (PLAY, (icons, 11), ACCENT))
         self.btn.pack(side="left", padx=("2p", 0), pady="2p")
+        self._text_font = text
+        self.ai_btn = _FlatButton(w, self._summarize, (SPARKLE, SPARKLE_FONT, FG))
+        self.ai_btn.pack(side="left", padx=0, pady="2p")
         self.stop_btn = _FlatButton(w, self._stop, (STOP, (icons, 11), FG))  # packed while reading
         self.spinner = tk.Canvas(w, bg=BG, highlightthickness=0)  # shown until speech starts
         self._spin_angle, self._spin_job, self.loading = 0, None, False
@@ -202,12 +207,37 @@ class Popup:
         if not playing:
             self.caption.hide()
             self.set_loading(False)
+            self._highlight(False)
         self.caption.set_paused(self.paused)
         self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
         if playing:
-            self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.divider)
+            self.stop_btn.pack(side="left", padx=0, pady="2p", before=self.ai_btn)
         else:
             self.stop_btn.pack_forget()
+            self.schedule_hide()
+
+    def set_summary(self):
+        """A summary is on its way: the spinner until its first audio, and ✦ in the accent color until it ends."""
+        self._cancel_hide()
+        self.set_playing(True)
+        self.set_loading(True)
+        self._highlight(True)
+
+    def _highlight(self, on):
+        self.ai_btn.parts[1]["fg"] = ACCENT if on else FG
+
+    def set_summarize_progress(self, fraction):
+        """0..1 while the model downloads, shown as a percentage on ✦; None after."""
+        label = self.ai_btn.parts[1]
+        if fraction is None:
+            label.configure(text=SPARKLE, font=SPARKLE_FONT)
+        else:
+            label.configure(text=f"{int(fraction * 100)}%", font=(self._text_font, 9))
+
+    def _summarize(self):
+        self._cancel_hide()
+        self.on_summarize(self.text, self.lang.get() or None)
+        if not self.playing:  # nothing started, such as a cancelled download
             self.schedule_hide()
 
     def set_caption(self, text):

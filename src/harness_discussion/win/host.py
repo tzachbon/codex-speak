@@ -1,6 +1,7 @@
 """Windows host: Tk on the main thread, pystray in the tray, UI Automation for the selection."""
 import threading
 import tkinter as tk
+from tkinter import messagebox
 
 import pystray
 
@@ -44,7 +45,7 @@ class TkHost:
                               lambda: a.stt_error, a.update_state, a.check_update, engines=a.chain.engines,
                               statuses=lambda: a.statuses,
                               on_play=lambda name: a.play(f"This is {name}.", None, only=name), welcome=welcome,
-                              on_fix=a.fix_source)
+                             on_fix=a.fix_source, summarizer=a)
 
     def read_selection(self, clipboard_fallback):
         return selection.read(clipboard_fallback)
@@ -62,6 +63,9 @@ class TkHost:
 
     def notify(self, message):
         self.icon.notify(message, "Harness Discussion")
+
+    def confirm(self, title, message):
+        return messagebox.askokcancel(title, message, icon="question", parent=self.root)
 
     def run(self, pump):
         def tick():

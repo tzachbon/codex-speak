@@ -236,13 +236,15 @@ class SourcesSettingsTest(unittest.TestCase):
         from harness_discussion import settings
         from harness_discussion.mac import settings_ui, ui
         AppKit.NSApplication.sharedApplication()
-        self.changes, self.played = [], []
+        self.changes, self.played, self.summary = [], [], ["missing", None, 0]
         engines = [SimpleNamespace(name="Cursor", voices=(("eve", "Eve"), ("ara", "Ara")), default_voice="ara"),
                    SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
         self.app = SimpleNamespace(
             cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"},
             chain=SimpleNamespace(engines=engines), stt_error=None, check_update=lambda: None,
             update_state=lambda: ("", False), available_version=lambda: None,
+            summarize_state=lambda: tuple(self.summary[:2]),
+            summarize_action=lambda: self.summary.__setitem__(2, self.summary[2] + 1),
             change=lambda key, value, save=True: self.changes.append((key, value)),
             play=lambda text, tag, only=None: self.played.append((text, only)))
         for p in (mock.patch.object(ui, "show"), mock.patch.object(settings_ui.startup, "enabled", return_value=False),
@@ -263,13 +265,31 @@ class SourcesSettingsTest(unittest.TestCase):
         self.assertEqual((self.rows["Codex"][2], self.rows["macOS"][2]), (None, None))
 
     def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
-        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True, True])
+        self.assertEqual([p.isHidden() for p in self.win.pages], [False, True, True, True, True, True])
         self.assertTrue(self.win.nav[0].title().endswith("●"))  # Cursor is signed out
-        self.win.nav[4].performClick_(None)
-        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, True, False])
+        self.win.nav[5].performClick_(None)
+        self.assertEqual([p.isHidden() for p in self.win.pages], [True, True, True, True, True, False])
         self.app.statuses = {"Cursor": "ready", "Codex": "ready"}
         self.win.refresh_sources()
         self.assertFalse(self.win.nav[0].title().endswith("●"))
+
+    def test_the_summarize_page_shows_each_state_and_its_button(self):
+        w = self.win
+        w.nav[3].performClick_(None)
+        shown = lambda: (w.summary_status.stringValue(), w.summary_button.title(), w.summary_bar.isHidden())
+        self.assertEqual(shown(), ("Not downloaded", "Download", True))
+        self.summary[:2] = ["missing", 0.42]
+        w.refresh_summarize()
+        self.assertEqual(shown(), ("Downloading 42% of 2.5 GB", "Cancel", False))
+        self.assertEqual(w.win.contentView().frame().size.height, w.content.fittingSize().height)
+        self.summary[:2] = ["ready", None]
+        w.refresh_summarize()
+        self.assertEqual(shown(), ("Ready", "Remove", True))
+        w.summary_button.performClick_(None)
+        self.assertEqual(self.summary[2], 1)
+        self.summary[:2] = ["unsupported", None]
+        w.refresh_summarize()
+        self.assertTrue(w.summary_button.isHidden())
 
     def test_the_captions_page_saves_font_size_background_and_opacity(self):
         self.assertFalse(self.win.opacity.isEnabled())  # no background by default
