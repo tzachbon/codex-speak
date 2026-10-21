@@ -93,3 +93,7 @@ Earlier entries, oldest first: [SYNC-log-1.md](SYNC-log-1.md), [SYNC-log-2.md](S
 
 - At `b96a753`: full suite 579 passed in 119.805 s, 11 skipped, with listeners mocked and no unraisable Tk errors. Final isolated review 3/3 PASS: 58 scoped tests, no actionable component defects. Full Writer acceptance is still open.
 - Updated `packaging/build.ps1` passed. Installer 65,850,840 bytes, SHA-256 `5354da071a0ac74bc8a2e26551e22ed499d1585852a8f4bc13fa92c268e795b0`. Not installed or run. Windows/macOS CI is next. Shared corrections, guarded Undo/microphone, native matrix and signed Mac Dictation remain unfinished. No activation/default change.
+
+### 2026-10-21 Windows (CI handoff)
+
+- Opened https://github.com/tzachbon/harness-discussion/pull/63 for this component preparation. CI pending, not merged. Reviewed production source is `b96a753`; shared/native gates remain open.
