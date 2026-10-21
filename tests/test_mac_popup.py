@@ -66,21 +66,36 @@ class PopupSourceTest(unittest.TestCase):
         bar = _bar(on_rewrite=lambda text, mode: None, modes=lambda: ["Fix errors"])
         self.addCleanup(bar.hide)
         bar.show("Some text.", 400, 400, editable=True)
-        self.assertEqual(_shown(bar), [bar.rewrite_btn, bar.mode_btn, bar.btn, bar.more_btn])
+        chips = [bar.source_btn, bar.speed_btn, bar.more_btn, bar.close_btn]
+        self.assertEqual(_shown(bar), [bar.rewrite_btn, bar.mode_btn, bar.divider, bar.btn, bar.ai_btn, *chips])
         left = bar.win.frame().origin.x
         bar.set_editable(False)
-        self.assertEqual(_shown(bar), [bar.btn, bar.ai_btn, bar.more_btn])
+        self.assertEqual(_shown(bar), [bar.btn, bar.ai_btn, *chips])
         self.assertEqual(bar.win.frame().origin.x, left)  # the left edge stays anchored
+        self.assertEqual(bar.effect.layer().cornerRadius(), bar.win.frame().size.height / 2)
         bar.set_playing(True)
-        self.assertEqual(_shown(bar), [bar.btn, bar.back_btn, bar.next_btn, bar.stop_btn, bar.more_btn])
+        self.assertEqual(_shown(bar), [bar.btn, bar.back_btn, bar.next_btn, bar.stop_btn, *chips])
         bar.set_playing(False)
         bar.set_summarize_progress(0.4)
-        self.assertEqual(_shown(bar), [bar.btn, bar.ai_progress, bar.more_btn])
+        self.assertEqual(_shown(bar), [bar.btn, bar.ai_progress, *chips])
         self.assertEqual(bar.ai_progress.doubleValue(), 0.4)
         no_writer = _bar()
         self.addCleanup(no_writer.hide)
         no_writer.show("Some text.", 400, 400, editable=True)
-        self.assertEqual(_shown(no_writer), [no_writer.btn, no_writer.ai_btn, no_writer.more_btn])
+        self.assertEqual(_shown(no_writer), [no_writer.btn, no_writer.ai_btn, no_writer.source_btn,
+                                             no_writer.speed_btn, no_writer.more_btn, no_writer.close_btn])
+
+    def test_the_voice_and_speed_chips_pick_and_show_the_choice(self):
+        picks = []
+        bar = _bar(on_source=lambda n: picks.append(n), on_speed=lambda s: picks.append(s),
+                   sources=lambda: [("Codex", None), ("macOS", None)])
+        bar.set_source("Codex")
+        self.assertIn("Codex", str(bar.source_btn.attributedTitle().string()))
+        self.assertEqual([v[0] for v in bar._voice_entries()], ["Codex", "macOS"])
+        bar._voice_entries()[1][1]()
+        next(e for e in bar._speed_entries() if e[0] == "1.5×")[1]()
+        self.assertEqual(picks, ["macOS", 1.5])
+        self.assertIn("1.5×", str(bar.speed_btn.attributedTitle().string()))
 
     def test_the_rewrite_button_uses_the_last_mode_and_stays_while_rewriting(self):
         picked = []

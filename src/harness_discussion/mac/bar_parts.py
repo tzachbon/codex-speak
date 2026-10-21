@@ -1,0 +1,157 @@
+"""The pieces of the floating bar: its buttons, chips, divider, menus, and screen math."""
+import AppKit
+import objc
+
+from . import ui
+
+
+class _Button(AppKit.NSButton):
+    def acceptsFirstMouse_(self, event):
+        return True  # one click works while another app stays active
+
+
+class _Hover(AppKit.NSView):
+    """Content view that reports mouse enter and exit, so the idle timer pauses while hovered."""
+
+    def initWithOwner_(self, owner):
+        self = objc.super(_Hover, self).init()
+        if self is not None:
+            self.owner = owner
+        return self
+
+    def updateTrackingAreas(self):
+        objc.super(_Hover, self).updateTrackingAreas()
+        for area in list(self.trackingAreas()):
+            self.removeTrackingArea_(area)
+        options = (AppKit.NSTrackingMouseEnteredAndExited | AppKit.NSTrackingActiveAlways
+                   | AppKit.NSTrackingInVisibleRect)
+        self.addTrackingArea_(AppKit.NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+            self.bounds(), options, self, None))
+
+    def mouseEntered_(self, event):
+        self.owner.cancel_hide()
+
+    def mouseExited_(self, event):
+        self.owner.schedule_hide()
+
+
+def _icon_button(name, description, fn, tint=None):
+    b = _Button.alloc().init()
+    b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
+    b.setBordered_(False)
+    b.setImage_(ui.symbol(name, description))
+    b.setImageScaling_(AppKit.NSImageScaleProportionallyDown)
+    b.setContentTintColor_(tint or AppKit.NSColor.colorWithWhite_alpha_(1, 0.6))
+    b.setToolTip_(description)
+    b.widthAnchor().constraintEqualToConstant_(26).setActive_(True)
+    b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
+    return ui.bind(b, lambda s: fn(s))
+
+
+def _play_button(fn):
+    """Play/Pause: a filled circle in the system accent color, the one control that stands out."""
+    b = _icon_button("play.fill", "Play", lambda _s: fn(), tint=AppKit.NSColor.whiteColor())
+    for c in b.constraints():
+        c.setConstant_(30)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(15)
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.controlAccentColor()))
+    return b
+
+
+def _text_button(fn, title, titles, icon=lambda _t: None):
+    """A rounded chip that opens a menu, as wide as its widest title so a pick never moves the bar."""
+    b = _Button.alloc().init()
+    b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
+    b.setBordered_(False)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(13)
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.1)))
+    b.heightAnchor().constraintEqualToConstant_(26).setActive_(True)
+    widest = 0
+    for option in titles:
+        _set_title(b, option, icon(option))
+        widest = max(widest, b.cell().cellSize().width)
+    b.widthAnchor().constraintEqualToConstant_(widest + 24).setActive_(True)
+    _set_title(b, title, icon(title) if title else None)
+    return ui.bind(b, lambda s: fn(s))
+
+
+def _set_title(button, title, image=None):
+    """`[icon] title ▾` with a dimmed chevron, the icon inline so it centers with the title."""
+    font = AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightMedium)
+    text = AppKit.NSMutableAttributedString.alloc().init()
+    if image:
+        icon = AppKit.NSTextAttachment.alloc().init()
+        icon.setImage_(image)
+        size = image.size()
+        icon.setBounds_(((0, (font.capHeight() - size.height) / 2), (size.width, size.height)))
+        text.appendAttributedString_(AppKit.NSAttributedString.attributedStringWithAttachment_(icon))
+        title = " " + title
+    text.appendAttributedString_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        title + " ", {AppKit.NSFontAttributeName: font,
+                       AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()}))
+    text.appendAttributedString_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        "▾", {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_(9),
+              AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithWhite_alpha_(1, 0.55),
+              AppKit.NSBaselineOffsetAttributeName: 1}))
+    button.setAttributedTitle_(text)
+
+
+def _rewrite_button(fn):
+    """✎ and the mode name: the primary control of the writing layout."""
+    b = _Button.alloc().init()
+    b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
+    b.setBordered_(False)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(15)
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.controlAccentColor()))
+    b.heightAnchor().constraintEqualToConstant_(30).setActive_(True)  # as tall as ▶, so both follow the bar's curve
+    return ui.bind(b, lambda _s: fn())
+
+
+def _set_rewrite_title(button, title):
+    font = AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightSemibold)
+    button.setAttributedTitle_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        f"    ✎ {title}    ", {AppKit.NSFontAttributeName: font,
+                              AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()}))
+
+
+def _divider():
+    line = AppKit.NSBox.alloc().init()
+    line.setBoxType_(AppKit.NSBoxSeparator)
+    line.heightAnchor().constraintEqualToConstant_(18).setActive_(True)
+    return line
+
+
+def _cocoa_y(top):
+    """Top-left y of the main screen to AppKit's bottom-left y."""
+    return AppKit.NSScreen.screens()[0].frame().size.height - top
+
+
+def _screen_at(x, y):
+    point = (x, _cocoa_y(y))
+    for screen in AppKit.NSScreen.screens():
+        if AppKit.NSPointInRect(point, screen.frame()):
+            return screen
+    return AppKit.NSScreen.mainScreen()
+
+
+def build_menu(entries):
+    """entries: (title, fn, checked), (title, [entries]) for a submenu, or None for a separator."""
+    menu = AppKit.NSMenu.alloc().init()
+    menu.setAutoenablesItems_(False)
+    for entry in entries:
+        if entry is None:
+            menu.addItem_(AppKit.NSMenuItem.separatorItem())
+        elif isinstance(entry[1], list):
+            item = menu.addItemWithTitle_action_keyEquivalent_(entry[0], None, "")
+            menu.setSubmenu_forItem_(build_menu(entry[1]), item)
+        else:
+            title, fn, checked = entry
+            item = menu.addItemWithTitle_action_keyEquivalent_(title, "run:" if fn else None, "")
+            if fn:
+                item.setTarget_(ui.target(lambda _s, fn=fn: fn()))
+            item.setEnabled_(fn is not None)
+            item.setState_(1 if checked else 0)
+    return menu
