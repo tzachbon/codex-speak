@@ -37,11 +37,15 @@ def restore_clipboard(count_now: int, count_after_set: int) -> bool:
 
 def undo(platform, ctx: Context, original: str, inserted: str, newline: str = "\n") -> bool:
     """Select the inserted text, check it is still what we pasted in the same window, then put the original back.
+    When `ctx.caret` is known, the selection must also be exactly where the paste landed.
     False when any check fails: the caller tells the user to use the app's own undo."""
-    if not platform.select_back(utf16_len(inserted, newline), ctx):
+    n = utf16_len(inserted, newline)
+    if not platform.select_back(n, ctx):
         return False
     now = platform.capture(True)
-    if not same_context(Context(inserted, ctx.app, ctx.window, ctx.editable, ctx.secure), now):
+    caret = getattr(ctx, "caret", None)
+    if (not same_context(Context(inserted, ctx.app, ctx.window, ctx.editable, ctx.secure), now)
+            or (caret is not None and getattr(now, "caret", None) != (caret[0], n))):
         if hasattr(platform, "collapse"):
             platform.collapse()
         return False

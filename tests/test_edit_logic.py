@@ -60,6 +60,14 @@ class UndoTest(unittest.TestCase):
         self.assertFalse(edit_logic.undo(platform, CTX, "old", "new"))
         self.assertEqual(platform.log, [("select_back", 3), ("capture",), ("collapse",)])
 
+    def test_undo_requires_the_range_the_paste_landed_in(self):
+        ctx = Context("old", 10, 20, True, False, caret=(5, 3))
+        platform = FakePlatform(Context("new", 10, 20, True, False, caret=(5, 3)))
+        self.assertTrue(edit_logic.undo(platform, ctx, "old", "new"))
+        platform = FakePlatform(Context("new", 10, 20, True, False, caret=(30, 3)))  # the same text elsewhere
+        self.assertFalse(edit_logic.undo(platform, ctx, "old", "new"))
+        self.assertEqual(platform.log, [("select_back", 3), ("capture",), ("collapse",)])
+
     def test_a_platform_without_collapse_leaves_the_selection(self):
         bare = type("Bare", (), {k: v for k, v in vars(FakePlatform).items() if k != "collapse"})(
             Context("something else", 10, 20, True, False))
