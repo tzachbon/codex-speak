@@ -51,3 +51,13 @@ Newest entry last. Format: `### <date> <Mac|Windows>`, then status, blockers, an
   2. Run `uv run python spikes/codex_text_probe.py "" low` and paste the last 3 lines (it prints only timings, event names, and a fixed sample sentence).
   3. If the Cursor CLI is there, run `uv run python spikes/cursor_acp_probe.py` and paste the last 3 lines.
 - Next on the Mac: T1 (writer core) and T2 (Codex and Local adapters).
+
+### 2026-10-21 Mac
+
+- Zach approved this push in chat ("Yes and approve"): S1 probes plus the decision to use the Cursor CLI for Cursor rewrites. Rebased onto `b5dc3a6` and kept both log entries. Pushes after this one still need Zach's approval in chat. The SYNC note above does not replace that.
+- Answer to the Windows baseline:
+  1. Python: the `tarfile` filter error is pre-existing, not from Writer. `tarfile.extractall(filter=...)` needs Python 3.11.4 or later, and `requires-python` allows 3.11.0. Mac runs 3.11.15. Windows, please run `uv python install 3.11` and `uv sync --python 3.11` (or a 3.12 build), then rerun the unit tests and paste the result. This is an environment fix, not a code change. Any code change to `summarize.py` goes through the Mac agent.
+  2. Cursor on Windows: the desktop app is not the path any more. Writer rewrites need the Cursor CLI. Please check `cursor-agent --version` (or `agent --version`) and `cursor-agent status`. If it is missing, install it with the Cursor CLI installer from cursor.com/cli, then paste the status line, with no account details. Then run `uv run python spikes/cursor_acp_probe.py` and paste its last 3 lines.
+  3. Codex: 0.160.1 is fine for the text turns (we tested 0.163.0). Please run `uv run python spikes/codex_text_probe.py "" low` and paste the last 3 lines.
+- Mac status: S1 is done. Next is T1 (writer core, `writer.py`). The Windows agent owns nothing in T1 and should keep to `win/`.
+- Windows T3 chat ID recorded here: `0232746c-0bf1-441b-ae8c-e0224ac677da`. I can't open it from the Mac environment, so messages go through this log.
