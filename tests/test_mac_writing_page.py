@@ -89,6 +89,41 @@ class WritingSettingsTest(unittest.TestCase):
         w.refresh_writing()
         self.assertEqual(w.mode_text.stringValue(), "Draft")
 
+    def test_recording_shows_held_modifiers_and_refuses_unusable_keys(self):
+        import AppKit
+        from harness_discussion.mac import reading_page
+        handlers = []
+
+        class Fake:  # AppKit, with the key monitor handed to the test instead of the system
+            NSEvent = SimpleNamespace(addLocalMonitorForEventsMatchingMask_handler_=lambda m, h: handlers.append(h),
+                                      removeMonitor_=lambda m: None)
+            NSNotificationCenter = SimpleNamespace(defaultCenter=mock.Mock)
+
+            def __getattr__(self, name):
+                return getattr(AppKit, name)
+
+        def event(kind, flags, code=0):
+            if kind == AppKit.NSEventTypeFlagsChanged:
+                return AppKit.NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
+                    kind, (0, 0), flags, 0, 0, None, "", "", False, 59)
+            return AppKit.NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
+                kind, (0, 0), flags, 0, 0, None, "e", "e", False, code)
+        w, label = self.win, self.win.shortcut_labels["rewrite_hotkey"]
+        real, w.win = w.win, mock.Mock(isVisible=lambda: True)
+        try:
+            with mock.patch.object(reading_page, "AppKit", Fake()):
+                w._record_hotkey("rewrite_hotkey")
+                ctrl, alt = AppKit.NSEventModifierFlagControl, AppKit.NSEventModifierFlagOption
+                handlers[0](event(AppKit.NSEventTypeFlagsChanged, ctrl | alt))
+                self.assertEqual(label.stringValue(), "⌃⌥…")
+                handlers[0](event(AppKit.NSEventTypeKeyDown, 0, 14))
+                self.assertIn("letter", label.stringValue())
+                handlers[0](event(AppKit.NSEventTypeKeyDown, ctrl | alt, 14))
+        finally:
+            w.win = real
+        self.assertEqual(self.changes[-1], ("rewrite_hotkey", "<ctrl>+<alt>+e"))
+        self.assertEqual(label.stringValue(), "⌃⌥E")
+
     def test_a_shortcut_another_row_uses_is_refused(self):
         self.win._set_hotkey(self.win.cfg["hotkey"], "rewrite_hotkey")
         self.assertEqual(self.win.shortcut_labels["rewrite_hotkey"].stringValue(), "Used by Read shortcut")

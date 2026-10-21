@@ -10,6 +10,7 @@ import AppKit
 from ApplicationServices import AXIsProcessTrusted, AXIsProcessTrustedWithOptions
 from Foundation import NSBundle, NSURL
 
+from .. import hotkeys
 from .startup import LABEL
 
 log = logging.getLogger(__name__)
@@ -67,7 +68,8 @@ class Watcher:
             if build and self.app.cfg.get("ax_granted_build") != build:
                 self.app.change("ax_granted_build", build)
             host.set_permission_missing(False)
-            self.app.apply("hotkey", self.app.cfg["hotkey"])  # key monitors only receive events once trusted
+            for key in hotkeys.SHORTCUTS:  # key monitors only receive events once trusted
+                self.app.apply(key, self.app.cfg[key])
             if self.guide:
                 self.guide.granted()
                 self.guide = None

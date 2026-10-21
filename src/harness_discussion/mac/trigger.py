@@ -59,11 +59,15 @@ KEY_CODES = {0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: 
              100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12"}
 
 
+def event_mods(event):
+    flags = event.modifierFlags()
+    return {name for name, flag in FLAGS.items() if flags & flag}
+
+
 def event_spec(event):
     """The hotkeys string for a key-down event, or None for a key or combination a shortcut can't use."""
     key = KEY_CODES.get(event.keyCode())
-    flags = event.modifierFlags()
-    return key and hotkeys.spec({name for name, flag in FLAGS.items() if flags & flag}, key)
+    return key and hotkeys.spec(event_mods(event), key)
 
 
 class HotKey:

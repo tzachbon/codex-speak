@@ -41,12 +41,16 @@ def spec(mods, key):
     return text if parse(text) else None
 
 
+def mac_mods(mods):
+    return "".join({"ctrl": "⌃", "alt": "⌥", "shift": "⇧", "cmd": "⌘"}[m] for m in MODS if m in mods)
+
+
 def label(text):
     parsed = parse(text)
     if not parsed:
         return "Off"
     mods, key = parsed
     if sys.platform == "darwin":
-        return "".join({"ctrl": "⌃", "alt": "⌥", "shift": "⇧", "cmd": "⌘"}[m] for m in MODS if m in mods) + key.upper()
+        return mac_mods(mods) + key.upper()
     return "+".join([{"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Win"}[m] for m in MODS if m in mods]
                     + [key.upper()])
