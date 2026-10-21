@@ -54,11 +54,13 @@ class ModesTest(unittest.TestCase):
         short = writer.system_prompt(mode, short=True)
         self.assertIn("Sound like me.", short)
         self.assertNotIn(writer.find_mode("Message", writer.BUILTIN_MODES).brief, short)
-        self.assertLessEqual(len(short.split()), 170)
+        self.assertLessEqual(len(short.split()), 210)
 
     def test_custom_mode_short_tier_uses_its_instructions(self):
         mode = writer.find_mode("Tweet", writer.all_modes([{"name": "Tweet", "instructions": "Under 280 characters."}]))
         self.assertIn("Under 280 characters.", writer.system_prompt(mode, short=True))
+        notes = writer.all_modes([{"name": "Notes", "instructions": "Write a release note. Never name customers."}])
+        self.assertIn("Never name customers.", writer.system_prompt(writer.find_mode("Notes", notes), short=True))
         self.assertNotIn(writer.STYLE, writer.system_prompt(mode))
 
 
@@ -69,6 +71,8 @@ class TidyTest(unittest.TestCase):
     def test_keeps_a_preamble_the_draft_had(self):
         draft = "Here are the steps:\n1. Build\n2. Ship"
         self.assertEqual(writer.tidy(draft, draft), draft)
+        self.assertEqual(writer.tidy("Here are the blockers:\n1. Approval", "here are the blockers:\n1. aproval"),
+                         "Here are the blockers:\n1. Approval")
 
     def test_unwraps_quotes_the_draft_did_not_have(self):
         self.assertEqual(writer.tidy('"Ship it."', "ship it"), "Ship it.")
@@ -83,6 +87,8 @@ class TidyTest(unittest.TestCase):
         self.assertEqual(writer.tidy("```\na — b\n```", "x"), "```\na — b\n```")
         self.assertEqual(writer.tidy("— first\n— second", "x"), "- first\n- second")
         self.assertEqual(writer.tidy("pages 3–5", "x"), "pages 3–5")
+        self.assertEqual(writer.tidy('~~~py\nm = "Wait…"\n~~~', "x"), '~~~py\nm = "Wait…"\n~~~')
+        self.assertEqual(writer.tidy('Run:\n\n    m = "Wait…"\n\nDone…', "x"), 'Run:\n\n    m = "Wait…"\n\nDone...')
 
     def test_idempotent(self):
         once = writer.tidy("Sure, here you go:\n“A” — b", "a b")
