@@ -42,6 +42,64 @@ class Base(unittest.TestCase):
         self.addCleanup(self.root.destroy)
 
 class ToastTest(Base):
+    def test_reentering_the_toast_cancels_the_pending_submenu_close(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            menu = next(lbl for lbl in labels(self.root) if lbl["text"] == "✓ Email").winfo_toplevel()
+            toast.win.event_generate("<Leave>")
+            toast.win.event_generate("<Enter>")
+            pump(self.root, 0.4)
+            self.assertTrue(toast.visible)
+            self.assertTrue(menu.winfo_exists())
+            self.assertTrue(menu.winfo_viewable())
+            toast.win.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+
+    def test_leaving_an_open_mode_menu_resumes_toast_auto_hide(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            toast.win.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+            self.assertFalse(any(w.winfo_viewable() for w in self.root.winfo_children()))
+
+    def test_entering_the_submenu_cancels_its_pending_close(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            menu = next(lbl for lbl in labels(self.root) if lbl["text"] == "✓ Email").winfo_toplevel()
+            toast.win.event_generate("<Leave>")
+            menu.event_generate("<Enter>")
+            pump(self.root, 0.4)
+            self.assertTrue(toast.visible)
+            self.assertTrue(menu.winfo_viewable())
+            menu.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+
+    def test_reopening_a_submenu_does_not_leave_an_orphan_window(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, False)])])
+        self.root.update()
+        for _ in range(2):
+            click(self.root, toast.win, "Mode ▾")
+            menus = [w for w in self.root.winfo_children()
+                     if w is not toast.win and w.winfo_viewable()]
+            self.assertEqual(len(menus), 1)
+        toast.hide()
+        self.root.update()
+        self.assertFalse(any(w.winfo_viewable() for w in self.root.winfo_children()))
+
     def make(self):
         self.actions = []
         toast = win_toast.Toast(self.root, self.actions.append)
@@ -61,6 +119,29 @@ class ToastTest(Base):
         for name in ("Undo", "Review", "Mode"):
             click(self.root, toast.win, name)
         self.assertEqual(self.actions, ["undo", "review", "mode"])
+
+    def test_shared_actions_and_submenu_hide_before_calling_back(self):
+        calls, hidden = [], []
+        toast = win_toast.Toast(self.root)
+        toast.on_hide = lambda: hidden.append(not toast.visible)
+        self.addCleanup(toast.destroy)
+
+        toast.show("Ready", 200, 200,
+                   [("Copy", lambda: calls.append(("copy", toast.visible))),
+                    ("Mode", [("Careful", lambda: calls.append(("mode", toast.visible)), True)])], False)
+        self.root.update()
+        self.assertIn("Copy", [lbl["text"] for lbl in labels(toast.win)])
+        click(self.root, toast.win, "Mode ▾")
+        self.root.update()
+        self.assertIn("✓ Careful", [lbl["text"] for lbl in labels(self.root) if lbl.winfo_viewable()])
+        click(self.root, self.root, "✓ Careful")
+        self.assertEqual(calls, [("mode", False)])
+        self.assertEqual(hidden, [True])
+
+        toast.show("Ready again", 200, 200, [("Copy", lambda: calls.append(("copy", toast.visible)))], False)
+        click(self.root, toast.win, "Copy")
+        self.assertEqual(calls, [("mode", False), ("copy", False)])
+        self.assertEqual(hidden, [True, True])
 
     def test_error_toast_offers_copy_only(self):
         toast = self.make()
@@ -109,6 +190,36 @@ class ToastTest(Base):
             pump(self.root, 0.15)
             self.assertTrue(toast.visible)
 
+    def test_busy_activity_and_hide_notifications(self):
+        toast = win_toast.Toast(self.root)
+        hidden = []
+        toast.on_hide = lambda: hidden.append(toast.visible)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50), patch.object(win_toast, "ACTIVITY_MS", 20):
+            toast.show("Working", 200, 200, (), True)
+            self.root.update()
+            self.assertTrue(toast.spinner.winfo_viewable())
+            first_frame = toast.spinner["text"]
+            toast.win.event_generate("<Leave>")
+            pump(self.root, 0.12)
+            self.assertTrue(toast.visible, "a busy toast stays visible after Leave")
+            self.assertNotEqual(toast.spinner["text"], first_frame)
+
+            toast.show("Finished", 200, 200, (), False)
+            pump(self.root, 0.12)
+            self.assertFalse(toast.visible)
+            self.assertEqual(hidden, [False])
+            toast.hide()
+            self.assertEqual(hidden, [False], "hiding an already hidden toast is not another transition")
+
+            toast.show("Working again", 200, 200, (), True)
+            toast.hide()
+            self.assertEqual(hidden, [False, False])
+            toast.show("Working once more", 200, 200, (), True)
+            toast.destroy()
+            self.assertEqual(hidden, [False, False, False])
+            pump(self.root, 0.08)  # cancelled activity callbacks do not reach a destroyed window
+
 OLD = "hey team, the deploy broke cause the env var wasnt set"
 NEW = "Hi team, the deploy failed because the env var wasn't set"
 
@@ -132,6 +243,24 @@ class ReviewTest(Base):
         for name in ("Rewrite again", "Copy", "Replace"):
             click(self.root, review.win, name)
         self.assertEqual(self.calls, [("rewrite", NEW), ("copy", NEW), ("replace", NEW)])
+
+    def test_shared_show_callbacks_receive_current_result_and_keep_constructor_rewrite(self):
+        calls = []
+        review = win_review.Review(self.root, on_copy=lambda text: calls.append(("old copy", text)),
+                                   on_rewrite=lambda text: calls.append(("rewrite", text)))
+        self.addCleanup(review.destroy)
+        review.show(OLD, NEW, lambda text: calls.append(("replace", text)),
+                    lambda text: calls.append(("copy", text)))
+        self.root.update()
+        start = review.right.search("failed", "1.0")
+        x, y, _w, _h = review.right.bbox(f"{start}+1c")
+        review.right.event_generate("<Motion>", x=x, y=y)
+        review.right.event_generate("<Button-1>", x=x, y=y)
+        self.root.update()
+        result = "Hi team, the deploy broke because the env var wasn't set"
+        for name in ("Rewrite again", "Copy", "Replace"):
+            click(self.root, review.win, name)
+        self.assertEqual(calls, [("rewrite", result), ("copy", result), ("replace", result)])
 
     def test_clicking_a_change_restores_just_that_change(self):
         review = self.make()
@@ -166,6 +295,24 @@ class ReviewTest(Base):
         self.assertEqual(self.calls, [("replace", NEW), ("copy", NEW)])
         review.hide()
         self.assertFalse(review.visible)
+
+    def test_missing_replace_callback_means_copy_only_and_missing_callbacks_are_safe(self):
+        calls = []
+        review = win_review.Review(self.root, on_replace=lambda text: calls.append(("old replace", text)),
+                                   on_copy=lambda text: calls.append(("old copy", text)),
+                                   on_rewrite=lambda text: calls.append(("rewrite", text)))
+        self.addCleanup(review.destroy)
+        review.show(OLD, NEW, None, lambda text: calls.append(("copy", text)))
+        for name in ("Replace", "Rewrite again", "Copy"):
+            click(self.root, review.win, name)
+        self.assertEqual(calls, [("copy", NEW)])
+
+        review = win_review.Review(self.root)
+        self.addCleanup(review.destroy)
+        review.show(OLD, NEW, None, None)
+        for name in ("Replace", "Rewrite again", "Copy"):
+            click(self.root, review.win, name)
+        self.assertEqual(calls, [("copy", NEW)])
 
 if __name__ == "__main__":
     unittest.main()

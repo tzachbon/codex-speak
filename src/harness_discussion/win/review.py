@@ -12,6 +12,7 @@ from .toast import floating
 
 # Windows 11 light status colors
 ADDED_FG, ADDED_BG, REMOVED_FG, REMOVED_BG, PANE, DISABLED = "#0f7b0f", "#dff6dd", "#c42b1c", "#fde7e9", "#ffffff", "#a0a0a0"
+_UNSET = object()
 
 def hunks(old, new):
     """writer.diff grouped into equal text (str) and changes ([old, new, reverted])."""
@@ -26,9 +27,10 @@ def hunks(old, new):
     return out
 
 class Review:
-    def __init__(self, root, on_replace, on_copy, on_rewrite):
+    def __init__(self, root, on_replace=None, on_copy=None, on_rewrite=None):
         """Each callback gets the current result, with any reverted changes put back."""
         self.on_replace, self.on_copy, self.on_rewrite = on_replace, on_copy, on_rewrite
+        self._shown_on_replace, self._shown_on_copy = on_replace, on_copy
         self.parts, self.can_replace = [], True
         icons, text = fonts(root)
         w = self.win = floating(root)
@@ -45,7 +47,7 @@ class Review:
         hint = tk.Label(footer, text="Click a change to undo it", bg=BG, fg=SUBTLE, font=(text, 9))
         hint.pack(side="left", padx=(0, "8p"))
         self.rewrite_btn = _FlatButton(footer, self._rewrite, ("Rewrite again", (text, 10), FG))
-        self.copy_btn = _FlatButton(footer, lambda: self.on_copy(self.result()), ("Copy", (text, 10), FG))
+        self.copy_btn = _FlatButton(footer, self._copy, ("Copy", (text, 10), FG))
         self.replace_btn = _FlatButton(footer, self._replace, ("Replace", (text, 10, "bold"), ACCENT))
         for button in (self.rewrite_btn, self.copy_btn, self.replace_btn):
             button.pack(side="left", padx=(0, "2p"))
@@ -64,7 +66,14 @@ class Review:
         box.tag_configure("added", foreground=ADDED_FG, background=ADDED_BG)
         return box
 
-    def show(self, original, rewritten, can_replace=True):
+    def show(self, original, rewritten, on_replace=_UNSET, on_copy=_UNSET, can_replace=True):
+        # Keep the former positional can_replace argument working as well as its keyword form.
+        if isinstance(on_replace, bool) and on_copy is _UNSET:
+            can_replace, on_replace = on_replace, _UNSET
+        self._shown_on_replace = self.on_replace if on_replace is _UNSET else on_replace
+        self._shown_on_copy = self.on_copy if on_copy is _UNSET else on_copy
+        if on_replace is None:
+            can_replace = False
         self.parts = hunks(original, rewritten)
         self._render()
         self.set_can_replace(can_replace)
@@ -79,12 +88,13 @@ class Review:
 
     def set_can_replace(self, can_replace):
         """False when the original selection is gone, so only Copy is left."""
-        self.can_replace = can_replace
-        self.replace_btn.parts[1]["fg"] = ACCENT if can_replace else DISABLED
-        self.rewrite_btn.parts[1]["fg"] = FG if can_replace else DISABLED
-        for button in (self.replace_btn, self.rewrite_btn):
+        self.can_replace = bool(can_replace)
+        for button, enabled, color in (
+                (self.replace_btn, self.can_replace and callable(self._shown_on_replace), ACCENT),
+                (self.rewrite_btn, self.can_replace and callable(self.on_rewrite), FG)):
+            button.parts[1]["fg"] = color if enabled else DISABLED
             for part in button.parts:
-                part["cursor"] = "hand2" if can_replace else "arrow"
+                part["cursor"] = "hand2" if enabled else "arrow"
 
     def result(self):
         return "".join(p if isinstance(p, str) else p[0] if p[2] else p[1] for p in self.parts)
@@ -100,12 +110,16 @@ class Review:
         return bool(self.win.winfo_exists() and self.win.winfo_viewable())
 
     def _replace(self):
-        if self.can_replace:
-            self.on_replace(self.result())
+        if self.can_replace and callable(self._shown_on_replace):
+            self._shown_on_replace(self.result())
 
     def _rewrite(self):
-        if self.can_replace:
+        if self.can_replace and callable(self.on_rewrite):
             self.on_rewrite(self.result())
+
+    def _copy(self):
+        if callable(self._shown_on_copy):
+            self._shown_on_copy(self.result())
 
     def _render(self):
         changes = sum(1 for p in self.parts if not isinstance(p, str) and not p[2])

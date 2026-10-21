@@ -1,5 +1,6 @@
 """Turns global mouse input into "text may have just been selected here" events."""
 import ctypes
+import threading
 import time
 
 from pynput import keyboard, mouse
@@ -94,26 +95,72 @@ class HotKey:
 
 class Escape:
     """Temporary watcher. Callback only enqueues, suppress() is true for bar/rewrite activity."""
-    def __init__(self, on_escape, suppress=lambda: True):
+    def __init__(self, on_escape, suppress=lambda: True, autostart=True):
         self.on_escape, self.suppress = on_escape, suppress
-        self._held, self._stopped = False, False
-        self._listener = keyboard.Listener(win32_event_filter=self._filter)
-        self._listener.start()
+        self._lock = threading.RLock()
+        self._held, self._listener, self._generation = False, None, 0
+        if autostart:
+            self.start()
 
-    def _filter(self, message, data):
-        if self._stopped or data.vkCode != 27:
-            return True
-        if message in (0x100, 0x104):  # WM_KEYDOWN / WM_SYSKEYDOWN
-            if not self._held:
-                self._held = True
-                self.on_escape()
-        elif message in (0x101, 0x105):
+    @property
+    def active(self):
+        with self._lock:
+            return self._listener is not None
+
+    def start(self):
+        with self._lock:
+            if self._listener is not None:
+                return
+            self._generation += 1
+            generation = self._generation
             self._held = False
-        if self.suppress():
-            self._listener.suppress_event()
-        return False
+
+            listener = None
+
+            def event_filter(message, data):
+                return self._filter(listener, generation, message, data)
+
+            listener = keyboard.Listener(win32_event_filter=event_filter)
+            self._listener = listener
+            try:
+                listener.start()
+            except BaseException:
+                self._listener = None
+                self._generation += 1
+                self._held = False
+                try:
+                    listener.stop()
+                except BaseException:
+                    pass
+                raise
+
+    def _filter(self, listener, generation, message, data):
+        with self._lock:
+            if self._listener is not listener or self._generation != generation:
+                return False
+            if data.vkCode != 27:
+                return True
+            if message in (0x100, 0x104):  # WM_KEYDOWN / WM_SYSKEYDOWN
+                if not self._held:
+                    self._held = True
+                    self.on_escape()
+            elif message in (0x101, 0x105):
+                self._held = False
+            if self._listener is not listener or self._generation != generation:
+                return False
+            suppress = self.suppress()
+            if self._listener is not listener or self._generation != generation:
+                return False
+            if suppress:
+                listener.suppress_event()
+            return False
 
     def stop(self):
-        if not self._stopped:
-            self._stopped = True
-            self._listener.stop()
+        with self._lock:
+            listener = self._listener
+            if listener is None:
+                return
+            self._listener = None
+            self._generation += 1
+            self._held = False
+            listener.stop()

@@ -112,6 +112,19 @@ class WritingSettingsUi(unittest.TestCase):
         self.assertEqual((w.writer_rows["Codex"]["model"].get(), w.writer_rows["Codex"]["effort"].get()),
                          ("GPT-5.5", "low"))
 
+    def test_published_catalog_without_labels_can_be_selected_and_saved(self):
+        catalogs = {"Codex": [{"id": "gpt-6.1-sol", "efforts": ["low", "high"]},
+                              {"id": "gpt-6-luna", "label": "", "efforts": []}]}
+        w = self.make_window(writer_catalogs=lambda: catalogs)
+        model = w.writer_rows["Codex"]["model"]
+        self.assertEqual(list(model["values"]), ["Default", "gpt-6.1-sol", "gpt-6-luna"])
+        self.pick(model, "gpt-6.1-sol")
+        self.assertEqual(self.changes[-1],
+                         ("writer_models", {"Codex": {"model": "gpt-6.1-sol", "effort": None}}))
+        self.pick(w.writer_rows["Codex"]["effort"], "high")
+        self.assertEqual(self.changes[-1],
+                         ("writer_models", {"Codex": {"model": "gpt-6.1-sol", "effort": "high"}}))
+
     def test_model_choice_uses_the_catalog_shown_even_if_supplier_changes(self):
         catalogs = {"Codex": list(CATALOGS["Codex"])}
         w = self.make_window(writer_catalogs=lambda: catalogs)
