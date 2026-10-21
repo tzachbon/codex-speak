@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 
-from . import app_skip, hotkeys, lang, sentences, settings, stt_server
+from . import app_skip, lang, sentences, settings, stt_server
 from .app_skip import Skips
 from .app_summarize import Summaries
 from .app_updates import Updates
@@ -377,6 +377,8 @@ class App(Captions, Sources, Updates, Summaries, Skips, Writer):
             else:
                 self.settings_win = self.host.open_settings(welcome=bool(args))  # ("settings", True) on first run
             self.refresh_statuses()
+            if self.writer_ready:
+                self.refresh_writer()
         elif kind == "engine":
             if self.chain.busy:  # an attempt that started before a stop is not shown
                 p.set_source(args[0])

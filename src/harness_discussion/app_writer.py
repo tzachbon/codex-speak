@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from . import dictation, edit_logic, hotkeys, lang, mic, writer
+from . import dictation, edit_logic, hotkeys, lang, mic, sources, writer
 from .llm_codex import CodexWriter
 from .llm_cursor import CursorWriter
 from .summarize import LocalWriter
@@ -31,7 +31,7 @@ def _edges(text):
 class Writer:
     rewriting, writer_ready = False, False
     WRITER_EVENTS = {"rewrite": "_rewrite_done", "rewrite_hotkey": "_rewrite_hotkey", "dictate_down": "_dictate_down",
-                     "dictate_up": "_dictate_up", "dictated": "_dictated"}
+                     "dictate_up": "_dictate_up", "dictated": "_dictated", "writer_info": "_writer_info"}
 
     def _init_writer(self):
         self.edit = getattr(self.host, "edit", None)
@@ -42,11 +42,60 @@ class Writer:
         self._press_at, self._press_gen, self._escaped_at = 0.0, 0, 0.0
         self.toast = self.review = self._esc = None
         self.stt_sources = dictation.sources()
+        self.writer_statuses, self.stt_statuses, self.writer_models = {}, {}, {}
+        self._writer_checking = threading.Lock()
         self._recorder, self._recorded_at, self._dictate_ctx, self._holding = None, 0.0, None, False
         if self.writer_ready:
             self.toast, self.review = self.host.make_toast(), self.host.make_review()
             self.toast.on_hide = self._watch_escape
             self._esc = self.host.esc_watcher(self._escape)
+
+    def refresh_writer(self):
+        """Settings shows cached statuses and model lists. Both can take seconds, so a worker fills them."""
+        if not self._writer_checking.acquire(blocking=False):
+            return
+
+        def check(source):
+            try:
+                return source.status()
+            except Exception as e:
+                log.info("%s status failed: %s", source.name, type(e).__name__)
+                return "missing"
+
+        def work():
+            try:
+                statuses = {s.name: check(s) for s in self.writer_sources}
+                models = dict(self.writer_models)
+                for s in self.writer_sources:
+                    if statuses[s.name] == "ready" and hasattr(s, "models"):
+                        try:
+                            models[s.name] = s.models()
+                        except Exception as e:
+                            log.info("%s models failed: %s", s.name, type(e).__name__)
+                self.writer_statuses, self.writer_models = statuses, models
+                self.stt_statuses = {s.name: check(s) for s in self.stt_sources}
+            finally:
+                self._writer_checking.release()
+            self.events.put(("writer_info",))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _writer_info(self):
+        if self.settings_win and self.settings_win.alive and hasattr(self.settings_win, "refresh_writing"):
+            self.settings_win.refresh_writing()
+
+    def fix_writer(self, name, stt=False):
+        """Sign in or install for Codex and Cursor. Local downloads its model from the Summarize page."""
+        status = (self.stt_statuses if stt else self.writer_statuses).get(name)
+        if name == "Local":
+            self.summarize_action()
+        elif found := sources.fix(name, status):
+            try:
+                found[1]()
+            except Exception as e:
+                self.host.notify(f"Could not open {name}: {e}")
+                return
+        for s in sources.RECHECK_S:
+            self.host.after(s * 1000, self.refresh_writer)
 
     def mode_names(self):
         return [m.name for m in writer.all_modes(self.cfg["modes"])]

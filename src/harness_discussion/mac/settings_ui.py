@@ -6,11 +6,12 @@ from Foundation import NSURL
 
 from .. import icons, settings, updates
 from ..sources import fix as source_fix
-from ..stt_server import connection as stt_connection
 from . import permission, startup, ui
 from .captions_page import CaptionsPage
 from .reading_page import ReadingPage
+from .stt_page import SttPage
 from .summarize_page import SummarizePage
+from .writing_page import WritingPage
 
 WIDTH = 460  # inside a card
 SIDEBAR = 200
@@ -21,6 +22,7 @@ STATUS_COLOR = {"ready": "systemGreenColor", "missing": "systemRedColor", None: 
 PAGES = (("Voices", "waveform", "systemPurpleColor"), ("Captions", "captions.bubble.fill", "systemTealColor"),
          ("Reading", "text.cursor", "systemBlueColor"), ("Summarize", "sparkles", "systemPinkColor"),
          ("Speech to Text", "mic.fill", "systemOrangeColor"), ("General", "gearshape.fill", "systemGrayColor"))
+WRITER_PAGES = (("Writing", "pencil", "systemIndigoColor"), ("Dictation", "mic.circle.fill", "systemRedColor"))
 
 
 def _card(views):
@@ -70,7 +72,7 @@ def _nav_button(title, symbol, color, fn):
     return b
 
 
-class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
+class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage, SttPage, WritingPage):
     def __init__(self, app, show_guide, welcome=False):
         self.app, self.cfg = app, dict(app.cfg)
         self._save_timer = self._recorder = None
@@ -104,27 +106,7 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
 
         summary = self._summarize_page()
 
-        # Speech to Text
-        self.stt_fields, self.stt_copy = {}, []
-        rows = []
-        for name in ("Server URL", "Model"):
-            field = AppKit.NSTextField.alloc().init()
-            field.setEditable_(False)
-            field.setSelectable_(True)
-            field.widthAnchor().constraintEqualToConstant_(WIDTH - 160).setActive_(True)
-            copy = ui.button("Copy", lambda name=name: self._copy_stt(name))
-            self.stt_fields[name] = field
-            self.stt_copy.append(copy)
-            rows.append(ui.stack([ui.label(name, 12, width=80), field, copy], vertical=False))
-        self.stt_status = ui.label("", 11, secondary=True, width=WIDTH - 90)
-        server, _ = ui.option("Run the speech-to-text server",
-                              "An OpenAI-compatible endpoint on this Mac for apps such as OpenWhispr.",
-                              self.cfg["stt_server"], self._stt_toggled, WIDTH)
-        stt = [_card([server]),
-               _card([*rows, ui.stack([self.stt_status, _spacer(), ui.button("Refresh", self._refresh_stt)],
-                                      vertical=False)]),
-               _note("Paste into OpenWhispr → Self-Hosted. No API key needed. The URL stays the same after "
-                     "restarts. Transcription only: JSON or text, up to 60 seconds.")]
+        stt = self._stt_page()
 
         # General
         login, self.startup = ui.option("Open at login", "Starts Harness Discussion in the menu bar when you log in.",
@@ -149,15 +131,20 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
         self.permission_row = _card([ui.stack([
             warning, ui.label("Harness Discussion can't read selected text yet.", 12, width=WIDTH - 130),
             ui.button("Fix this", show_guide, primary=True)], vertical=False, spacing=10)])
+        pages = [voices, captions, reading, summary, stt, general]
+        self.page_list = PAGES
+        if app.writer_ready:  # after Summarize
+            pages[4:4] = [self._writing_page(), self._dictation_page()]
+            self.page_list = PAGES[:4] + WRITER_PAGES + PAGES[4:]
         self.pages = [ui.stack([ui.label(title, 20, bold=True), *views], spacing=10)
-                      for (title, _, _), views in zip(PAGES, (voices, captions, reading, summary, stt, general))]
+                      for (title, _, _), views in zip(self.page_list, pages)]
         rest = AppKit.NSView.alloc().init()  # takes the spare height, so cards keep their own
         rest.setContentHuggingPriority_forOrientation_(1, AppKit.NSLayoutConstraintOrientationVertical)
         area = ui.stack([self.permission_row, *self.pages, rest], spacing=16)
         area.setEdgeInsets_((TOP, 24, 24, 24))
 
         self.nav = [_nav_button(title, symbol, color, lambda i=i: self.show_page(i))
-                    for i, (title, symbol, color) in enumerate(PAGES)]
+                    for i, (title, symbol, color) in enumerate(self.page_list)]
         sidebar = AppKit.NSVisualEffectView.alloc().init()
         sidebar.setMaterial_(AppKit.NSVisualEffectMaterialSidebar)
         sidebar.setBlendingMode_(AppKit.NSVisualEffectBlendingModeBehindWindow)
@@ -174,8 +161,10 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
         self._page = 0
         self.refresh_sources()
         self.refresh_summarize()
+        if app.writer_ready:
+            self.refresh_writing()
         tallest = 0
-        for i in range(len(PAGES)):  # one window height for every page, so switching never resizes it
+        for i in range(len(self.page_list)):  # one window height for every page, so switching never resizes it
             self.show_page(i)
             tallest = max(tallest, area.fittingSize().height)
         area.heightAnchor().constraintGreaterThanOrEqualToConstant_(tallest).setActive_(True)
@@ -197,7 +186,7 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
     def _refresh_nav(self):
         """An orange dot on Voices while an enabled source needs an install or sign-in."""
         attention = any(on and source_fix(name, self.app.statuses.get(name)) for name, on in self.cfg["sources"])
-        for i, (button, (title, _, _)) in enumerate(zip(self.nav, PAGES)):
+        for i, (button, (title, _, _)) in enumerate(zip(self.nav, self.page_list)):
             color = AppKit.NSColor.whiteColor() if i == self._page else AppKit.NSColor.labelColor()
             text = AppKit.NSMutableAttributedString.alloc().initWithString_attributes_(
                 "  " + title, {AppKit.NSForegroundColorAttributeName: color,
@@ -359,29 +348,3 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage):
     def _test(self):
         self._flush()
         self.app.test_voice(f"This is how Harness Discussion sounds at {settings.speed_label(self.cfg['speed'])} speed.")
-
-    def _stt_toggled(self, on):
-        self._set("stt_server", on)
-        ui.timer(0.3, self._refresh_stt)
-
-    def _refresh_stt(self):
-        try:
-            values = stt_connection()
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            values = ("", "")
-        for field, value in zip(self.stt_fields.values(), values):
-            field.setStringValue_(value)
-        for button in self.stt_copy:
-            button.setEnabled_(bool(values[0]))
-        problem = self.app.stt_error
-        self.stt_status.setStringValue_(problem if problem else "Running." if values[0]
-                                        else "Turn on the server above.")
-
-    def _copy_stt(self, name):
-        self._refresh_stt()
-        value = self.stt_fields[name].stringValue()
-        if value:
-            board = AppKit.NSPasteboard.generalPasteboard()
-            board.clearContents()
-            board.setString_forType_(value, AppKit.NSPasteboardTypeString)
-            self.stt_status.setStringValue_(f"{name} copied.")
