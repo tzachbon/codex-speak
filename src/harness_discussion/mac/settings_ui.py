@@ -129,7 +129,7 @@ class SettingsWindow(CaptionsPage, SummarizePage, ReadingPage, SttPage, WritingP
         warning = ui.image_view(ui.symbol("exclamationmark.triangle.fill", "Warning"), 18)
         warning.setContentTintColor_(AppKit.NSColor.systemOrangeColor())
         self.permission_row = _card([ui.stack([
-            warning, ui.label("Harness Discussion can't read selected text yet.", 12, width=WIDTH - 130),
+            warning, ui.label("Shortcuts and selected text need Accessibility permission.", 12, width=WIDTH - 130),
             ui.button("Fix this", show_guide, primary=True)], vertical=False, spacing=10)])
         pages = [voices, captions, reading, summary, stt, general]
         self.page_list = PAGES

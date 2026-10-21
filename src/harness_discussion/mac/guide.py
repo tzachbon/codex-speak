@@ -22,8 +22,9 @@ class GuideWindow:
                      "Harness Discussion from Applications.",
                      "3. Come back here. This window closes by itself when it works."]
             action = ui.button("Open System Settings", lambda: permission.open_settings(), primary=True)
-        why = ("macOS asks you to allow this once. Harness Discussion uses it only to read the text you select, "
-               "and nothing is read until you press play.")
+        why = ("macOS asks you to allow this once. Harness Discussion uses it for its keyboard shortcuts, to read "
+               "the text you select, and to put a rewrite in its place. Nothing is read until you press play "
+               "or a shortcut.")
         self.help = ui.label("", 12, secondary=True, width=WIDTH)
         self.help.setHidden_(True)
         self.spinner = AppKit.NSProgressIndicator.alloc().init()
