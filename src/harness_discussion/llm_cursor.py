@@ -119,7 +119,7 @@ class CursorWriter:
     def __init__(self, start=None):
         self._start = start or (lambda: Acp(agent_exe()))
         self._acp, self._models, self._used, self._lock = None, None, 0.0, threading.Lock()
-        self._timer = None
+        self._timer, self._one = None, threading.Lock()  # one rewrite reads the shared update queue at a time
 
     def status(self):
         return login_status()
@@ -173,6 +173,10 @@ class CursorWriter:
         return self._models or []
 
     def rewrite(self, system, text, model, effort, cancelled):
+        with self._one:
+            return self._rewrite(system, text, model, cancelled)
+
+    def _rewrite(self, system, text, model, cancelled):
         acp = self._warm()
         try:
             sid = self._session(acp)

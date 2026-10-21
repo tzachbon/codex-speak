@@ -1,6 +1,7 @@
 """Cursor writer and transcript: the ACP call sequence with a fake agent, and the TranscribeAudio bytes. No network."""
 import io
 import queue
+import threading
 import unittest
 import urllib.error
 from unittest import mock
@@ -66,6 +67,16 @@ class CursorWriterTest(unittest.TestCase):
         with self.assertRaises(writer.Cancelled):
             self.source.rewrite("S", "t", None, None, lambda: True)
         self.assertEqual(self.acp.notes, [("session/cancel", {"sessionId": "s1"})])
+
+    def test_a_rewrite_waits_until_the_previous_one_has_left_the_update_queue(self):
+        out = []
+        with self.source._one:
+            worker = threading.Thread(target=lambda: out.append(self.source.rewrite("S", "t", None, None, lambda: False)))
+            worker.start()
+            worker.join(0.2)
+            self.assertEqual(self.acp.calls, [])
+        worker.join(2)
+        self.assertEqual(out, ["Fixed text."])
 
     def test_models_come_from_the_session(self):
         self.assertEqual(self.source.models(), [{"id": "gpt[effort=low]", "label": "GPT", "efforts": []}])
