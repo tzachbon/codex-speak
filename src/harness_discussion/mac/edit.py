@@ -19,7 +19,6 @@ from . import pasteboard, permission, selection
 
 KEY_V, KEY_LEFT, KEY_RIGHT = 9, 123, 124
 EDITABLE_ROLES = {"AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"}
-PASTE_WAIT_S = 0.15
 PASTE_ACK_S = 1.0
 NEWLINE = "\n"
 
@@ -116,14 +115,10 @@ def _paste(text):
         count = board.changeCount()
         before = _field_state(pid)
         _key(KEY_V, Quartz.kCGEventFlagMaskCommand)
-        if before is None:  # nothing to watch: the fixed wait is all we have
-            time.sleep(PASTE_WAIT_S)
-            landed = True
-        else:
-            deadline, landed = time.monotonic() + PASTE_ACK_S, False
-            while not landed and time.monotonic() < deadline:
-                time.sleep(0.025)
-                landed = _field_state(pid) != before
+        deadline, landed = time.monotonic() + PASTE_ACK_S, False
+        while before is not None and not landed and time.monotonic() < deadline:
+            time.sleep(0.025)
+            landed = _field_state(pid) != before
         if landed and edit_logic.restore_clipboard(board.changeCount(), count):
             pasteboard.restore(saved)
     return True

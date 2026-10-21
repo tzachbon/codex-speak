@@ -37,6 +37,21 @@ class GuardTest(unittest.TestCase):
             self.assertFalse(edit.replace("Word", ctx))
         paste.assert_not_called()
 
+    def test_an_unconfirmed_paste_leaves_the_text_on_the_pasteboard(self):
+        with mock.patch.object(edit.pasteboard, "safe_to_borrow", return_value=True), \
+                mock.patch.object(edit.pasteboard, "snapshot", return_value=[]), \
+                mock.patch.object(edit.pasteboard, "restore") as restore, \
+                mock.patch.object(edit, "AppKit"), \
+                mock.patch.object(edit, "_frontmost_pid", return_value=1), mock.patch.object(edit, "_key"), \
+                mock.patch.object(edit, "PASTE_ACK_S", 0.05):
+            for states in ([None], [(0, 0, 3)] * 9):
+                with mock.patch.object(edit, "_field_state", side_effect=states):
+                    self.assertTrue(edit._paste("hello"))
+            restore.assert_not_called()
+            with mock.patch.object(edit, "_field_state", side_effect=[(0, 0, 3), (5, 0, 8)]):
+                edit._paste("hello")
+            restore.assert_called_once()
+
     def test_select_back_accepts_the_moved_caret_after_a_paste(self):
         with mock.patch.object(edit, "capture", return_value=Context("", 1, 2, True, False, FIELD, (9, 0))), \
                 mock.patch.object(edit, "_focused", return_value=None), mock.patch.object(edit, "_key"):
