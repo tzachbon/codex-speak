@@ -59,7 +59,7 @@ class ReadingPage:
             elif spec := trigger.event_spec(event):
                 self._set_hotkey(spec, key)
             else:
-                label.setStringValue_("Add ⌘, ⌥, ⌃ or ⇧ to a letter or F-key")
+                label.setStringValue_("Add ⌘, ⌥, ⌃ or ⇧ to a letter, digit or F-key")
             return None  # keys pressed while recording don't reach the window
         self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
             AppKit.NSEventMaskKeyDown | AppKit.NSEventMaskFlagsChanged, on_key)
