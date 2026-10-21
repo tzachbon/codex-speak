@@ -2,6 +2,7 @@
 import sys
 import unittest
 import ctypes
+import subprocess
 
 if sys.platform != "win32":
     raise unittest.SkipTest("Windows only")
@@ -18,6 +19,7 @@ class Document:
     def __init__(self, text="Left old right", start=5, end=8):
         self.text, self.start, self.end = text, start, end
         self.IsPassword, self.writable, self.identity = False, True, [1, 2]
+        self.Element = SimpleNamespace(GetCurrentPropertyValueEx=lambda prop, suppress: self.IsPassword)
 
     def GetParentControl(self):
         return None
@@ -50,6 +52,12 @@ class Range:
 
     def Clone(self):
         return Range(self.document, self.start, self.end)
+
+    def GetChildren(self):
+        return []
+
+    def CompareEndpoints(self, endpoint, other, other_endpoint):
+        return (self.start if endpoint == 0 else self.end) - (other.start if other_endpoint == 0 else other.end)
 
     def MoveEndpointByRange(self, endpoint, other, other_endpoint, waitTime=0):
         value = other.start if other_endpoint == 0 else other.end
@@ -84,12 +92,69 @@ def target(document):
         stack.enter_context(patch.object(edit, "u32", native))
         stack.enter_context(patch.object(edit.uia, "GetFocusedControl", return_value=document))
         snap = stack.enter_context(patch.object(edit.clipboard, "snapshot_with_sequence", return_value=([], 10)))
-        restore = stack.enter_context(patch.object(edit.clipboard, "restore", side_effect=[11, 12]))
+        restore = stack.enter_context(patch.object(edit.clipboard, "restore", return_value=11))
+        cleanup = stack.enter_context(patch.object(edit.clipboard, "PreparedRestore")).return_value.__enter__.return_value
+        cleanup.apply.return_value = 12
+        stack.enter_context(patch.object(edit.clipboard, "sequence", return_value=11))
         key = stack.enter_context(patch.object(edit.keys, "chord", return_value=False))
-        yield native, key, snap, restore
+        yield native, key, snap, cleanup.apply
 
 
 class ClipboardSafety(unittest.TestCase):
+    def test_owned_copy_read_tracks_rendering_under_the_clipboard_lock(self):
+        native = Mock()
+        current = [11]
+        native.GetClipboardSequenceNumber.side_effect = lambda: current[0]
+        def pid(hwnd, out):
+            out._obj.value = 9
+            return 1
+        native.GetWindowThreadProcessId.side_effect = pid
+        def read():
+            current[0] = 12
+            return "selection"
+        with patch.object(clipboard, "u32", native), patch.object(clipboard, "_text_locked", side_effect=read):
+            self.assertEqual(clipboard.read_owned_selection(11, 9), ("selection", 12))
+
+    def test_prepared_cleanup_relinquishes_original_after_concurrent_copy(self):
+        native = Mock()
+        native.GetClipboardSequenceNumber.return_value = 99
+        with patch.object(clipboard, "u32", native), \
+                patch.object(clipboard, "_allocate", return_value=[]), \
+                patch.object(clipboard, "_install_locked") as install:
+            with clipboard.PreparedRestore([(13, b"pre-test")]) as cleanup:
+                self.assertIsNone(cleanup.apply(expected_sequence=12))
+        install.assert_not_called()
+
+    def test_returned_sequence_survives_close_and_synthesized_text_rendering(self):
+        native = Mock()
+        current = [10]
+        native.GetClipboardSequenceNumber.side_effect = lambda: current[0]
+        native.IsClipboardFormatAvailable.return_value = True
+        def render(fmt):
+            current[0] += 1
+            return 1
+        native.GetClipboardData.side_effect = render
+        native.DestroyWindow.side_effect = lambda hwnd: current.__setitem__(0, current[0] + 1)
+        with patch.object(clipboard, "u32", native), \
+                patch.object(clipboard, "_snapshot_locked", return_value=[]), \
+                patch.object(clipboard, "_allocate", return_value=[]), \
+                patch.object(clipboard, "_install_locked"):
+            owned = clipboard.restore([], expected_sequence=10)
+            self.assertEqual(owned, 14)
+            self.assertEqual(clipboard.sequence(), owned)
+        native.DestroyWindow.assert_not_called()
+
+    def test_prepared_cleanup_does_not_snapshot_unsupported_temporary_data(self):
+        native = Mock()
+        native.GetClipboardSequenceNumber.return_value = 12
+        with patch.object(clipboard, "u32", native), \
+                patch.object(clipboard, "_allocate", return_value=[[13, 123]]), \
+                patch.object(clipboard, "_install_locked") as install, \
+                patch.object(clipboard, "_snapshot_locked", side_effect=OSError("temporary metafile")):
+            with clipboard.PreparedRestore([(13, b"original")]) as cleanup:
+                self.assertEqual(cleanup.apply(expected_sequence=12), 12)
+        install.assert_called_once()
+
     def test_restore_rechecks_sequence_after_opening_before_clearing(self):
         native = Mock()
         native.GetClipboardSequenceNumber.return_value = 12
@@ -194,12 +259,67 @@ class InputSafety(unittest.TestCase):
 
 
 class CaptureSafety(unittest.TestCase):
+    def test_clipboard_changed_during_revalidation_never_gets_pasted(self):
+        from harness_discussion.win import edit
+        document = Document()
+        with target(document) as (_, key, _, _):
+            context = edit.capture(False)
+            with patch.object(clipboard, "sequence", return_value=99):
+                self.assertFalse(edit.replace("new", context))
+            key.assert_not_called()
+
+    def test_empty_text_non_degenerate_range_and_embedded_objects_refuse_input(self):
+        from harness_discussion.win import edit
+        document = Document("abc", 1, 1)
+        with target(document) as (_, key, snap, _):
+            with patch.object(Range, "CompareEndpoints", return_value=-1):
+                self.assertIsNone(edit.capture(False))
+                self.assertFalse(edit.type_at_caret("new"))
+            with patch.object(Range, "GetChildren", return_value=[object()]):
+                self.assertIsNone(edit.capture(False))
+            key.assert_not_called()
+            snap.assert_not_called()
+
+    def test_unsupported_security_property_refuses_capture_and_reader_copy(self):
+        from harness_discussion.win import edit, selection
+        document = Document()
+        document.Element.GetCurrentPropertyValueEx = Mock(return_value=object())
+        document.GetPattern = Mock(wraps=document.GetPattern)
+        with target(document) as (_, key, snap, _):
+            self.assertIsNone(edit.capture())
+            with patch.object(selection, "_via_clipboard") as copy:
+                self.assertEqual(selection.read(), "")
+            copy.assert_not_called()
+            key.assert_not_called()
+            snap.assert_not_called()
+        document.GetPattern.assert_not_called()
+
+    def test_worker_keeps_its_mta_apartment_between_operations(self):
+        code = '''
+from unittest.mock import patch
+from harness_discussion.win import edit, selection, uia_thread
+with patch.object(edit.u32, 'GetForegroundWindow', return_value=0), \\
+     patch.object(uia_thread.comtypes, 'CoInitializeEx') as initialize, \\
+     patch.object(uia_thread.comtypes, 'CoUninitialize') as uninitialize, \\
+     patch.object(selection.uia, 'GetFocusedControl', return_value=None):
+    edit.capture(False)
+    selection.read(False)
+    edit.capture(False)
+    uia_thread.close()
+    print(initialize.call_count, uninitialize.call_count)
+'''
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "1 1")
+
     def test_read_selection_checks_password_ancestors_before_patterns(self):
         from harness_discussion.win import selection
         parent = Mock()
         parent.IsPassword = True
+        parent.Element.GetCurrentPropertyValueEx.return_value = True
         child = Mock()
         child.IsPassword = False
+        child.Element.GetCurrentPropertyValueEx.return_value = False
         child.GetParentControl.return_value = parent
         child.GetPattern.return_value.GetSelection.return_value = [Mock(GetText=Mock(return_value="synthetic secret"))]
         with patch.object(selection.uia, "GetFocusedControl", return_value=child):
@@ -210,6 +330,7 @@ class CaptureSafety(unittest.TestCase):
         from harness_discussion.win import edit
         control = Mock()
         control.IsPassword = True
+        control.Element.GetCurrentPropertyValueEx.return_value = True
         native = Mock()
         native.GetForegroundWindow.return_value = 42
         native.GetClassNameW.side_effect = lambda hwnd, buf, n: setattr(buf, "value", "Notepad") or 7
@@ -282,7 +403,7 @@ class CaptureSafety(unittest.TestCase):
             self.assertTrue(edit.select_back(3, context))
             selected = edit.capture(False)
             self.assertEqual(selected.text, "new")
-            restore.side_effect = [13, 14]
+            restore.return_value = 14
             def undo(vk):
                 document.text = "Left old right"
                 document.start = document.end = 8

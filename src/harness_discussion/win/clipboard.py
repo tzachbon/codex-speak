@@ -21,7 +21,9 @@ u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWS
                               wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, c_void_p]
 u32.CreateWindowExW.restype = wintypes.HWND
 u32.DestroyWindow.argtypes = [wintypes.HWND]
+u32.IsWindow.argtypes = [wintypes.HWND]
 BORROW_LOCK = threading.RLock()
+_owner = threading.local()
 
 BITMAP, DIB, DIBV5 = 2, 8, 17
 METAFILES = {3, 14}  # CF_METAFILEPICT, CF_ENHMETAFILE: GDI handles, not byte-copyable
@@ -40,10 +42,13 @@ def safe_to_borrow(formats: set[int]) -> bool:
 class _Open:
     def __enter__(self):
         BORROW_LOCK.acquire()
-        self.hwnd = None
         try:
-            self.hwnd = u32.CreateWindowExW(0, "STATIC", "Harness Discussion clipboard", 0,
-                                           0, 0, 0, 0, None, None, None, None)
+            native, hwnd = getattr(_owner, "window", (None, None))
+            if native is not u32 or not hwnd or not u32.IsWindow(hwnd):
+                hwnd = u32.CreateWindowExW(0, "STATIC", "Harness Discussion clipboard", 0,
+                                          0, 0, 0, 0, None, None, None, None)
+                _owner.window = u32, hwnd
+            self.hwnd = hwnd
             if not self.hwnd:
                 raise OSError("clipboard owner unavailable")
             for _ in range(20):
@@ -52,15 +57,12 @@ class _Open:
                 time.sleep(0.01)
             raise OSError("clipboard busy")
         except BaseException:
-            if self.hwnd:
-                u32.DestroyWindow(self.hwnd)
             BORROW_LOCK.release()
             raise
 
     def __exit__(self, *exc):
         try:
             u32.CloseClipboard()
-            u32.DestroyWindow(self.hwnd)
         finally:
             BORROW_LOCK.release()
 
@@ -151,6 +153,34 @@ def _install_locked(handles):
         item[1] = None  # ownership transferred to Windows
 
 
+def _materialize_text_locked():
+    # Synthesized text formats can change the sequence on first retrieval.
+    for fmt in (1, 7, 13, 16):
+        if u32.IsClipboardFormatAvailable(fmt) and not u32.GetClipboardData(fmt):
+            raise OSError("clipboard text rendering failed")
+
+
+class PreparedRestore:
+    """Allocate the original before borrowing; cleanup never snapshots temporary target data."""
+    def __init__(self, saved):
+        self.handles = _allocate(saved)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        _free(self.handles)
+        self.handles = []
+
+    def apply(self, expected_sequence):
+        with _Open():
+            if sequence() != expected_sequence:
+                return None
+            _install_locked(self.handles)
+            _materialize_text_locked()
+            return sequence()
+
+
 def restore(saved: list[tuple[int, bytes]], expected_sequence=None):
     """Replace only if still ours. Sequence is checked while locked, before clearing anything."""
     with _Open():
@@ -162,6 +192,7 @@ def restore(saved: list[tuple[int, bytes]], expected_sequence=None):
             backup = _allocate(current)
             try:
                 _install_locked(incoming)
+                _materialize_text_locked()
             except OSError:
                 _install_locked(backup)
                 raise
@@ -182,22 +213,41 @@ def owner_pid():
 def html() -> str:
     """The "HTML Format" flavor (CF_HTML, UTF-8), which keeps ordered-list numbers."""
     with _Open():
-        h = u32.GetClipboardData(u32.RegisterClipboardFormatW("HTML Format"))
-        if not h or not (p := k32.GlobalLock(h)):
-            return ""
-        try:
-            return ctypes.string_at(p, k32.GlobalSize(h)).split(b"\0", 1)[0].decode("utf-8", "replace")
-        finally:
-            k32.GlobalUnlock(h)
+        return _html_locked()
+
+
+def _html_locked():
+    h = u32.GetClipboardData(u32.RegisterClipboardFormatW("HTML Format"))
+    if not h or not (p := k32.GlobalLock(h)):
+        return ""
+    try:
+        return ctypes.string_at(p, k32.GlobalSize(h)).split(b"\0", 1)[0].decode("utf-8", "replace")
+    finally:
+        k32.GlobalUnlock(h)
 
 
 def text() -> str:
     with _Open():
-        h = u32.GetClipboardData(13)  # CF_UNICODETEXT
-        if not h or not (p := k32.GlobalLock(h)):
-            return ""
-        try:
-            data = ctypes.string_at(p, k32.GlobalSize(h))
-            return data.decode("utf-16-le", "replace").split("\0", 1)[0]
-        finally:
-            k32.GlobalUnlock(h)
+        return _text_locked()
+
+
+def _text_locked():
+    h = u32.GetClipboardData(13)  # CF_UNICODETEXT
+    if not h or not (p := k32.GlobalLock(h)):
+        return ""
+    try:
+        data = ctypes.string_at(p, k32.GlobalSize(h))
+        return data.decode("utf-16-le", "replace").split("\0", 1)[0]
+    finally:
+        k32.GlobalUnlock(h)
+
+
+def read_owned_selection(expected_sequence, expected_pid, html=False):
+    """Attribute and read while locked, including any sequence change from delayed rendering."""
+    with _Open():
+        pid = wintypes.DWORD()
+        u32.GetWindowThreadProcessId(u32.GetClipboardOwner(), ctypes.byref(pid))
+        if sequence() != expected_sequence or pid.value != expected_pid:
+            return None
+        result = (_text_locked(), _html_locked()) if html else _text_locked()
+        return result, sequence()

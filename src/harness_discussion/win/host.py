@@ -12,7 +12,7 @@ from ..cursor_tts import CursorEngine
 from ..engines import EdgeEngine
 from ..icons import icon_image
 from ..kokoro_tts import KokoroEngine
-from . import selection
+from . import selection, uia_thread
 from .popup import Popup
 from .settings_ui import SettingsWindow
 from .trigger import HotKey, SelectionTrigger
@@ -93,3 +93,4 @@ class TkHost:
     def quit(self):
         self.icon.stop()
         self.root.destroy()
+        uia_thread.close()

@@ -2,14 +2,12 @@
 import ctypes
 import hashlib
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from ctypes import wintypes
 
-import comtypes
 import uiautomation as uia
 
-from . import clipboard, selection
+from . import clipboard, selection, uia_thread
 from . import input as keys
 
 u32 = ctypes.windll.user32
@@ -17,7 +15,6 @@ u32.GetForegroundWindow.restype = wintypes.HWND
 u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 u32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 MAX_DOCUMENT = 1_000_000
-_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="writer-uia")
 
 
 @dataclass
@@ -49,16 +46,7 @@ def utf16_length(text):
 
 
 def _run(fn, *args):
-    def apartment():
-        comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
-        try:
-            try:
-                return fn(*args)
-            except Exception:
-                return None  # stale UIA, unknown security, and native failures all fail closed
-        finally:
-            comtypes.CoUninitialize()
-    return _worker.submit(apartment).result()
+    return uia_thread.run(fn, *args)
 
 
 def _foreground():
@@ -81,7 +69,10 @@ def _inspect():
     for _ in range(32):
         if node is None:
             break
-        if node.IsPassword:
+        password = selection.password_state(node)
+        if password is None:
+            return None
+        if password:
             return Context("", app, window, False, True), "", None
         ancestors.append(node)
         node = node.GetParentControl()
@@ -103,11 +94,18 @@ def _inspect():
         value = node.GetPattern(uia.PatternId.ValuePattern)
         writable = (not value.IsReadOnly if value else
                     span.GetAttributeValue(uia.TextAttributeId.IsReadOnlyAttribute) is False)
-        document = pattern.DocumentRange.GetText(MAX_DOCUMENT + 1)
+        whole = pattern.DocumentRange
+        if whole.GetChildren():
+            return None  # plain text cannot prove positions across embedded objects
+        document = whole.GetText(MAX_DOCUMENT + 1)
         if len(document) > MAX_DOCUMENT:
             return None
         text = span.GetText(MAX_DOCUMENT + 1)
-        prefix = pattern.DocumentRange.Clone()
+        collapsed = span.CompareEndpoints(uia.TextPatternRangeEndpoint.Start, span,
+                                          uia.TextPatternRangeEndpoint.End) == 0
+        if collapsed != (text == ""):
+            return None
+        prefix = whole.Clone()
         if not prefix.MoveEndpointByRange(uia.TextPatternRangeEndpoint.End, span,
                                           uia.TextPatternRangeEndpoint.Start, waitTime=0):
             return None
@@ -160,36 +158,38 @@ def _replace(text, context, caret_only):
         expected = raw[:current._start * 2] + addition + raw[current._end * 2:]
         digest, caret = hashlib.sha256(expected).digest(), current._start + len(addition) // 2
         saved, before = clipboard.snapshot_with_sequence()
-        data = (_canonical(text).replace("\n", "\r\n") + "\0").encode("utf-16-le", "surrogatepass")
-        ours = clipboard.restore([(13, data)], expected_sequence=before)
-        if ours is None:
-            return False
-        verified, post = False, None
-        try:
-            check = _inspect()
-            if check and _matches(context, check[0]) and keys.chord(ord("V")):
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    result = _inspect()
-                    if not result:
-                        break
-                    post = result[0]
-                    if ((post.app, post.window, post._element) != (current.app, current.window, current._element)
-                            or post.secure or not post.editable):
-                        break
-                    if (post._digest == digest and post._units == len(expected) // 2
-                            and post._start == post._end == caret):
-                        verified = True
-                        break
-                    time.sleep(0.02)
-        finally:
+        with clipboard.PreparedRestore(saved) as cleanup:
+            data = (_canonical(text).replace("\n", "\r\n") + "\0").encode("utf-16-le", "surrogatepass")
+            ours = clipboard.restore([(13, data)], expected_sequence=before)
+            if ours is None:
+                return False
+            verified, post = False, None
             try:
-                clipboard.restore(saved, expected_sequence=ours)
-            except OSError:
-                verified = False
-        if verified:
-            context._receipt = post, text
-        return verified
+                check = _inspect()
+                if (check and _matches(context, check[0]) and clipboard.sequence() == ours
+                        and keys.chord(ord("V"))):
+                    deadline = time.monotonic() + 1.0
+                    while time.monotonic() < deadline:
+                        result = _inspect()
+                        if not result:
+                            break
+                        post = result[0]
+                        if ((post.app, post.window, post._element) != (current.app, current.window, current._element)
+                                or post.secure or not post.editable):
+                            break
+                        if (post._digest == digest and post._units == len(expected) // 2
+                                and post._start == post._end == caret):
+                            verified = True
+                            break
+                        time.sleep(0.02)
+            finally:
+                try:
+                    cleanup.apply(expected_sequence=ours)
+                except OSError:
+                    verified = False
+            if verified:
+                context._receipt = post, text
+            return verified
 
 
 def replace(text, ctx=None):

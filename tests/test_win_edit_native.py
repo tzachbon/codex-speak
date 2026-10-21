@@ -15,7 +15,6 @@ import json
 import subprocess
 import time
 from ctypes import wintypes
-from unittest.mock import patch
 
 from harness_discussion.win import clipboard, edit
 
@@ -50,6 +49,26 @@ while u32.GetMessageW(ctypes.byref(message),None,0,0)>0:
 
 
 @unittest.skipUnless(os.environ.get("WRITER_NATIVE_CHECK") == "1", "Explicit owned-window native check")
+class NativeClipboard(unittest.TestCase):
+    def test_multi_format_clipboard_roundtrip(self):
+        try:
+            original, before = clipboard.snapshot_with_sequence()
+        except OSError:
+            self.skipTest("Current clipboard cannot be safely borrowed")
+        html = clipboard.u32.RegisterClipboardFormatW("HTML Format")
+        sample = [(13, "Writer native sentinel\0".encode("utf-16-le")), (html, b"<b>Writer sentinel</b>\0")]
+        with clipboard.PreparedRestore(original) as cleanup:
+            owned = clipboard.restore(sample, expected_sequence=before)
+            self.assertIsNotNone(owned, "Concurrent copy, test refused")
+            try:
+                self.assertEqual(clipboard.text(), "Writer native sentinel")
+                self.assertEqual(dict(clipboard.snapshot())[html], b"<b>Writer sentinel</b>\0")
+            finally:
+                restored = cleanup.apply(expected_sequence=owned)
+                self.assertIsNotNone(restored, "Clipboard changed, original restoration relinquished")
+
+
+@unittest.skipUnless(os.environ.get("WRITER_NATIVE_CHECK") == "1", "Explicit owned-window native check")
 class NativeEdit(unittest.TestCase):
     def test_replace_clipboard_preservation_undo_and_password_refusal(self):
         u32 = ctypes.windll.user32
@@ -57,7 +76,7 @@ class NativeEdit(unittest.TestCase):
         u32.SendMessageW.restype = ctypes.c_ssize_t
         u32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
         try:
-            original, initial_sequence = clipboard.snapshot_with_sequence()
+            clipboard.snapshot()
         except OSError:
             self.skipTest("Current clipboard cannot be safely borrowed")
         helper = subprocess.Popen([sys.executable, "-c", HELPER], stdout=subprocess.PIPE,
@@ -81,36 +100,22 @@ class NativeEdit(unittest.TestCase):
         self.assertIsNotNone(context)
         self.assertEqual((context.app, context.window, context.text), (helper.pid, data["window"], "old"))
         self.assertTrue(context.editable)
-        original_restore, last_owned = clipboard.restore, [None]
-        def track_restore(*args, **kwargs):
-            result = original_restore(*args, **kwargs)
-            if result is not None:
-                last_owned[0] = result
-            return result
-        tracking = patch.object(clipboard, "restore", side_effect=track_restore)
-        tracking.start()
-        self.addCleanup(tracking.stop)
-        sentinel = "Writer native clipboard sentinel\0".encode("utf-16-le")
-        owned_sequence = clipboard.restore([(13, sentinel)], expected_sequence=initial_sequence)
-        self.assertIsNotNone(owned_sequence, "Clipboard changed before the test, refuse borrowing")
-        try:
-            saved = dict(clipboard.snapshot())
-            self.assertTrue(edit.replace("new", context))
-            self.assertEqual(dict(clipboard.snapshot()), saved)
-            self.assertTrue(edit.select_back(3, context))
-            selected = edit.capture(False)
-            self.assertEqual(selected.text, "new")
-            self.assertTrue(edit.replace("old", selected))
-            self.assertEqual(dict(clipboard.snapshot()), saved)
-            focus(data["password"])
-            secure = edit.capture(False)
-            self.assertTrue(secure.secure)
-            self.assertEqual(secure.text, "")
-            self.assertFalse(edit.replace("must not paste", secure))
-        finally:
-            # A concurrent user copy has priority over restoring the test's old snapshot.
-            if last_owned[0] is not None:
-                original_restore(original, expected_sequence=last_owned[0])
+        # No fixture sentinel or final restoration: each edit owns only its own borrow.
+        # A user copy between operations is never adopted as ownership of the pre-test clipboard.
+        saved = dict(clipboard.snapshot())
+        self.assertTrue(edit.replace("new", context))
+        self.assertEqual(dict(clipboard.snapshot()), saved)
+        self.assertTrue(edit.select_back(3, context))
+        selected = edit.capture(False)
+        self.assertEqual(selected.text, "new")
+        saved = dict(clipboard.snapshot())
+        self.assertTrue(edit.replace("old", selected))
+        self.assertEqual(dict(clipboard.snapshot()), saved)
+        focus(data["password"])
+        secure = edit.capture(False)
+        self.assertTrue(secure.secure)
+        self.assertEqual(secure.text, "")
+        self.assertFalse(edit.replace("must not paste", secure))
 
 
 if __name__ == "__main__":
