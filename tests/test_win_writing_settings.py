@@ -47,7 +47,7 @@ class WritingSettingsUi(unittest.TestCase):
         w.nav[settings_ui.PAGES.index("Writing")].invoke()
         self.assertEqual(w.title["text"], "Writing")
         w.writer_check.invoke()
-        self.assertEqual(self.changes[-1], ("writer", True))  # off by default until the T9 matrix passes
+        self.assertEqual(self.changes[-1], ("writer", not settings.DEFAULTS["writer"]))
         w.writer_rows["Codex"]["toggle"].invoke()
         self.assertEqual(self.changes[-1], ("writer_sources", [["Cursor", True], ["Codex", False], ["Local", True]]))
         self.assertFalse(w.writer_rows["Codex"]["on"].get())
@@ -192,17 +192,17 @@ class WritingSettingsUi(unittest.TestCase):
             w.shortcuts[key]["change"].invoke()
             self.press(w, 0x1B, 0)
             w._set_hotkey("")
-            self.assertEqual(w.cfg[key], "<ctrl>+<alt>+" + ("e" if key == "rewrite_hotkey" else "d"))
+            self.assertEqual(w.cfg[key], settings.DEFAULTS[key])
             self.assertEqual(w.cfg["hotkey"], "")
 
     def test_rewrite_and_dictate_shortcuts_record_and_refuse_a_used_chord(self):
         recording = []
         w = self.make_window(on_record=recording.append)
         rewrite, dictate = w.shortcuts["rewrite_hotkey"], w.shortcuts["dictate_hotkey"]
-        self.assertEqual((rewrite["label"]["text"], dictate["label"]["text"]), ("Ctrl+Alt+E", "Ctrl+Alt+D"))
+        self.assertEqual((rewrite["label"]["text"], dictate["label"]["text"]), ("Ctrl+Shift+E", "Ctrl+Shift+D"))
         rewrite["change"].invoke()
         self.press(w, ord("R"), 0x20004)  # the read shortcut's chord
-        self.assertEqual(rewrite["label"]["text"], "Ctrl+Alt+E")
+        self.assertEqual(rewrite["label"]["text"], "Ctrl+Shift+E")
         self.assertEqual(rewrite["error"]["text"], "Read shortcut already uses Ctrl+Alt+R.")
         self.assertEqual(self.changes, [])
         rewrite["change"].invoke()

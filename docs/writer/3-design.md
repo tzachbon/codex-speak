@@ -99,8 +99,8 @@ Settings keys added to `settings.DEFAULTS`:
 "writer_models": {},                 # {"Codex": {"model": "...", "effort": "low"}}
 "modes": [],                         # user modes [{"name","instructions"}]; built-ins are not stored
 "default_mode": "Fix errors",
-"rewrite_hotkey": "<cmd>+<alt>+e" if mac else "<ctrl>+<alt>+e",
-"dictate_hotkey": "<cmd>+<alt>+d" if mac else "<ctrl>+<alt>+d",   # held
+"rewrite_hotkey": "<cmd>+<alt>+e" if mac else "<ctrl>+<shift>+e",
+"dictate_hotkey": "<cmd>+<alt>+d" if mac else "<ctrl>+<shift>+d",   # held
 "stt_sources": [["Codex", True], ["Cursor", True]],
 ```
 

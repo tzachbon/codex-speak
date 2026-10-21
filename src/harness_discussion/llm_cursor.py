@@ -196,6 +196,7 @@ class CursorWriter:
                     acp.notify("session/cancel", {"sessionId": sid})
                     raise Cancelled("The rewrite was cancelled.")
                 if time.monotonic() > deadline:
+                    acp.notify("session/cancel", {"sessionId": sid})  # so the warm agent stops working on it
                     raise TimeoutError("Cursor took too long.")
                 try:
                     msg = acp.updates.get(timeout=0.1)

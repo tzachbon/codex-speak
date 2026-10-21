@@ -6,11 +6,8 @@ from tkinter import ttk
 from .. import settings, writer
 from .sources_ui import CARD
 
-# ponytail: settings.DEFAULTS lacks these until the shared schema adds them; drop this once it does.
-PLAN_DEFAULTS = {"writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
-                 "writer_models": {}, "modes": [], "default_mode": "Fix errors",
-                 "rewrite_hotkey": "<ctrl>+<alt>+e", "dictate_hotkey": "<ctrl>+<alt>+d",
-                 "stt_sources": [["Codex", True], ["Cursor", True]]}
+PLAN_DEFAULTS = {k: settings.DEFAULTS[k] for k in ("writer", "writer_sources", "writer_models", "modes",
+                                                   "default_mode", "rewrite_hotkey", "dictate_hotkey", "stt_sources")}
 LOCAL_MODEL = "Qwen3-4B"  # fixed: Local has no model or effort choice
 FIXES = {"missing": "Install…", "signed_out": "Sign in…", "expired": "Sign in…", "not_downloaded": "Download…"}
 

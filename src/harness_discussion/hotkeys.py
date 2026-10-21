@@ -5,8 +5,9 @@ MODS = ("ctrl", "alt", "shift", "cmd")  # display order
 KEYS = {*"abcdefghijklmnopqrstuvwxyz0123456789", *(f"f{n}" for n in range(1, 13))}
 COPY = {(frozenset({"ctrl"}), "c"), (frozenset({"cmd"}), "c")}  # the clipboard fallback sends these
 DEFAULT = "<cmd>+<alt>+r" if sys.platform == "darwin" else "<ctrl>+<alt>+r"
-REWRITE = "<cmd>+<alt>+e" if sys.platform == "darwin" else "<ctrl>+<alt>+e"
-DICTATE = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<alt>+d"  # held
+# Windows avoids Ctrl+Alt: AltGr sends it, so AltGr+E (€ on many layouts) would also start a rewrite
+REWRITE = "<cmd>+<alt>+e" if sys.platform == "darwin" else "<ctrl>+<shift>+e"
+DICTATE = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<shift>+d"  # held
 SHORTCUTS = ("hotkey", "rewrite_hotkey", "dictate_hotkey")
 
 

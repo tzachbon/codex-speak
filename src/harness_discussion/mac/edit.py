@@ -20,6 +20,7 @@ from . import pasteboard, permission, selection
 KEY_V, KEY_LEFT, KEY_RIGHT = 9, 123, 124
 EDITABLE_ROLES = {"AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"}
 PASTE_WAIT_S = 0.15
+PASTE_ACK_S = 1.0
 NEWLINE = "\n"
 
 
@@ -89,19 +90,39 @@ def _key(code, flags=0):
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
+def _field_state(pid):
+    """(selection range, character count) of the focused field, or None when it exposes neither."""
+    element = _focused(pid) if pid else None
+    if element is None:
+        return None
+    rng = _range(element)
+    state = ((rng[0], rng[1]) if rng is not None else None, _attr(element, "AXNumberOfCharacters"))
+    return state if state != (None, None) else None
+
+
 def _paste(text):
-    """Pastes `text` and puts the pasteboard back if nothing else wrote to it meanwhile."""
+    """Pastes `text`. Puts the pasteboard back only once the field shows the paste landed and nothing else wrote to
+    the pasteboard meanwhile. A paste that never shows up leaves `text` on the pasteboard, so a late paste is right."""
     if not pasteboard.safe_to_borrow(pasteboard.types()):
         return False
     board = AppKit.NSPasteboard.generalPasteboard()
+    pid = _frontmost_pid()
     with pasteboard._borrow:
         saved = pasteboard.snapshot()
         board.clearContents()
         board.setString_forType_(text, AppKit.NSPasteboardTypeString)
         count = board.changeCount()
+        before = _field_state(pid)
         _key(KEY_V, Quartz.kCGEventFlagMaskCommand)
-        time.sleep(PASTE_WAIT_S)
-        if edit_logic.restore_clipboard(board.changeCount(), count):
+        if before is None:  # nothing to watch: the fixed wait is all we have
+            time.sleep(PASTE_WAIT_S)
+            landed = True
+        else:
+            deadline, landed = time.monotonic() + PASTE_ACK_S, False
+            while not landed and time.monotonic() < deadline:
+                time.sleep(0.025)
+                landed = _field_state(pid) != before
+        if landed and edit_logic.restore_clipboard(board.changeCount(), count):
             pasteboard.restore(saved)
     return True
 
