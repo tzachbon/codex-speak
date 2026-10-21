@@ -88,3 +88,8 @@ Earlier entries, oldest first: [SYNC-log-1.md](SYNC-log-1.md), [SYNC-log-2.md](S
 
 - Review 2/3 returned two Medium findings at `1bf1fd9`: leaving Mode without entering its submenu prevented dismissal, and unknown editability incorrectly disabled the design's explicit overflow Rewrite fallback. Both have red/green public-Tk regressions and fixes. A further red/green regression catches `destroy()` leaving the speech spinner timer behind. Submenu hover cancellation and the real shared App's changed-target refusal through either rewrite route are covered. All 43 scoped UI/host/teardown/reading tests pass with listeners mocked. The extra test EOF blank line is removed.
 - Host editing remains absent, Writer defaults off, and all shared/native gates above remain open. Final isolated scoped review 3/3 is next. T3 again refused the direct Mac handoff with `capability_denied` because its connector is read-only. No Mac run was started and no new shared-owner reply is published. The actionable handoff remains in the earlier entry.
+
+### 2026-10-21 Windows (scoped delivery verified)
+
+- At `b96a753`: full suite 579 passed in 119.805 s, 11 skipped, with listeners mocked and no unraisable Tk errors. Final isolated review 3/3 PASS: 58 scoped tests, no actionable component defects. Full Writer acceptance is still open.
+- Updated `packaging/build.ps1` passed. Installer 65,850,840 bytes, SHA-256 `5354da071a0ac74bc8a2e26551e22ed499d1585852a8f4bc13fa92c268e795b0`. Not installed or run. Windows/macOS CI is next. Shared corrections, guarded Undo/microphone, native matrix and signed Mac Dictation remain unfinished. No activation/default change.
