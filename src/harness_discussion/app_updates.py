@@ -90,9 +90,10 @@ class Updates:
             self._discard_update()
             return
         server = self.stt
-        if (self._read_options or self.chain.busy or self._draining_stt
+        writing = getattr(self, "rewriting", False) or getattr(self, "_recorder", None)
+        if (self._read_options or self.chain.busy or self._draining_stt or writing
                 or (server and not server.busy.acquire(blocking=False))):
-            self._update_status("Update ready. Waiting for speech and transcription to finish…")
+            self._update_status("Update ready. Waiting for speech, transcription, and writing to finish…")
             self.host.after(1000, self._try_update)
             return
         try:

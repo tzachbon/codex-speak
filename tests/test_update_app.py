@@ -74,6 +74,18 @@ class UpdateApp(unittest.TestCase):
             a._try_update()
             install.assert_called_once()
 
+    def test_update_waits_for_a_recording_or_rewrite(self):
+        a = self.app
+        with patch.object(updates, "install") as install, patch.object(settings, "save"):
+            a._recorder = object()
+            self.result()
+            a.rewriting, a._recorder = True, None
+            a._try_update()
+            install.assert_not_called()
+            a.rewriting = False
+            a._try_update()
+            install.assert_called_once()
+
     def test_busy_and_draining_servers_prevent_install_and_failed_launch_releases_admission(self):
         a = self.app
         server = Mock(busy=threading.Lock())
