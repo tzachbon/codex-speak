@@ -1,0 +1,326 @@
+"""Windows edit safety through public clipboard and edit boundaries, without user input."""
+import sys
+import unittest
+import ctypes
+
+if sys.platform != "win32":
+    raise unittest.SkipTest("Windows only")
+
+from contextlib import ExitStack, contextmanager
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+from harness_discussion.win import clipboard
+
+
+class Document:
+    """A deterministic UIA provider, including independent selection and document state."""
+    def __init__(self, text="Left old right", start=5, end=8):
+        self.text, self.start, self.end = text, start, end
+        self.IsPassword, self.writable, self.identity = False, True, [1, 2]
+
+    def GetParentControl(self):
+        return None
+
+    def GetRuntimeId(self):
+        return self.identity
+
+    def GetPattern(self, pattern):
+        from harness_discussion.win import edit
+        if pattern == edit.uia.PatternId.TextPattern:
+            return self
+        if pattern == edit.uia.PatternId.ValuePattern:
+            return SimpleNamespace(IsReadOnly=not self.writable)
+
+    @property
+    def DocumentRange(self):
+        return Range(self, 0, len(self.text))
+
+    def GetSelection(self):
+        return [Range(self, self.start, self.end)]
+
+
+class Range:
+    def __init__(self, document, start, end):
+        self.document, self.start, self.end = document, start, end
+
+    def GetText(self, maximum):
+        text = self.document.text[self.start:self.end]
+        return text if maximum < 0 else text[:maximum]
+
+    def Clone(self):
+        return Range(self.document, self.start, self.end)
+
+    def MoveEndpointByRange(self, endpoint, other, other_endpoint, waitTime=0):
+        value = other.start if other_endpoint == 0 else other.end
+        if endpoint == 0:
+            self.start = value
+        else:
+            self.end = value
+        return True
+
+    def MoveEndpointByUnit(self, endpoint, unit, count, waitTime=0):
+        if endpoint != 0 or count != -1 or self.start == 0:
+            return 0
+        self.start -= 1
+        return -1
+
+    def Select(self, waitTime=0):
+        self.document.start, self.document.end = self.start, self.end
+        return True
+
+
+@contextmanager
+def target(document):
+    from harness_discussion.win import edit
+    native = Mock()
+    native.GetForegroundWindow.return_value = 42
+    native.GetClassNameW.side_effect = lambda hwnd, buf, n: setattr(buf, "value", "Notepad") or 7
+    def pid(hwnd, out):
+        out._obj.value = 9
+        return 1
+    native.GetWindowThreadProcessId.side_effect = pid
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(edit, "u32", native))
+        stack.enter_context(patch.object(edit.uia, "GetFocusedControl", return_value=document))
+        snap = stack.enter_context(patch.object(edit.clipboard, "snapshot_with_sequence", return_value=([], 10)))
+        restore = stack.enter_context(patch.object(edit.clipboard, "restore", side_effect=[11, 12]))
+        key = stack.enter_context(patch.object(edit.keys, "chord", return_value=False))
+        yield native, key, snap, restore
+
+
+class ClipboardSafety(unittest.TestCase):
+    def test_restore_rechecks_sequence_after_opening_before_clearing(self):
+        native = Mock()
+        native.GetClipboardSequenceNumber.return_value = 12
+        native.OpenClipboard.return_value = 1
+        native.CreateWindowExW.return_value = 123
+        with patch.object(clipboard, "u32", native):
+            self.assertIsNone(clipboard.restore([], expected_sequence=11))
+        native.OpenClipboard.assert_called_once()
+        native.EmptyClipboard.assert_not_called()
+
+    def test_unsupported_or_unreadable_snapshot_refuses_before_clearing(self):
+        native = Mock()
+        native.EnumClipboardFormats.side_effect = [14, 0]
+        with patch.object(clipboard, "u32", native):
+            with self.assertRaises(OSError):
+                clipboard.snapshot()
+        native.GetClipboardData.assert_not_called()
+        native.EmptyClipboard.assert_not_called()
+
+    def test_allocation_failure_leaves_the_clipboard_untouched(self):
+        native = Mock()
+        native.GetClipboardSequenceNumber.return_value = 11
+        native.EnumClipboardFormats.return_value = 0
+        with patch.object(clipboard, "u32", native), patch.object(clipboard.k32, "GlobalAlloc", return_value=None):
+            with self.assertRaises(OSError):
+                clipboard.restore([(13, b"new\0")], expected_sequence=11)
+        native.EmptyClipboard.assert_not_called()
+
+    def test_complete_multi_format_snapshot_survives_a_failed_set(self):
+        buffers, stored = {}, {}
+        native, kernel = Mock(), Mock()
+        sequence = [10]
+        fail_once = [False]
+        def allocate(flags, size):
+            data = ctypes.create_string_buffer(size)
+            address = ctypes.addressof(data)
+            buffers[address] = data
+            return address
+        def enum(previous):
+            return next((fmt for fmt in sorted(stored) if fmt > previous), 0)
+        def empty():
+            stored.clear()
+            sequence[0] += 1
+            return 1
+        def put(fmt, address):
+            if fail_once[0]:
+                fail_once[0] = False
+                return 0
+            stored[fmt] = address
+            sequence[0] += 1
+            return address
+        native.EnumClipboardFormats.side_effect = enum
+        native.GetClipboardData.side_effect = lambda fmt: stored.get(fmt, 0)
+        native.SetClipboardData.side_effect = put
+        native.EmptyClipboard.side_effect = empty
+        native.GetClipboardSequenceNumber.side_effect = lambda: sequence[0]
+        kernel.GlobalAlloc.side_effect = allocate
+        kernel.GlobalLock.side_effect = lambda address: address
+        kernel.GlobalSize.side_effect = lambda address: len(buffers[address])
+        kernel.GlobalFree.side_effect = lambda address: buffers.pop(address, None)
+        for fmt, data in ((13, "sentinel\0".encode("utf-16-le")), (49353, b"html sentinel\0")):
+            address = allocate(0, len(data))
+            ctypes.memmove(address, data, len(data))
+            stored[fmt] = address
+        with patch.object(clipboard, "u32", native), patch.object(clipboard, "k32", kernel):
+            original = clipboard.snapshot()
+            self.assertEqual(dict(original), {13: "sentinel\0".encode("utf-16-le"), 49353: b"html sentinel\0"})
+            fail_once[0] = True
+            with self.assertRaises(OSError):
+                clipboard.restore([(13, "replacement\0".encode("utf-16-le"))], expected_sequence=10)
+            self.assertEqual(clipboard.snapshot(), original)
+
+
+class InputSafety(unittest.TestCase):
+    def test_partial_paste_releases_synthetic_control_without_retry(self):
+        from harness_discussion.win import input as keys
+        native = Mock()
+        native.GetAsyncKeyState.return_value = 0
+        native.SendInput.side_effect = [1, 1]
+        with patch.object(keys, "u32", native):
+            self.assertFalse(keys.chord(ord("V")))
+        first, cleanup = native.SendInput.call_args_list
+        self.assertEqual(first.args[0], 4)
+        self.assertEqual(cleanup.args[0], 1)
+        self.assertEqual(cleanup.args[1][0].ki.wVk, 0x11)
+        self.assertEqual(cleanup.args[1][0].ki.dwFlags, 2)
+
+    def test_held_modifier_and_failed_cleanup_do_not_retry_the_action(self):
+        from harness_discussion.win import input as keys
+        native = Mock()
+        native.GetAsyncKeyState.return_value = 0x8000
+        with patch.object(keys, "u32", native):
+            self.assertFalse(keys.chord(ord("V")))
+        native.SendInput.assert_not_called()
+        native.GetAsyncKeyState.return_value = 0
+        native.SendInput.side_effect = [2, 0]
+        with patch.object(keys, "u32", native):
+            self.assertFalse(keys.chord(ord("V")))
+        self.assertEqual(native.SendInput.call_count, 2)
+        cleanup = native.SendInput.call_args.args[1]
+        self.assertTrue(all(event.ki.dwFlags == 2 for event in cleanup))
+
+
+class CaptureSafety(unittest.TestCase):
+    def test_read_selection_checks_password_ancestors_before_patterns(self):
+        from harness_discussion.win import selection
+        parent = Mock()
+        parent.IsPassword = True
+        child = Mock()
+        child.IsPassword = False
+        child.GetParentControl.return_value = parent
+        child.GetPattern.return_value.GetSelection.return_value = [Mock(GetText=Mock(return_value="synthetic secret"))]
+        with patch.object(selection.uia, "GetFocusedControl", return_value=child):
+            self.assertEqual(selection.read(False), "")
+        child.GetPattern.assert_not_called()
+
+    def test_password_metadata_prevents_every_text_read(self):
+        from harness_discussion.win import edit
+        control = Mock()
+        control.IsPassword = True
+        native = Mock()
+        native.GetForegroundWindow.return_value = 42
+        native.GetClassNameW.side_effect = lambda hwnd, buf, n: setattr(buf, "value", "Notepad") or 7
+        def pid(hwnd, out):
+            out._obj.value = 9
+            return 1
+        native.GetWindowThreadProcessId.side_effect = pid
+        with patch.object(edit, "u32", native), patch.object(edit.uia, "GetFocusedControl", return_value=control):
+            context = edit.capture(False)
+        self.assertTrue(context.secure)
+        self.assertEqual(context.text, "")
+        control.GetPattern.assert_not_called()
+
+    def test_replace_and_undo_refuse_a_secure_context_without_input(self):
+        from harness_discussion.win import edit
+        context = edit.Context("", 9, 42, False, True)
+        with patch.object(edit.keys, "chord") as key, patch.object(edit.clipboard, "snapshot_with_sequence") as clip:
+            self.assertFalse(edit.replace("sample", context))
+            self.assertFalse(edit.type_at_caret("sample", context))
+            self.assertFalse(edit.select_back(6, context))
+        key.assert_not_called()
+        clip.assert_not_called()
+
+    def test_capture_preserves_whitespace_and_detects_field_range_and_document_changes(self):
+        from harness_discussion.win import edit
+        document = Document("  old  old  ", 2, 7)
+        with target(document):
+            context = edit.capture(False)
+            self.assertEqual(context.text, "old  ")
+            self.assertTrue(edit.same_context(context))
+            document.start, document.end = 7, 12
+            self.assertFalse(edit.same_context(context))
+            document.start, document.end = 2, 7
+            document.identity = [1, 3]
+            self.assertFalse(edit.same_context(context))
+            document.identity = [1, 2]
+            document.text = "X old  old  "
+            self.assertFalse(edit.same_context(context))
+
+    def test_read_only_and_moved_caret_targets_never_receive_input(self):
+        from harness_discussion.win import edit
+        document = Document()
+        with target(document) as (_, key, snap, _):
+            context = edit.capture(False)
+            document.writable = False
+            self.assertFalse(edit.replace("new", context))
+            key.assert_not_called()
+            snap.assert_not_called()
+        document = Document("abc", 1, 1)
+        with target(document) as (_, key, snap, _):
+            context = edit.capture(False)
+            document.start = document.end = 2
+            self.assertFalse(edit.type_at_caret("new", context))
+            key.assert_not_called()
+            snap.assert_not_called()
+
+    def test_exact_replacement_records_safe_undo_then_fresh_context_restores_original(self):
+        from harness_discussion.win import edit
+        document = Document()
+        with target(document) as (_, key, _, restore):
+            context = edit.capture(False)
+            def paste(vk):
+                document.text = "Left new right"
+                document.start = document.end = 8
+                return True
+            key.side_effect = paste
+            self.assertTrue(edit.replace("new", context))
+            self.assertEqual(document.text, "Left new right")
+            self.assertEqual(restore.call_args.kwargs, {"expected_sequence": 11})
+            self.assertTrue(edit.select_back(3, context))
+            selected = edit.capture(False)
+            self.assertEqual(selected.text, "new")
+            restore.side_effect = [13, 14]
+            def undo(vk):
+                document.text = "Left old right"
+                document.start = document.end = 8
+                return True
+            key.side_effect = undo
+            self.assertTrue(edit.replace("old", selected))
+            self.assertEqual(document.text, "Left old right")
+
+    def test_insertion_without_deletion_is_not_reported_as_replacement(self):
+        from harness_discussion.win import edit
+        document = Document()
+        with target(document) as (_, key, _, _):
+            context = edit.capture(False)
+            def insert_only(vk):
+                document.text = "Left newold right"
+                document.start = document.end = 8
+                return True
+            key.side_effect = insert_only
+            self.assertFalse(edit.replace("new", context))
+            key.assert_called_once_with(ord("V"))
+            self.assertFalse(edit.select_back(3, context))
+
+    def test_undo_measures_emoji_and_linebreaks_without_guessing_navigation_steps(self):
+        from harness_discussion.win import edit
+        inserted = "A😀\r\nB"
+        self.assertEqual(edit.utf16_length(inserted), 6)
+        document = Document()
+        with target(document) as (_, key, _, _):
+            context = edit.capture(False)
+            def paste(vk):
+                document.text = "Left A😀\r\nB right"
+                document.start = document.end = 10
+                return True
+            key.side_effect = paste
+            self.assertTrue(edit.replace(inserted, context))
+            self.assertTrue(edit.select_back(6, context))
+            self.assertEqual(edit.capture(False).text, inserted)
+
+
+if __name__ == "__main__":
+    unittest.main()
