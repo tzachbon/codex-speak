@@ -13,8 +13,6 @@ k32.GlobalLock.argtypes = k32.GlobalUnlock.argtypes = k32.GlobalSize.argtypes = 
 k32.GlobalSize.restype, k32.GlobalAlloc.argtypes = c_size_t, [c_uint, c_size_t]
 u32.SetClipboardData.restype = c_void_p
 k32.GlobalFree.argtypes, k32.GlobalFree.restype = [c_void_p], c_void_p
-u32.GetClipboardOwner.restype = wintypes.HWND
-u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 u32.OpenClipboard.argtypes = [wintypes.HWND]
 u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
                               ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
@@ -202,14 +200,6 @@ def restore(saved: list[tuple[int, bytes]], expected_sequence=None):
             _free(backup)
 
 
-def owner_pid():
-    """Attribute a selection copy before treating changed clipboard text as the target's selection."""
-    with _Open():
-        pid = wintypes.DWORD()
-        u32.GetWindowThreadProcessId(u32.GetClipboardOwner(), ctypes.byref(pid))
-        return pid.value
-
-
 def html() -> str:
     """The "HTML Format" flavor (CF_HTML, UTF-8), which keeps ordered-list numbers."""
     with _Open():
@@ -240,14 +230,3 @@ def _text_locked():
         return data.decode("utf-16-le", "replace").split("\0", 1)[0]
     finally:
         k32.GlobalUnlock(h)
-
-
-def read_owned_selection(expected_sequence, expected_pid, html=False):
-    """Attribute and read while locked, including any sequence change from delayed rendering."""
-    with _Open():
-        pid = wintypes.DWORD()
-        u32.GetWindowThreadProcessId(u32.GetClipboardOwner(), ctypes.byref(pid))
-        if sequence() != expected_sequence or pid.value != expected_pid:
-            return None
-        result = (_text_locked(), _html_locked()) if html else _text_locked()
-        return result, sequence()

@@ -154,12 +154,14 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow, WritingPage):
         self._caption_opacity_state()
 
         card = self._card(reading, "Selection")
-        self.clip = tk.BooleanVar(w, cfg["clipboard_fallback"])
-        ttk.Checkbutton(card, text="Read apps that hide their selection, such as VS Code",
-                        style="Card.TCheckbutton", variable=self.clip,
-                        command=lambda: self._set("clipboard_fallback", self.clip.get())).pack(anchor="w")
-        ttk.Label(card, text="Copies the selection with Ctrl+C, then restores your clipboard.",
-                  style="Sub.Card.TLabel").pack(anchor="w", pady=(4, 0))
+        self.clip = tk.BooleanVar(w, False)
+        self.clip_check = ttk.Checkbutton(card, text="Read apps that hide their selection (unavailable)",
+                                         style="Card.TCheckbutton", variable=self.clip, state="disabled")
+        self.clip_check.pack(anchor="w")
+        self.clip_note = ttk.Label(card, text="Automatic copying is unavailable to protect your clipboard. "
+                                  "Apps that hide selections cannot be read. List numbers may be omitted.",
+                                  style="Sub.Card.TLabel", wraplength=440)
+        self.clip_note.pack(anchor="w", pady=(4, 0))
         self.prefetch = tk.BooleanVar(w, cfg["prefetch"])
         ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
                         variable=self.prefetch,

@@ -127,10 +127,7 @@ def capture(clipboard_fallback=True):
         found = _inspect()
         if not found:
             return None
-        context, _, span = found
-        if clipboard_fallback and span is None and not context.secure:
-            context.text = selection._via_clipboard()
-        return context
+        return found[0]
     return _run(take)
 
 

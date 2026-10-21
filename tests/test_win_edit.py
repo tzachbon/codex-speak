@@ -105,20 +105,6 @@ def target(document):
 
 
 class ClipboardSafety(unittest.TestCase):
-    def test_owned_copy_read_tracks_rendering_under_the_clipboard_lock(self):
-        native = Mock()
-        current = [11]
-        native.GetClipboardSequenceNumber.side_effect = lambda: current[0]
-        def pid(hwnd, out):
-            out._obj.value = 9
-            return 1
-        native.GetWindowThreadProcessId.side_effect = pid
-        def read():
-            current[0] = 12
-            return "selection"
-        with patch.object(clipboard, "u32", native), patch.object(clipboard, "_text_locked", side_effect=read):
-            self.assertEqual(clipboard.read_owned_selection(11, 9), ("selection", 12))
-
     def test_prepared_cleanup_relinquishes_original_after_concurrent_copy(self):
         native = Mock()
         native.GetClipboardSequenceNumber.return_value = 99
@@ -263,49 +249,41 @@ class InputSafety(unittest.TestCase):
 
 
 class CaptureSafety(unittest.TestCase):
-    def test_successful_copy_does_not_adopt_a_later_same_process_copy(self):
+    def test_blind_reader_never_copies_when_user_copy_can_precede_first_sample(self):
         from harness_discussion.win import selection
-        for changed_focus in (False, True):
-            with self.subTest(changed_focus=changed_focus):
-                current, switched = [10], [False]
-                origin = (9, 42, (1, 2))
-                def copied(vk):
-                    current[0] = 11
-                    return True
-                def settle(seconds):
-                    if seconds == 0.03:
-                        current[0] = 12  # newer user copy, same owning application
-                        switched[0] = changed_focus
-                def identity():
-                    return (9, 42, (3, 4)) if switched[0] else origin
-                with patch.object(selection, "_via_uia", return_value=""), \
-                        patch.object(selection, "_focus_identity", side_effect=identity), \
-                        patch.object(clipboard, "snapshot_with_sequence", return_value=([], 10)), \
-                        patch.object(clipboard, "sequence", side_effect=lambda: current[0]), \
-                        patch.object(clipboard, "owner_pid", return_value=9), \
-                        patch.object(clipboard, "read_owned_selection", return_value=("newer user copy", 12)) as read, \
-                        patch.object(clipboard, "PreparedRestore") as prepared, \
-                        patch.object(selection.keys, "chord", side_effect=copied), \
-                        patch.object(selection.time, "sleep", side_effect=settle):
-                    self.assertEqual(selection.read(), "")
-                read.assert_not_called()
-                prepared.return_value.__enter__.return_value.apply.assert_not_called()
-
-    def test_refused_copy_does_not_adopt_or_restore_a_same_app_user_copy(self):
-        from harness_discussion.win import selection
+        document = Document()
+        document.GetPattern = Mock(return_value=None)
         current = [10]
-        def refused(vk):
-            current[0] = 11  # user copies from the same app after the refused chord
-            return False
-        with patch.object(selection, "_via_uia", return_value=""), \
-                patch.object(selection, "_focus_identity", return_value=(9, 42, (1, 2))), \
-                patch.object(clipboard, "snapshot_with_sequence", return_value=([], 10)), \
-                patch.object(clipboard, "sequence", side_effect=lambda: current[0]), \
-                patch.object(clipboard, "owner_pid", return_value=9), \
-                patch.object(clipboard, "PreparedRestore") as prepared, \
-                patch.object(selection.keys, "chord", side_effect=refused):
-            self.assertEqual(selection.read(), "")
-        prepared.return_value.__enter__.return_value.apply.assert_not_called()
+        def two_copies(vk):
+            current[0] = 12  # synthetic 11 and user 12 both finish before first observation
+            return True
+        with target(document) as (native, key, snap, cleanup):
+            key.side_effect = two_copies
+            with patch.object(ctypes.windll, "user32", native), \
+                    patch.object(clipboard, "u32", native), \
+                    patch.object(clipboard, "sequence", side_effect=lambda: current[0]), \
+                    patch.object(clipboard, "_text_locked", return_value="newer user copy"):
+                self.assertEqual(selection.read(True), "")
+            key.assert_not_called()
+            snap.assert_not_called()
+            cleanup.assert_not_called()
+
+    def test_blind_capture_stays_noneditable_without_copy_for_both_settings(self):
+        from harness_discussion.win import edit, selection
+        document = Document()
+        document.GetPattern = Mock(return_value=None)
+        with target(document) as (_, key, snap, cleanup):
+            for enabled in (False, True):
+                context = edit.capture(enabled)
+                self.assertIsNotNone(context)
+                self.assertEqual(context.text, "")
+                self.assertFalse(context.editable)
+                self.assertEqual(selection.read(enabled), "")
+                self.assertFalse(edit.replace("new", context))
+                self.assertFalse(edit.type_at_caret("new", context))
+            key.assert_not_called()
+            snap.assert_not_called()
+            cleanup.assert_not_called()
 
     def test_undo_refuses_identity_change_during_selection(self):
         from harness_discussion.win import edit
@@ -381,9 +359,7 @@ class CaptureSafety(unittest.TestCase):
         document.GetPattern = Mock(wraps=document.GetPattern)
         with target(document) as (_, key, snap, _):
             self.assertIsNone(edit.capture())
-            with patch.object(selection, "_via_clipboard") as copy:
-                self.assertEqual(selection.read(), "")
-            copy.assert_not_called()
+            self.assertEqual(selection.read(), "")
             key.assert_not_called()
             snap.assert_not_called()
         document.GetPattern.assert_not_called()

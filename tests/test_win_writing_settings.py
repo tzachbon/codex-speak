@@ -55,6 +55,15 @@ class WritingSettingsUi(unittest.TestCase):
         self.assertEqual(self.changes[-1], ("writer_sources", [["Cursor", True], ["Local", True], ["Codex", False]]))
         self.assertTrue(w.writer_rows["Cursor"]["up"].instate(["disabled"]))
 
+    def test_unsafe_reading_fallback_is_disabled_without_mutating_saved_preference(self):
+        w = self.make_window({**settings.DEFAULTS, "clipboard_fallback": True})
+        self.assertTrue(w.clip_check.instate(["disabled"]))
+        self.assertFalse(w.clip.get())
+        self.assertIn("protect your clipboard", w.clip_note["text"])
+        w.clip_check.invoke()
+        self.assertTrue(w.cfg["clipboard_fallback"])
+        self.assertEqual(self.changes, [])
+
     def test_statuses_come_from_the_supplier_and_the_fix_button_calls_back(self):
         statuses, fixes = {}, []
         w = self.make_window(writer_statuses=lambda: dict(statuses), on_writer_fix=fixes.append)
