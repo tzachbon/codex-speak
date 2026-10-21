@@ -44,12 +44,20 @@ class GuardTest(unittest.TestCase):
                 mock.patch.object(edit, "AppKit"), \
                 mock.patch.object(edit, "_frontmost_pid", return_value=1), mock.patch.object(edit, "_key"), \
                 mock.patch.object(edit, "PASTE_ACK_S", 0.05):
-            for states in ([None], [(0, 0, 3)] * 9):
-                with mock.patch.object(edit, "_field_state", side_effect=states):
+            def reads(values):  # each call returns the next value, then the last one again
+                values = list(values)
+                return lambda _: values.pop(0) if len(values) > 1 else values[0]
+
+            def paste(focus, states):
+                with mock.patch.object(edit, "_focused", side_effect=reads(focus)), \
+                        mock.patch.object(edit, "_field_state", side_effect=reads(states)):
                     self.assertTrue(edit._paste("hello"))
+            paste([FIELD], [None])  # unreadable from the start
+            paste([FIELD], [(0, 0, 3)])  # never changed
+            paste([FIELD], [(0, 0, 3), None])  # stopped answering
+            paste([FIELD, OTHER], [(0, 0, 3), (5, 0, 8)])  # another field changed
             restore.assert_not_called()
-            with mock.patch.object(edit, "_field_state", side_effect=[(0, 0, 3), (5, 0, 8)]):
-                edit._paste("hello")
+            paste([FIELD], [(0, 0, 3), (5, 0, 8)])
             restore.assert_called_once()
 
     def test_select_back_accepts_the_moved_caret_after_a_paste(self):

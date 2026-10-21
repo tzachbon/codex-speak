@@ -91,9 +91,8 @@ def _key(code, flags=0):
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
-def _field_state(pid):
-    """(selection range, character count) of the focused field, or None when it exposes neither."""
-    element = _focused(pid) if pid else None
+def _field_state(element):
+    """(selection range, character count) of `element`, or None when it exposes neither."""
     if element is None:
         return None
     rng = _range(element)
@@ -113,12 +112,17 @@ def _paste(text):
         board.clearContents()
         board.setString_forType_(text, AppKit.NSPasteboardTypeString)
         count = board.changeCount()
-        before = _field_state(pid)
+        element = _focused(pid) if pid else None
+        before = _field_state(element)
         _key(KEY_V, Quartz.kCGEventFlagMaskCommand)
         deadline, landed = time.monotonic() + PASTE_ACK_S, False
         while before is not None and not landed and time.monotonic() < deadline:
             time.sleep(0.025)
-            landed = _field_state(pid) != before
+            now = _focused(pid)
+            if now is None or not CFEqual(now, element):
+                break  # focus moved: whether the paste landed is unknown
+            state = _field_state(element)
+            landed = state is not None and state != before
         if landed and edit_logic.restore_clipboard(board.changeCount(), count):
             pasteboard.restore(saved)
     return True
