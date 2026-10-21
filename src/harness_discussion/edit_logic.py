@@ -15,6 +15,7 @@ class Context:
     editable: bool
     secure: bool
     field: object = _field(default=None, compare=False)  # the platform's focused-element handle, or None
+    caret: object = _field(default=None, compare=False)  # (start, length) of the selection, or None
 
 
 def utf16_len(text: str, newline: str = "\n") -> int:

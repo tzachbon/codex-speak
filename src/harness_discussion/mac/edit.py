@@ -76,7 +76,9 @@ def capture(clipboard_fallback=False):
             text = pasteboard.copy_selection()
     if _frontmost_pid() != pid:
         return None
-    return Context(text, pid, _window_number(pid), _editable(element), secure, element)
+    rng = _range(element) if element is not None else None
+    return Context(text, pid, _window_number(pid), _editable(element), secure, element,
+                   (rng[0], rng[1]) if rng is not None else None)
 
 
 def same_context(ctx):
@@ -127,13 +129,15 @@ def _paste(text):
     return True
 
 
-def _same_target(ctx):
-    """With a captured Context, the same app, window, and field is still focused, editable, and not secure."""
+def _same_target(ctx, same_caret=False):
+    """With a captured Context, the same app, window, and field is still focused, editable, and not secure.
+    With `same_caret`, the selection or caret is also where it was at capture."""
     if ctx is None:
         return True
     now = capture(False)
     return (now is not None and (now.app, now.window) == (ctx.app, ctx.window) and now.editable and not now.secure
-            and ctx.field is not None and now.field is not None and bool(CFEqual(now.field, ctx.field)))
+            and ctx.field is not None and now.field is not None and bool(CFEqual(now.field, ctx.field))
+            and (not same_caret or (ctx.caret is not None and now.caret == ctx.caret)))
 
 
 def replace(text, ctx=None):
@@ -149,7 +153,7 @@ def replace(text, ctx=None):
 
 
 def type_at_caret(text, ctx=None):
-    return _same_target(ctx) and _paste(text)
+    return _same_target(ctx, same_caret=True) and _paste(text)
 
 
 def _range(element):

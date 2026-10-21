@@ -22,8 +22,16 @@ class WriterBar(unittest.TestCase):
                          on_resume=callback, on_lang=callback, on_speed=callback,
                          on_settings=lambda: self.calls.append("settings"), on_source=callback,
                          sources=lambda: [], on_skip=callback)
+        self.bar.escape_wired = True
         self.addCleanup(self.root.destroy)
         self.addCleanup(self.bar.hide)
+
+    def test_close_stays_until_escape_dismisses_the_bar(self):
+        self.bar.escape_wired = False
+        self.bar.show("Selected text", 140, 140)
+        self.root.update()
+        self.assertEqual(self.bar.win.pack_slaves(),
+                         [self.bar.btn, self.bar.ai_btn, self.bar.more_btn, self.bar.close_btn])
 
     def test_reading_layout_keeps_only_play_summary_and_overflow(self):
         self.bar.show("Selected text", 140, 140)

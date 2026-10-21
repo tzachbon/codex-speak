@@ -91,6 +91,7 @@ class Popup:
         self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
         self.on_settings = on_settings
         self.editable = self.writer_enabled = False
+        self.escape_wired = False  # the host sets it once Esc dismisses the bar; until then ✕ stays
         self.on_rewrite, self.modes, self.default_mode = lambda name: None, lambda: (), lambda: "Fix errors"
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
@@ -300,6 +301,8 @@ class Popup:
         if not self.playing and self.writer_enabled and self.editable:
             self.rewrite_btn.parts[1]["text"] = "✎ " + self.default_mode()
             controls = [self.rewrite_btn, self.mode_btn, primary, self.more_btn]
+        if not self.escape_wired:
+            controls.append(self.close_btn)
         for widget in controls:
             widget.pack(side="left", padx="2p", pady="2p")
 
