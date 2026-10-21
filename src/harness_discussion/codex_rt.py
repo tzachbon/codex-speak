@@ -125,8 +125,22 @@ def codex_exe() -> str:
     return found[0] if found else shim
 
 
+def login_status():
+    """"ready", "missing", or "signed_out"."""
+    try:
+        exe = codex_exe()
+    except FileNotFoundError:
+        return "missing"
+    try:  # exits 0 only when a ChatGPT or API key sign-in is saved
+        done = subprocess.run([exe, "login", "status"], capture_output=True, timeout=5,
+                              stdin=subprocess.DEVNULL, **SPAWN)
+    except (OSError, subprocess.SubprocessError):
+        return "ready"  # unknown: the call tries it, and the next source runs if it fails
+    return "ready" if done.returncode == 0 else "signed_out"
+
+
 class AppServer:
-    def __init__(self):
+    def __init__(self, thread=None):
         self.p = subprocess.Popen([codex_exe(), "app-server"], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   encoding="utf-8", bufsize=1,
@@ -139,7 +153,7 @@ class AppServer:
             self.call("initialize", {"clientInfo": {"name": "harness-discussion", "version": "0.1.0"},
                                      "capabilities": {"experimentalApi": True}})
             self._send({"method": "initialized"})
-            self.thread_id = self.call("thread/start", {"ephemeral": True})["thread"]["id"]
+            self.thread_id = self.call("thread/start", {"ephemeral": True, **(thread or {})})["thread"]["id"]
         except BaseException:
             self.close()
             raise
@@ -248,16 +262,7 @@ class CodexEngine:
             self._srv.close()
 
     def status(self):
-        try:
-            exe = codex_exe()
-        except FileNotFoundError:
-            return "missing"
-        try:  # exits 0 only when a ChatGPT or API key sign-in is saved
-            done = subprocess.run([exe, "login", "status"], capture_output=True, timeout=5,
-                                  stdin=subprocess.DEVNULL, **SPAWN)
-        except (OSError, subprocess.SubprocessError):
-            return "ready"  # unknown: the read tries it, and the next source reads if it fails
-        return "ready" if done.returncode == 0 else "signed_out"
+        return login_status()
 
     async def _next_event(self, srv, want, timeout, session=None):
         """The params of the next `want` event; with a tuple of methods, (method, params) of the first."""

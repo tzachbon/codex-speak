@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-from . import settings
+from . import settings, writer
 
 BUILD = "b11738"
 RELEASE = f"https://github.com/ggml-org/llama.cpp/releases/download/{BUILD}/"
@@ -223,24 +223,27 @@ class Server:
         self.stop()
         raise Error("The Summarize model took too long to load.")
 
-    def summarize(self, text, language, timeout=180):
+    def complete(self, system, user, max_tokens=800, timeout=180):
+        """The model's raw reply, without any <think> block."""
         with self._starting:
             if not self.running:
                 self._start(90)
             port = self._port
         body = json.dumps({
-            "messages": [{"role": "system", "content": PROMPT.format(lang=language)},
-                         {"role": "user", "content": text[:MAX_CHARS]}],
-            "temperature": 0.3, "max_tokens": 400, "chat_template_kwargs": {"enable_thinking": False},
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "temperature": 0.3, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False},
         }).encode()
         request = Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=body,
                           headers={"Content-Type": "application/json"})
         with _local_open(request, timeout=timeout) as reply:
             data = json.loads(reply.read())
         try:
-            summary = _clean(data["choices"][0]["message"]["content"])
+            return re.sub(r"<think>.*?</think>", "", data["choices"][0]["message"]["content"], flags=re.S).strip()
         except (KeyError, IndexError, TypeError) as e:
             raise Error("The Summarize model sent an unexpected reply.") from e
+
+    def summarize(self, text, language, timeout=180):
+        summary = _clean(self.complete(PROMPT.format(lang=language), text[:MAX_CHARS], 400, timeout))
         if not summary:
             raise Error("The Summarize model returned no summary.")
         return summary
@@ -254,3 +257,23 @@ class Server:
                 proc.wait(5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+
+
+class LocalWriter:
+    """The writer source for the Summarize model. It shares the app's `Server`, so the idle stop and the stop on
+    removal still apply."""
+    name = "Local"
+
+    def __init__(self, server):
+        self._server = server
+
+    def status(self):
+        return status()
+
+    def rewrite(self, system, text, model, effort, cancelled):
+        if len(text) > MAX_CHARS // 2:  # the reply is about as long as the text, and both share the context
+            raise Error("The text is too long for the local model.")
+        out = self._server.complete(system, text, max(800, len(text) // 3))
+        if cancelled():
+            raise writer.Cancelled("The rewrite was cancelled.")
+        return out

@@ -89,10 +89,16 @@ class Summaries:
         if self.settings_win and self.settings_win.alive:
             self.settings_win.refresh_summarize()
 
+    def _arm_summary_stop(self):
+        """Stops the local model after IDLE_S, unless a newer summary or rewrite bumps `_summary_gen` first.
+        Main thread only. A local rewrite bumps `_summary_gen` when it starts and calls this when it ends."""
+        gen = self._summary_gen
+        self.host.after(summarize.IDLE_S * 1000, lambda: gen == self._summary_gen and threading.Thread(
+            target=self.summary_server.stop, daemon=True).start())
+
     def _summary_done(self, rid, gen, result, lang_tag):
         if gen == self._summary_gen:  # the latest summary, even if its read was stopped
-            self.host.after(summarize.IDLE_S * 1000, lambda: gen == self._summary_gen and threading.Thread(
-                target=self.summary_server.stop, daemon=True).start())
+            self._arm_summary_stop()
         if rid != self._read_id:
             return  # stopped, or replaced by another read, while the model worked
         if isinstance(result, Exception):
