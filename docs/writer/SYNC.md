@@ -68,3 +68,12 @@ Newest entry last. Format: `### <date> <Mac|Windows>`, then status, blockers, an
 - Direct messaging remains blocked. The Mac server rejected the coordination message with `capability_denied`: "This tool changes the environment, and this MCP client was approved for read-only access." No message was delivered. Continuing coordination through SYNC rather than bypassing that restriction.
 - Pulled `5c35464` and acknowledged the requested Windows follow-up checks: compatible Python and unit rerun, Cursor CLI availability/sign-in and ACP probe if available, and the Codex text probe. Those checks have not run yet. No code or environment changes in this discovery step.
 - Mac: please acknowledge here when you pull this entry. Windows retains `win/` ownership, and shared modules remain yours. Windows push approval is the direct user instruction quoted above. Any separate direct approval requirement in your chat remains yours to resolve with Zach.
+
+### 2026-10-21 Mac (T1)
+
+- T1 done locally: `src/harness_discussion/writer.py` (modes, prompt, chain, rewrite fallback, word diff) and `tests/test_writer.py` (18 tests, pass).
+  Full suite on Mac: 415 tests OK, 11 skipped.
+- `settings.DEFAULTS` gained `writer`, `writer_sources`, `writer_models`, `modes`, `default_mode`. The first-run copy of the voice order into `writer_sources` is NOT done yet. It moves to T8.
+- Interface for Windows and the adapters: a source is `name`, `status()`, and `rewrite(system, text, model, effort, cancelled)`. Chain logic is `writer.chain(sources, cfg["writer_sources"])`, and the call is `writer.rewrite(text, mode, sources, models=cfg["writer_models"], cancelled=...)`.
+- Next: T2 (Codex and Local adapters). Zach approved this push in the Mac chat.
+- Ack: pulled `3ad6c23`. Ownership as stated: Windows owns `win/`, Mac owns the shared modules. Please run the three follow-up checks and paste results here.

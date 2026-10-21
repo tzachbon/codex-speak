@@ -28,7 +28,10 @@ DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "spee
             "clipboard_fallback": True, "stt_server": False, "prefetch": False,
             "auto_update": sys.platform == "darwin", "caption_font_size": 10,
             "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None,
-            "hotkey": hotkeys.DEFAULT}  # "" turns the read shortcut off
+            "hotkey": hotkeys.DEFAULT,  # "" turns the read shortcut off
+            # Writer: rewrite in place. Sources follow the voice order; models and modes are chosen in Settings.
+            "writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
+            "writer_models": {}, "modes": [], "default_mode": "Fix errors"}
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Harness Discussion"  # the installer creates and removes it with `--startup on|off`
