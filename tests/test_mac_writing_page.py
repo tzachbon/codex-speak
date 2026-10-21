@@ -1,0 +1,101 @@
+"""Settings → Writing and Dictation on macOS, shown where the host can edit text."""
+import sys
+import unittest
+from types import SimpleNamespace
+from unittest import mock
+
+if sys.platform != "darwin":
+    raise unittest.SkipTest("macOS only")
+
+
+class WritingSettingsTest(unittest.TestCase):
+    def setUp(self):
+        import AppKit
+        from harness_discussion import settings
+        from harness_discussion.mac import settings_ui, stt_page, ui
+        AppKit.NSApplication.sharedApplication()
+        self.changes, self.fixed = [], []
+        engines = [SimpleNamespace(name="Cursor"), SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
+        self.app = SimpleNamespace(
+            cfg=dict(settings.DEFAULTS), statuses={}, writer_ready=True, chain=SimpleNamespace(engines=engines),
+            stt_error=None, check_update=lambda: None, update_state=lambda: ("", False),
+            available_version=lambda: None, summarize_state=lambda: ("ready", None), summarize_action=lambda: None,
+            change=lambda key, value, save=True: self.changes.append((key, value)), play=lambda *a, **k: None,
+            writer_statuses={"Cursor": "ready", "Codex": "signed_out", "Local": "missing"},
+            stt_statuses={"Codex": "ready", "Cursor": "ready"},
+            writer_models={"Cursor": [{"id": "fast", "label": "Fast", "efforts": []}],
+                           "Codex": [{"id": "gpt-5", "efforts": ["low", "medium"]}]},
+            fix_writer=lambda name, stt=False: self.fixed.append((name, stt)), apply=lambda key, value: None,
+            host=mock.Mock(mic_status=lambda: "not_asked"))
+        for p in (mock.patch.object(ui, "show"), mock.patch.object(settings_ui.startup, "enabled", return_value=False),
+                  mock.patch.object(stt_page, "stt_connection", return_value=("", ""))):
+            p.start()
+            self.addCleanup(p.stop)
+        self.win = settings_ui.SettingsWindow(self.app, lambda: None)
+        self.addCleanup(self.win.win.close)
+
+    def click(self, control):
+        control.sendAction_to_(control.action(), control.target())
+
+    def test_writing_and_dictation_follow_summarize(self):
+        self.assertEqual([t for t, _, _ in self.win.page_list][3:6], ["Summarize", "Writing", "Dictation"])
+        self.assertEqual(len(self.win.pages), 8)
+        self.win.nav[7].performClick_(None)
+        self.assertEqual([p.isHidden() for p in self.win.pages], [True] * 7 + [False])
+
+    def test_writer_rows_show_status_fix_and_order(self):
+        rows = self.win.writer_rows
+        self.assertEqual([rows[n][2].stringValue() for n in ("Cursor", "Codex", "Local")],
+                         ["Ready", "Not signed in", "Not downloaded"])
+        self.assertEqual((rows["Codex"][3].title(), rows["Local"][3].title()), ("Sign in…", "Download…"))
+        self.assertTrue(rows["Cursor"][3].isHidden())
+        rows["Local"][3].performClick_(None)
+        self.assertEqual(self.fixed, [("Local", False)])
+        rows["Local"][6][0].performClick_(None)
+        self.assertEqual(self.changes[-1], ("writer_sources", [["Cursor", True], ["Local", True], ["Codex", True]]))
+        self.assertEqual(self.win.writer_list.arrangedSubviews()[1], rows["Local"][7])
+        self.assertEqual(self.win.mic_status.stringValue(), "Asks the first time you dictate")
+
+    def test_models_and_efforts_save_per_source(self):
+        _, _, _, _, model, effort, _, _ = self.win.writer_rows["Codex"]
+        self.assertTrue(effort.isHidden())
+        model.selectItemAtIndex_(1)
+        self.click(model)
+        self.assertEqual(self.changes[-1], ("writer_models", {"Codex": {"model": "gpt-5"}}))
+        self.assertFalse(effort.isHidden())
+        effort.selectItemAtIndex_(2)
+        self.click(effort)
+        self.assertEqual(self.changes[-1], ("writer_models", {"Codex": {"model": "gpt-5", "effort": "medium"}}))
+        local = self.win.writer_rows["Local"][4]
+        self.assertEqual((local.titleOfSelectedItem(), local.isEnabled()), ("Qwen3-4B", False))
+
+    def test_add_rename_and_delete_a_mode_keeps_the_default_valid(self):
+        w = self.win
+        w._add_mode()
+        self.assertEqual(w.mode_popup.titleOfSelectedItem(), "New mode")
+        w.mode_name.setStringValue_("Slack")
+        w.mode_text.setStringValue_("Short and casual.")
+        w._save_mode()
+        self.assertEqual(self.changes[-1], ("modes", [{"name": "Slack", "instructions": "Short and casual."}]))
+        w.default_popup.selectItemAtIndex_(4)
+        self.click(w.default_popup)
+        self.assertEqual(self.changes[-1], ("default_mode", "Slack"))
+        w._delete_mode()
+        self.assertEqual(self.changes[-2:], [("modes", []), ("default_mode", "Fix errors")])
+
+    def test_a_status_refresh_keeps_an_unsaved_mode_draft(self):
+        w = self.win
+        w.mode_text.setStringValue_("Draft")
+        w.refresh_writing()
+        self.assertEqual(w.mode_text.stringValue(), "Draft")
+
+    def test_a_shortcut_another_row_uses_is_refused(self):
+        self.win._set_hotkey(self.win.cfg["hotkey"], "rewrite_hotkey")
+        self.assertEqual(self.win.shortcut_labels["rewrite_hotkey"].stringValue(), "Used by Read shortcut")
+        self.assertNotIn("rewrite_hotkey", [k for k, _ in self.changes])
+        self.win._set_hotkey("<cmd>+<shift>+r", "rewrite_hotkey")
+        self.assertEqual(self.changes[-1], ("rewrite_hotkey", "<cmd>+<shift>+r"))
+
+
+if __name__ == "__main__":
+    unittest.main()

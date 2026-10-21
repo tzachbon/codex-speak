@@ -12,6 +12,7 @@ from harness_discussion import settings
 from unittest import mock
 
 from harness_discussion.win import clipboard, selection
+from harness_discussion.win import input as keys
 from harness_discussion.win.shortcut_row import KEYS
 from harness_discussion.win.trigger import HotKey, SelectionTrigger
 from harness_discussion.win.voice import sapi_rate
@@ -27,23 +28,23 @@ class Clipboard(unittest.TestCase):
 
 
 class ListNumbers(unittest.TestCase):
-    def read(self, uia, window="Chrome_WidgetWin_1", fallback=True,
-             html="<p>Please:</p><ol><li>A</li><li>B</li></ol>"):
+    def read(self, uia, fallback=True):
         with mock.patch.object(selection, "_via_uia", return_value=uia), \
-                mock.patch.object(selection, "_foreground_class", return_value=window), \
-                mock.patch.object(selection, "_via_clipboard", return_value=("copied", html)) as self.copy:
+                mock.patch.object(keys, "chord") as self.copy, \
+                mock.patch.object(clipboard, "snapshot_with_sequence") as self.snapshot:
             return selection.read(fallback)
 
-    def test_web_list_numbers_come_from_the_copied_html(self):
-        self.assertEqual(self.read("Please:\nA\nB"), "Please:\n1. A\n2. B")
-
-    def test_other_apps_settings_and_text_are_left_alone(self):
-        for kw in ({"window": "OpusApp"}, {"fallback": False}):
-            self.assertEqual(self.read("Please:\nA\nB", **kw), "Please:\nA\nB")
-            self.copy.assert_not_called()
-        self.assertEqual(self.read("Please:\n1. A"), "Please:\n1. A")
+    def test_list_text_is_preserved_without_borrowing_for_html_enrichment(self):
+        self.assertEqual(self.read("Please:\nA\nB"), "Please:\nA\nB")
         self.copy.assert_not_called()
-        self.assertEqual(self.read("A\nB", html="<ul><li>A</li></ul>"), "A\nB")
+        self.snapshot.assert_not_called()
+
+    def test_both_saved_settings_preserve_existing_numbers_and_never_copy(self):
+        for enabled in (False, True):
+            for text in ("Please:\n1. A", "Please:\nA\nB", ""):
+                self.assertEqual(self.read(text, fallback=enabled), text)
+                self.copy.assert_not_called()
+                self.snapshot.assert_not_called()
 
 
 class Trigger(unittest.TestCase):

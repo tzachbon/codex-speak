@@ -15,6 +15,7 @@ from . import app_skip, lang, sentences, settings, stt_server
 from .app_skip import Skips
 from .app_summarize import Summaries
 from .app_updates import Updates
+from .app_writer import Writer
 from .captions import Captions
 from .sources import Sources
 
@@ -39,7 +40,7 @@ def _causes(err):
     return " from ".join(names)
 
 
-class App(Captions, Sources, Updates, Summaries, Skips):
+class App(Captions, Sources, Updates, Summaries, Skips, Writer):
     def __init__(self, host):
         self.host = host
         host.app = self
@@ -69,16 +70,22 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             except OSError:
                 pass  # Settings just shows again on the next start
             self.events.put(("settings", True))  # show new users where the app lives, with a welcome
+        self._init_summaries()
+        self._init_writer()
         for key, value in self.cfg.items():
             self.apply(key, value)
-        self._init_summaries()
+        # hosts without in-place editing build the bar without the writing layout
+        writing = dict(on_rewrite=self.rewrite_from_bar, modes=self.mode_names,
+                       on_escape=self._escape) if self.writer_ready else {}
         self.popup = host.make_popup(self.cfg["speed"], on_play=self.play, on_stop=self.stop,
                                      on_summarize=self.summarize,
                                      on_pause=self.pause, on_resume=self.resume,
                                      on_lang=self._prepare_selection, on_speed=self._popup_speed,
                                      on_settings=lambda: self.events.put(("settings",)),
                                      on_source=self._popup_source, sources=self._source_choices,
-                                     on_skip=self.skip)
+                                     on_skip=self.skip, **writing)
+        if self.writer_ready:
+            self.popup.set_last_mode(self.cfg["default_mode"])
         self._configure_captions()
         self._show_source()
 
@@ -112,6 +119,8 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             self._run_stt(value)
         elif key == "hotkey":
             self.host.set_hotkey(value, lambda: self.events.put(("hotkey",)))
+        elif key in ("rewrite_hotkey", "dictate_hotkey", "default_mode") and self.writer_ready:
+            self._apply_writer(key, value)
 
     def _configure_captions(self):
         self.popup.configure_captions(self.cfg["caption_font_size"], self.cfg["caption_background"],
@@ -194,10 +203,11 @@ class App(Captions, Sources, Updates, Summaries, Skips):
         time.sleep(0.08)  # let the app finish updating its selection
         try:
             text = self.host.read_selection(self.cfg["clipboard_fallback"])
+            ctx = self.edit.capture(False) if text and self.writer_ready and self.cfg["writer"] else None
         except Exception:
             return  # some apps throw from the accessibility API; no popup is the right outcome
         if text and seq == self._seq:
-            self.events.put(("show", text, x, y))
+            self.events.put(("show", text, x, y, bool(ctx and ctx.editable and not ctx.secure)))
 
     def _units_for(self, text):
         """Codex reads the whole selection in one session; other engines get the opening, then the rest."""
@@ -318,12 +328,12 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             self._update_status(args[1])
             self._try_update()
         elif kind == "show":
-            text, x, y = args
+            text, x, y, editable = (*args, False)[:4]
             # double-clicking the popup is not a new selection, and a running read isn't interrupted
-            if not (p.contains(x, y) or (p.playing and not p.paused)):
+            if not (p.contains(x, y) or (p.playing and not p.paused) or self.rewriting):
                 if p.paused:
                     self.stop()  # a new selection replaces the paused read
-                p.show(text, x, y)
+                p.show(text, x, y, editable) if self.writer_ready else p.show(text, x, y)
                 self._prepare_selection()
                 self.refresh_statuses()  # a sign-in may have changed since the last check
         elif kind == "press":
@@ -377,11 +387,17 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             else:
                 self.settings_win = self.host.open_settings(welcome=bool(args))  # ("settings", True) on first run
             self.refresh_statuses()
+            if self.writer_ready:
+                self.refresh_writer()
         elif kind == "engine":
             if self.chain.busy:  # an attempt that started before a stop is not shown
                 p.set_source(args[0])
         elif kind == "summary":
             self._summary_done(*args)
+        elif kind in self.WRITER_EVENTS:
+            getattr(self, self.WRITER_EVENTS[kind])(*args)
+        elif kind == "call":
+            args[0]()
         elif kind == "summarize_progress":
             if self._summarize_progress is not None:  # a late event after the download ended is dropped
                 self._set_summarize_progress(args[0])
@@ -396,6 +412,7 @@ class App(Captions, Sources, Updates, Summaries, Skips):
             self._closing = True
             self.stop()
             self._close_summaries()
+            self._close_writer()
             self._run_stt(False)
             self.host.stop_trigger()
             self.host.set_hotkey("", None)

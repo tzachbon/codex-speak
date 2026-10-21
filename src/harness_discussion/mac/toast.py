@@ -1,0 +1,126 @@
+"""The writer's toast: a HUD pill like the bar, with a message and a few actions. It hides itself after about
+6 s, and waits while the pointer is over it. It never takes focus, so the user's app keeps typing."""
+import AppKit
+
+from . import ui
+from .popup import _Button, _Hover, _cocoa_y, _screen_at, build_menu
+
+HIDE_S = 6.0
+
+
+def _action_button(title, fn):
+    b = _Button.alloc().init()
+    b.setBezelStyle_(AppKit.NSBezelStyleRegularSquare)
+    b.setBordered_(False)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(8)
+    b.layer().setBackgroundColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.12)))
+    b.setAttributedTitle_(AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        f"  {title}  ", {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_weight_(12, AppKit.NSFontWeightMedium),
+                         AppKit.NSForegroundColorAttributeName: AppKit.NSColor.whiteColor()}))
+    b.heightAnchor().constraintEqualToConstant_(24).setActive_(True)
+    return ui.bind(b, lambda s: fn(s))
+
+
+class Toast:
+    def __init__(self):
+        self._timer, self.menu_open, self.actions, self._busy = None, False, [], False
+        self.on_hide = lambda: None
+        self.label = ui.label("", 12)
+        self.label.setTextColor_(AppKit.NSColor.whiteColor())
+        self.spinner = AppKit.NSProgressIndicator.alloc().init()
+        self.spinner.setStyle_(AppKit.NSProgressIndicatorStyleSpinning)
+        self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
+        self.row = ui.stack([self.spinner, self.label], vertical=False, spacing=8)
+        self.row.setEdgeInsets_((8, 14, 8, 10))
+        effect = AppKit.NSVisualEffectView.alloc().init()
+        effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
+        effect.setState_(AppKit.NSVisualEffectStateActive)
+        effect.setWantsLayer_(True)
+        effect.layer().setCornerRadius_(21)
+        effect.layer().setMasksToBounds_(True)
+        effect.layer().setBorderWidth_(0.5)
+        effect.layer().setBorderColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.15)))
+        hover = _Hover.alloc().initWithOwner_(self)
+        for parent, child in ((hover, effect), (effect, self.row)):
+            child.setTranslatesAutoresizingMaskIntoConstraints_(False)
+            parent.addSubview_(child)
+            for a in ("leadingAnchor", "trailingAnchor", "topAnchor", "bottomAnchor"):
+                getattr(child, a)().constraintEqualToAnchor_(getattr(parent, a)()).setActive_(True)
+        style = AppKit.NSWindowStyleMaskBorderless | AppKit.NSWindowStyleMaskNonactivatingPanel
+        p = self.win = ui.Panel.alloc().initWithContentRect_styleMask_backing_defer_(
+            ((0, 0), (10, 10)), style, AppKit.NSBackingStoreBuffered, False)
+        p.setContentView_(hover)
+        p.setAppearance_(AppKit.NSAppearance.appearanceNamed_(AppKit.NSAppearanceNameVibrantDark))
+        p.setLevel_(AppKit.NSStatusWindowLevel)
+        p.setFloatingPanel_(True)
+        p.setHidesOnDeactivate_(False)
+        p.setOpaque_(False)
+        p.setBackgroundColor_(AppKit.NSColor.clearColor())
+        p.setHasShadow_(True)
+        p.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+                                 | AppKit.NSWindowCollectionBehaviorFullScreenAuxiliary
+                                 | AppKit.NSWindowCollectionBehaviorTransient)
+
+    @property
+    def visible(self):
+        return bool(self.win.isVisible())
+
+    @property
+    def message(self):
+        return str(self.label.stringValue())
+
+    def show(self, message, x, y, actions=(), busy=False):
+        """actions: (title, fn) for a button, or (title, [(title, fn, checked)]) for a menu button.
+        x, y: the top-left point to show it at. A busy toast spins and stays until replaced."""
+        for view in self.actions:
+            self.row.removeArrangedSubview_(view)
+            view.removeFromSuperview()
+        self.actions = []
+        for title, action in actions:
+            if isinstance(action, list):
+                entries = action
+                button = _action_button(f"{title} ▾", lambda s, entries=entries: self._menu(s, entries))
+            else:
+                button = _action_button(title, lambda _s, fn=action: (self.hide(), fn()))
+            self.row.addArrangedSubview_(button)
+            self.actions.append(button)
+        self.label.setStringValue_(message)
+        self.spinner.setHidden_(not busy)
+        self.spinner.startAnimation_(None) if busy else self.spinner.stopAnimation_(None)
+        p = self.win
+        p.setContentSize_(p.contentView().fittingSize())
+        w, h = p.frame().size.width, p.frame().size.height
+        area = _screen_at(x, y).visibleFrame()
+        area_top = _cocoa_y(area.origin.y + area.size.height)
+        top = max(area_top, min(y, area_top + area.size.height - h))
+        left = max(area.origin.x, min(x, area.origin.x + area.size.width - w))
+        p.setFrameOrigin_((left, _cocoa_y(top + h)))
+        p.orderFrontRegardless()
+        self._busy = busy
+        self.schedule_hide()
+
+    def _menu(self, button, entries):
+        self.menu_open = True
+        self.cancel_hide()
+        try:
+            build_menu([(t, (lambda fn=fn: (self.hide(), fn())), c) for t, fn, c in entries]
+                       ).popUpMenuPositioningItem_atLocation_inView_(None, (0, button.bounds().size.height + 4), button)
+        finally:
+            self.menu_open = False
+            self.schedule_hide()
+
+    def schedule_hide(self):
+        self.cancel_hide()
+        if self.visible and not self.menu_open and not self._busy:
+            self._timer = ui.timer(HIDE_S, self.hide)
+
+    def cancel_hide(self):
+        if self._timer:
+            self._timer.invalidate()
+            self._timer = None
+
+    def hide(self):
+        self.cancel_hide()
+        self.win.orderOut_(None)
+        self.on_hide()

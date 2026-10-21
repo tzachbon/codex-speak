@@ -90,6 +90,9 @@ class Popup:
         self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
         self.on_settings = on_settings
+        self.editable = self.writer_enabled = False
+        self.escape_wired = False  # the host sets it once Esc dismisses the bar; until then ✕ stays
+        self.on_rewrite, self.modes, self.default_mode = lambda name: None, lambda: (), lambda: "Fix errors"
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
         self.speed = tk.DoubleVar(master=root, value=speed)
@@ -132,6 +135,12 @@ class Popup:
             self.speed_menu.add_radiobutton(label=settings.speed_label(preset), value=preset,
                                             variable=self.speed, command=self._speed_changed)
         self.sources_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
+        self.more_btn = _FlatButton(w, self._overflow_menu, ("…", (text, 12), FG))
+        self.overflow = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
+        self.rewrite_btn = _FlatButton(w, lambda: self.on_rewrite(self.default_mode()),
+                                      ("✎ Rewrite", (text, 10, "bold"), ACCENT))
+        self.mode_btn = _FlatButton(w, self.show_modes, ("Mode", (text, 10), FG), (CHEVRON, (icons, 7), FG))
+        self.mode_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         self._icons = {}
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self.schedule_hide())
@@ -184,15 +193,13 @@ class Popup:
         if loading:
             b = self.btn
             self.spinner.configure(width=b.winfo_width(), height=b.winfo_height())
-            self.spinner.pack(side="left", padx=("2p", 0), pady="2p", before=b)
-            b.pack_forget()
+            self._layout()
             self._spin()
         else:
             if self._spin_job:
                 self.win.after_cancel(self._spin_job)
                 self._spin_job = None
-            self.btn.pack(side="left", padx=("2p", 0), pady="2p", before=self.spinner)
-            self.spinner.pack_forget()
+            self._layout()
 
     def _spin(self):
         if not self.loading:
@@ -213,11 +220,7 @@ class Popup:
             self._highlight(False)
         self.caption.set_paused(self.paused)
         self.btn.parts[1]["text"] = PAUSE if playing and not paused else PLAY
-        for button in (self.back_btn, self.next_btn, self.stop_btn):
-            if playing:
-                button.pack(side="left", padx=0, pady="2p", before=self.ai_btn)
-            else:
-                button.pack_forget()
+        self._layout()
         if not playing:
             self.schedule_hide()
 
@@ -286,6 +289,66 @@ class Popup:
             self._toggle()
         self.on_settings()
 
+    def _layout(self):
+        for widget in (self.btn, self.spinner, self.ai_btn, self.back_btn, self.next_btn,
+                       self.stop_btn, self.divider, self.lang_btn, self.speed_btn,
+                       self.source_btn, self.settings_btn, self.close_btn, self.more_btn,
+                       self.rewrite_btn, self.mode_btn):
+            widget.pack_forget()
+        primary = self.spinner if self.loading else self.btn
+        controls = ([primary, self.back_btn, self.next_btn, self.stop_btn, self.more_btn]
+                    if self.playing else [primary, self.ai_btn, self.more_btn])
+        if not self.playing and self.writer_enabled and self.editable:
+            self.rewrite_btn.parts[1]["text"] = "✎ " + self.default_mode()
+            controls = [self.rewrite_btn, self.mode_btn, primary, self.more_btn]
+        if not self.escape_wired:
+            controls.append(self.close_btn)
+        for widget in controls:
+            widget.pack(side="left", padx="2p", pady="2p")
+
+    def _overflow_menu(self):
+        self._source_menu(post=False)
+        menu = self.overflow
+        menu.delete(0, "end")
+        menu.add_cascade(label="Voice", menu=self.sources_menu)
+        menu.add_cascade(label="Language", menu=self.menu)
+        menu.add_cascade(label="Speed", menu=self.speed_menu)
+        menu.add_separator()
+        menu.add_command(label="Summarize", command=self._summarize)
+        self._mode_choices()
+        menu.add_cascade(label="Rewrite", menu=self.mode_menu,
+                         state="normal" if self.writer_enabled else "disabled")
+        menu.add_separator()
+        menu.add_command(label="Settings…", command=self._open_settings)
+        self._post_menu(self.more_btn, menu)
+
+    def configure_writer(self, on_rewrite, modes, default_mode, enabled=True):
+        """Mode-name callbacks and live suppliers from the shared Writer coordinator."""
+        self.on_rewrite, self.modes, self.default_mode = on_rewrite, modes, default_mode
+        self.set_writer(enabled)
+
+    def set_writer(self, enabled):
+        self.writer_enabled = bool(enabled)
+        self._layout()
+
+    def set_mode(self, editable):
+        self.editable = bool(editable)
+        self._layout()
+
+    def _mode_choices(self):
+        self.mode_menu.delete(0, "end")
+        for mode in self.modes():
+            self.mode_menu.add_command(label=mode.name, command=lambda name=mode.name: self.on_rewrite(name))
+
+    def show_modes(self, x=None, y=None):
+        if not self.writer_enabled:
+            return
+        self._mode_choices()
+        if x is None or y is None:
+            self._post_menu(self.mode_btn if self.editable else self.more_btn, self.mode_menu)
+        else:
+            self.mode_menu.post(x, y)
+
     def _stop(self):
         self.on_stop()
         self.set_playing(False)
@@ -305,7 +368,7 @@ class Popup:
         self.source.set(name)
         self.source_btn.parts[1]["text"] = name
 
-    def _source_menu(self):
+    def _source_menu(self, post=True):
         """Built on each click: the ready sources change as statuses refresh and Settings reorders."""
         menu = self.sources_menu
         menu.delete(0, "end")
@@ -321,7 +384,8 @@ class Popup:
         for name, fix in fixes:  # a source that needs an install or sign-in offers it instead
             menu.add_command(label=f"{name}: {fix}", image=self._icon(name), compound="left",
                              command=lambda name=name: self.on_source(name))
-        self._post_menu(self.source_btn, menu)
+        if post:
+            self._post_menu(self.source_btn, menu)
 
     def _icon(self, name):
         if name not in self._icons:  # Tk drops an image nothing in Python refers to

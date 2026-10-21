@@ -6,47 +6,96 @@ if sys.platform != "darwin":
     raise unittest.SkipTest("macOS only")
 
 
+def _bar(**kw):
+    import AppKit
+    from harness_discussion.mac import popup
+    AppKit.NSApplication.sharedApplication()
+    noop = lambda *a: None
+    args = dict(on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop, on_speed=noop,
+                on_settings=noop, on_source=noop, sources=lambda: [], on_skip=noop)
+    return popup.Popup(1.0, **{**args, **kw})
+
+
+def _shown(bar):
+    return [v for v in bar.row.arrangedSubviews() if not v.isHidden()]
+
+
+def _walk(entries, path):
+    """The entry at a path of titles through the "…" menu entries."""
+    for title in path:
+        entries = next(e for e in entries if e and e[0] == title)
+        if title != path[-1]:
+            entries = entries[1]
+    return entries
+
+
 class PopupSourceTest(unittest.TestCase):
-    def test_label_follows_set_source_and_a_pick_reaches_on_source(self):
-        import AppKit
-        from harness_discussion.mac import popup
-        AppKit.NSApplication.sharedApplication()
+    def test_the_more_menu_routes_voice_language_speed_and_settings(self):
+        calls = []
+        bar = _bar(on_source=lambda n: calls.append(("source", n)), on_lang=lambda t: calls.append(("lang", t)),
+                   on_speed=lambda s: calls.append(("speed", s)), on_settings=lambda: calls.append(("settings",)),
+                   on_summarize=lambda text, tag: calls.append(("summarize", text)),
+                   sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")])
+        bar.set_source("Codex")
+        entries = bar.menu_entries()
+        self.assertEqual([e and e[0] for e in entries], ["Voice", "Language", "Speed", None, "Summarize", None, "Settings…"])
+        voices = _walk(entries, ["Voice"])[1]
+        self.assertEqual([v and (v[0], v[2]) for v in voices],
+                         [("Codex", True), ("macOS", False), None, ("Cursor: Sign in…", False)])
+        _walk(entries, ["Voice", "macOS"])[1]()
+        _walk(entries, ["Language", "Hebrew"])[1]()
+        _walk(entries, ["Speed", "1.5×"])[1]()
+        _walk(entries, ["Summarize"])[1]()
+        _walk(entries, ["Settings…"])[1]()
+        self.assertEqual(calls, [("source", "macOS"), ("lang", "he-IL"), ("speed", 1.5), ("summarize", ""),
+                                 ("settings",)])
+
+    def test_rewrite_appears_only_with_in_place_editing(self):
         picked = []
-        noop = lambda *a: None
-        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=picked.append, sources=lambda: [("Codex", None), ("macOS", None), ("Cursor", "Sign in…")], on_skip=noop)
-        bar.set_source("Codex")
-        self.assertEqual(bar.source_btn.title(), "\ufffc Codex ▾")
-        menus = []
-        with mock.patch.object(bar, "_popup", lambda button, choices, current, pick: menus.append(
-                (choices, current)) or pick("macOS")):
-            bar.source_btn.performClick_(None)
-        choices, current = menus[0]
-        self.assertEqual(([c and c[:2] for c in choices], current, picked),
-                         ([("Codex", "Codex"), ("macOS", "macOS"), None, ("Cursor", "Cursor: Sign in…")], "Codex", ["macOS"]))
+        bar = _bar(on_rewrite=lambda text, mode: picked.append((text, mode)), modes=lambda: ["Fix errors", "Email"])
+        bar.text = "hi"
+        self.assertNotIn("Rewrite", [e and e[0] for e in bar.menu_entries()])  # a selection that can't be edited
+        bar.set_editable(True)
+        rewrite = _walk(bar.menu_entries(), ["Rewrite"])[1]
+        self.assertEqual([m[0] for m in rewrite], ["Fix errors", "Email"])
+        rewrite[1][1]()
+        self.assertEqual(picked, [("hi", "Email")])
+        self.assertNotIn("Rewrite", [e and e[0] for e in _bar().menu_entries()])
 
-    def test_the_bar_keeps_its_width_through_picks_and_playback(self):
-        import AppKit
-        from harness_discussion.mac import popup
-        AppKit.NSApplication.sharedApplication()
-        noop = lambda *a: None
-        bar = popup.Popup(1.0, on_play=noop, on_stop=noop, on_pause=noop, on_resume=noop, on_lang=noop,
-                          on_speed=noop, on_settings=noop, on_source=noop, sources=lambda: [], on_skip=noop)
-        bar.set_source("macOS")
-        self.assertEqual((bar.speed_btn.title(), bar.lang_btn.title()), ("1× ▾", "Auto ▾"))
-        width = lambda: bar.win.contentView().fittingSize().width
-        before = width()
-        bar.set_source("Codex")
-        bar.set_speed(1.75)
+    def test_layouts_for_writing_reading_and_playing(self):
+        bar = _bar(on_rewrite=lambda text, mode: None, modes=lambda: ["Fix errors"])
+        self.addCleanup(bar.hide)
+        bar.show("Some text.", 400, 400, editable=True)
+        self.assertEqual(_shown(bar), [bar.rewrite_btn, bar.mode_btn, bar.btn, bar.more_btn])
+        left = bar.win.frame().origin.x
+        bar.set_editable(False)
+        self.assertEqual(_shown(bar), [bar.btn, bar.ai_btn, bar.more_btn])
+        self.assertEqual(bar.win.frame().origin.x, left)  # the left edge stays anchored
         bar.set_playing(True)
-        self.assertEqual(width(), before)
+        self.assertEqual(_shown(bar), [bar.btn, bar.back_btn, bar.next_btn, bar.stop_btn, bar.more_btn])
+        bar.set_playing(False)
         bar.set_summarize_progress(0.4)
-        self.assertEqual((width(), bar.ai_btn.isHidden(), bar.ai_progress.doubleValue()), (before, True, 0.4))
-        bar.set_summarize_progress(None)
-        bar.set_summary()
-        self.assertEqual((width(), bar.ai_btn.isHidden(), bar.spinner.isHidden()), (before, False, False))
+        self.assertEqual(_shown(bar), [bar.btn, bar.ai_progress, bar.more_btn])
+        self.assertEqual(bar.ai_progress.doubleValue(), 0.4)
+        no_writer = _bar()
+        self.addCleanup(no_writer.hide)
+        no_writer.show("Some text.", 400, 400, editable=True)
+        self.assertEqual(_shown(no_writer), [no_writer.btn, no_writer.ai_btn, no_writer.more_btn])
 
-    def test_summarize_sits_after_stop_and_sends_the_selection(self):
+    def test_the_rewrite_button_uses_the_last_mode_and_stays_while_rewriting(self):
+        picked = []
+        bar = _bar(on_rewrite=lambda text, mode: picked.append(mode), modes=lambda: ["Fix errors"])
+        self.addCleanup(bar.hide)
+        bar.show("x", 400, 400, editable=True)
+        bar.set_last_mode("Email")
+        self.assertIn("Email", str(bar.rewrite_btn.attributedTitle().string()))
+        bar.rewrite_btn.performClick_(None)
+        bar.set_rewriting(True)
+        self.assertIsNone(bar._hide_timer)
+        bar.rewrite_btn.performClick_(None)  # disabled while rewriting
+        self.assertEqual(picked, ["Email"])
+
+    def test_summarize_sends_the_selection(self):
         import AppKit
         from harness_discussion.mac import popup
         AppKit.NSApplication.sharedApplication()
@@ -56,8 +105,6 @@ class PopupSourceTest(unittest.TestCase):
                           on_summarize=lambda text, tag: asked.append((text, tag)), on_skip=noop)
         self.addCleanup(bar.hide)
         bar.show("Some text.", 400, 400)
-        views = list(bar.btn.superview().arrangedSubviews())
-        self.assertEqual(views.index(bar.ai_btn), views.index(bar.stop_btn) + 1)
         bar.ai_btn.performClick_(None)
         self.assertEqual(asked, [("Some text.", None)])
         self.assertIsNotNone(bar._hide_timer)  # nothing started, so the bar still hides on its own

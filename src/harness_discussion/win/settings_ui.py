@@ -13,19 +13,23 @@ from .popup import fonts, work_area
 from .sources_ui import CARD, SourcesSection
 from .shortcut_row import ShortcutRow
 from .summarize_page import SummarizePage
+from .writing_page import WritingPage
 
 PAGE, BORDER, SUBTLE, SELECTED = "#f3f3f3", "#e5e5e5", "#5f5f5f", "#e6e6e6"
-PAGES = ("Voices", "Captions", "Reading", "Summarize", "Speech to Text", "General")
+PAGES = ("Voices", "Captions", "Reading", "Summarize", "Speech to Text", "Writing", "General")
 
 
-class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
+class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow, WritingPage):
     def __init__(self, root, cfg, icon, on_change, on_test, stt_state=lambda: None,
                  update_state=lambda: ("Ready to check.", False), on_update=lambda: None, engines=(),
                  statuses=dict, on_play=lambda name: None, welcome=False, on_fix=lambda name: None, summarizer=None,
-                 on_record=lambda recording: None):
+                 on_record=lambda recording: None, writer_catalogs=dict, writer_statuses=dict,
+                 on_writer_fix=lambda name: None, dictate_status=lambda: "Not checked"):
         self.cfg, self.on_change, self.on_test, self._save_job, self._pending_key = cfg, on_change, on_test, None, None
         self.statuses, self.on_play, self._engines = statuses, on_play, {e.name: e for e in engines}
         self.on_fix, self.on_record = on_fix, on_record
+        self.writer_catalogs, self.writer_statuses, self.on_writer_fix = writer_catalogs, writer_statuses, on_writer_fix
+        self.dictate_status = dictate_status
         self.stt_state = stt_state  # None when running, else why not
         self.update_state = update_state
         w = self.win = tk.Toplevel(root, bg=PAGE)
@@ -79,7 +83,7 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
         self.title = tk.Label(self.content, bg=PAGE, font=(text.replace("Text", "Display"), 20, "bold"), anchor="w")
         self.title.pack(fill="x", pady=(0, 8))
         self.pages = [tk.Frame(self.content, bg=PAGE) for _ in PAGES]
-        voices, captions, reading, summary, stt, general = self.pages
+        voices, captions, reading, summary, stt, writing, general = self.pages
 
         card = self._card(voices, "Sources")
         self._sources_section(card, text, welcome)
@@ -150,12 +154,14 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
         self._caption_opacity_state()
 
         card = self._card(reading, "Selection")
-        self.clip = tk.BooleanVar(w, cfg["clipboard_fallback"])
-        ttk.Checkbutton(card, text="Read apps that hide their selection, such as VS Code",
-                        style="Card.TCheckbutton", variable=self.clip,
-                        command=lambda: self._set("clipboard_fallback", self.clip.get())).pack(anchor="w")
-        ttk.Label(card, text="Copies the selection with Ctrl+C, then restores your clipboard.",
-                  style="Sub.Card.TLabel").pack(anchor="w", pady=(4, 0))
+        self.clip = tk.BooleanVar(w, False)
+        self.clip_check = ttk.Checkbutton(card, text="Read apps that hide their selection (unavailable)",
+                                         style="Card.TCheckbutton", variable=self.clip, state="disabled")
+        self.clip_check.pack(anchor="w")
+        self.clip_note = ttk.Label(card, text="Automatic copying is unavailable to protect your clipboard. "
+                                  "Apps that hide selections cannot be read. List numbers may be omitted.",
+                                  style="Sub.Card.TLabel", wraplength=440)
+        self.clip_note.pack(anchor="w", pady=(4, 0))
         self.prefetch = tk.BooleanVar(w, cfg["prefetch"])
         ttk.Checkbutton(card, text="Prepare speech as soon as I select text", style="Card.TCheckbutton",
                         variable=self.prefetch,
@@ -166,6 +172,7 @@ class SettingsWindow(SourcesSection, SummarizePage, ShortcutRow):
                   wraplength=420).pack(anchor="w", pady=(4, 0))
 
         self._summarize_page(summary, text, summarizer)
+        self._writing_page(writing, text)
 
         card = self._card(stt, "OpenAI-compatible server")
         self.stt_on = tk.BooleanVar(w, cfg.get("stt_server", False))

@@ -51,25 +51,69 @@ def _name(key):
     return getattr(key, "vk", None) or getattr(getattr(key, "value", None), "vk", None)
 
 
-class HotKey:
-    """Fires once every key of the shortcut is up, so a borrowed Ctrl+C isn't sent as Ctrl+Alt+C."""
+def _physical(key):
+    return getattr(key, "vk", None) or getattr(getattr(key, "value", None), "vk", None) or key
 
-    def __init__(self, spec, on_hotkey):
+
+class HotKey:
+    """Fires once every key of the shortcut is up, so a borrowed Ctrl+C isn't sent as Ctrl+Alt+C.
+    With on_release, fires at key-down instead and calls on_release once the chord is all up,
+    for hold-to-act shortcuts like dictation."""
+
+    def __init__(self, spec, on_hotkey, on_release=None):
         mods, key = hotkeys.parse(spec)
-        self.on_hotkey, self._keys, self._held, self._pending = on_hotkey, {*mods, VK[key]}, set(), False
+        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, VK[key]}, {}
+        self._pending, self._armed = False, True  # armed blocks auto-repeat and a re-press during a partial release
         self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
         self._listener.start()
 
     def _press(self, key):
-        self._held.add(_name(key))
-        if self._held == self._keys:  # exactly the shortcut: Ctrl+Alt+Shift+R isn't Ctrl+Alt+R
+        self._held[_physical(key)] = _name(key)
+        if not self._armed or set(self._held.values()) != self._keys:
+            return
+        if self.on_release is None:
             self._pending = True
+            return
+        self._armed = False
+        self.on_hotkey()
 
     def _release(self, key):
-        self._held.discard(_name(key))
-        if self._pending and not self._held:
+        self._held.pop(_physical(key), None)
+        if self._held:
+            return
+        if self._pending:
             self._pending = False
             self.on_hotkey()
+        elif not self._armed:
+            self._armed = True  # rearm only once everything is released
+            self.on_release()
 
     def stop(self):
         self._listener.stop()
+
+
+class Escape:
+    """Temporary watcher. Callback only enqueues, suppress() is true for bar/rewrite activity."""
+    def __init__(self, on_escape, suppress=lambda: True):
+        self.on_escape, self.suppress = on_escape, suppress
+        self._held, self._stopped = False, False
+        self._listener = keyboard.Listener(win32_event_filter=self._filter)
+        self._listener.start()
+
+    def _filter(self, message, data):
+        if self._stopped or data.vkCode != 27:
+            return True
+        if message in (0x100, 0x104):  # WM_KEYDOWN / WM_SYSKEYDOWN
+            if not self._held:
+                self._held = True
+                self.on_escape()
+        elif message in (0x101, 0x105):
+            self._held = False
+        if self.suppress():
+            self._listener.suppress_event()
+        return False
+
+    def stop(self):
+        if not self._stopped:
+            self._stopped = True
+            self._listener.stop()

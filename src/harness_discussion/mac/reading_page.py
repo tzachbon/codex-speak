@@ -1,8 +1,11 @@
-"""Settings → Reading: copying hidden selections, early speech, and the read shortcut."""
+"""Settings → Reading: copying hidden selections, early speech, and the shortcut rows every page shares."""
 import AppKit
 
 from .. import hotkeys
 from . import trigger, ui
+
+SHORTCUT_TITLES = {"hotkey": "Read shortcut", "rewrite_hotkey": "Rewrite shortcut",
+                   "dictate_hotkey": "Dictation shortcut (hold)"}
 
 
 class ReadingPage:
@@ -19,47 +22,57 @@ class ReadingPage:
         return [_card([hidden, _divider(), early, _divider(), self._shortcut_row()]),
                 _note("Reads the selected text without clicking the bar. Pressing it again stops the read.")]
 
-    def _shortcut_row(self):
+    def _shortcut_row(self, key="hotkey"):
         from .settings_ui import WIDTH, _spacer
-        self.hotkey_label = ui.label(hotkeys.label(self.cfg["hotkey"]), 13, bold=True)
-        row = ui.stack([ui.label("Read shortcut", 13), _spacer(), self.hotkey_label,
-                        ui.button("Change…", self._record_hotkey),
-                        ui.button("Off", lambda: self._set_hotkey(""))], vertical=False, spacing=8)
+        if not hasattr(self, "shortcut_labels"):
+            self.shortcut_labels = {}
+        label = self.shortcut_labels[key] = ui.label(hotkeys.label(self.cfg[key]), 13, bold=True)
+        row = ui.stack([ui.label(SHORTCUT_TITLES[key], 13), _spacer(), label,
+                        ui.button("Change…", lambda: self._record_hotkey(key)),
+                        ui.button("Off", lambda: self._set_hotkey("", key))], vertical=False, spacing=8)
         row.widthAnchor().constraintEqualToConstant_(WIDTH).setActive_(True)
         return row
 
-    def _record_hotkey(self):
+    @property
+    def hotkey_label(self):
+        return self.shortcut_labels["hotkey"]
+
+    def _record_hotkey(self, key="hotkey"):
         """Change…: the next key combination with a modifier becomes the shortcut; Esc keeps the old one."""
         if self._recorder:
             return
-        self.hotkey_label.setStringValue_("Press keys…")
-        self.app.host.set_hotkey("", None)  # so pressing the current shortcut records it instead of reading
+        self._recording_key = key
+        self.shortcut_labels[key].setStringValue_("Press keys…")
+        self.app.apply(key, "")  # so pressing the current shortcut records it instead of running it
 
-        def key(event):
+        def on_key(event):
             if not self.win.isVisible():  # Settings closed while recording: let keys through again
                 self._stop_recording()
                 return event
             if event.keyCode() == 53:  # Esc
                 self._stop_recording()
             elif spec := trigger.event_spec(event):
-                self._set_hotkey(spec)
+                self._set_hotkey(spec, key)
             return None  # keys pressed while recording don't reach the window
-        self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(AppKit.NSEventMaskKeyDown, key)
+        self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(AppKit.NSEventMaskKeyDown, on_key)
         # closing Settings with its red button ends recording; the key monitor sees no keys once the app is inactive
         self._closed = AppKit.NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
             AppKit.NSWindowWillCloseNotification, self.win, None, lambda _n: self._stop_recording())
 
     def _stop_recording(self):
         if self._recorder:
+            key = self._recording_key
             AppKit.NSEvent.removeMonitor_(self._recorder)
             self._recorder = None
             AppKit.NSNotificationCenter.defaultCenter().removeObserver_(self._closed)
-            self.app.apply("hotkey", self.cfg["hotkey"])
-            self.hotkey_label.setStringValue_(hotkeys.label(self.cfg["hotkey"]))
+            self.app.apply(key, self.cfg[key])
+            self.shortcut_labels[key].setStringValue_(hotkeys.label(self.cfg[key]))
 
-    def _set_hotkey(self, spec):
-        if spec != self.cfg["hotkey"]:
-            self._set("hotkey", spec)
+    def _set_hotkey(self, spec, key="hotkey"):
+        """Saves the shortcut unless another row uses it, in which case the row names that one."""
+        taken = hotkeys.conflict(self.cfg, key, spec)
+        if spec != self.cfg[key] and not taken:
+            self._set(key, spec)
         self._stop_recording()
-        self.hotkey_label.setStringValue_(hotkeys.label(spec))
-
+        self.shortcut_labels[key].setStringValue_(f"Used by {SHORTCUT_TITLES[taken]}" if taken
+                                                  else hotkeys.label(self.cfg[key]))

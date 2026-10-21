@@ -43,3 +43,36 @@ class Saved(unittest.TestCase):
         self.assertEqual(self.load("<shift>+<alt>+x"), "<shift>+<alt>+x")
         self.assertEqual(self.load("r"), hotkeys.DEFAULT)
         self.assertEqual(self.load(5), hotkeys.DEFAULT)
+
+    def test_a_shortcut_already_used_by_another_setting_is_a_conflict(self):
+        cfg = {"hotkey": "<ctrl>+<alt>+r", "rewrite_hotkey": "<ctrl>+<alt>+e", "dictate_hotkey": ""}
+        self.assertEqual(hotkeys.conflict(cfg, "rewrite_hotkey", "<alt>+<ctrl>+r"), "hotkey")
+        self.assertIsNone(hotkeys.conflict(cfg, "rewrite_hotkey", "<ctrl>+<alt>+e"))
+        self.assertIsNone(hotkeys.conflict(cfg, "dictate_hotkey", ""))
+
+
+class WriterSettings(unittest.TestCase):
+    def load(self, saved):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            if saved is not None:
+                path.write_text(json.dumps(saved), encoding="utf-8")
+            return settings.load(str(path))
+
+    def test_a_fresh_file_follows_the_default_voice_order(self):
+        s = self.load(None)
+        self.assertEqual(s["writer_sources"], [["Cursor", True], ["Codex", True], ["Local", True]])
+        self.assertEqual(s["stt_sources"], [["Codex", True], ["Cursor", True]])
+        self.assertEqual((s["rewrite_hotkey"], s["dictate_hotkey"]), (hotkeys.REWRITE, hotkeys.DICTATE))
+
+    def test_an_existing_file_copies_the_voice_order_once(self):
+        voices = [["Codex", True], ["Kokoro", True], ["Cursor", False]]
+        self.assertEqual(self.load({"sources": voices})["writer_sources"],
+                         [["Codex", True], ["Cursor", True], ["Local", True]])
+        saved = {"sources": voices, "writer_sources": [["Local", False], ["Bogus", True], ["Local", True]]}
+        self.assertEqual(self.load(saved)["writer_sources"], [["Local", False], ["Cursor", True], ["Codex", True]])
+
+    def test_models_keep_only_known_sources_and_string_choices(self):
+        saved = {"writer_models": {"Codex": {"model": "gpt", "effort": "low", "x": 1}, "Nope": {}, "Local": 3}}
+        self.assertEqual(self.load(saved)["writer_models"], {"Codex": {"model": "gpt", "effort": "low"}})
+        self.assertEqual(self.load({"writer_models": [], "modes": {}, "default_mode": " "})["default_mode"], "Fix errors")

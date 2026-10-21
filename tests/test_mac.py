@@ -234,13 +234,13 @@ class SourcesSettingsTest(unittest.TestCase):
         import AppKit
         from types import SimpleNamespace
         from harness_discussion import settings
-        from harness_discussion.mac import settings_ui, ui
+        from harness_discussion.mac import settings_ui, stt_page, ui
         AppKit.NSApplication.sharedApplication()
         self.changes, self.played, self.summary = [], [], ["missing", None, 0]
         engines = [SimpleNamespace(name="Cursor", voices=(("eve", "Eve"), ("ara", "Ara")), default_voice="ara"),
                    SimpleNamespace(name="Codex"), SimpleNamespace(name="macOS")]
         self.app = SimpleNamespace(
-            cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"},
+            cfg=dict(settings.DEFAULTS), statuses={"Cursor": "signed_out", "Codex": "missing"}, writer_ready=False,
             chain=SimpleNamespace(engines=engines), stt_error=None, check_update=lambda: None,
             update_state=lambda: ("", False), available_version=lambda: None,
             summarize_state=lambda: tuple(self.summary[:2]),
@@ -248,7 +248,7 @@ class SourcesSettingsTest(unittest.TestCase):
             change=lambda key, value, save=True: self.changes.append((key, value)),
             play=lambda text, tag, only=None: self.played.append((text, only)))
         for p in (mock.patch.object(ui, "show"), mock.patch.object(settings_ui.startup, "enabled", return_value=False),
-                  mock.patch.object(settings_ui, "stt_connection", return_value=("", ""))):
+                  mock.patch.object(stt_page, "stt_connection", return_value=("", ""))):
             p.start()
             self.addCleanup(p.stop)
         self.win = settings_ui.SettingsWindow(self.app, lambda: None)

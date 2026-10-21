@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from harness_discussion import app_summarize, summarize
+from harness_discussion import app_summarize, summarize, writer
 
 
 class _Reply(io.BytesIO):
@@ -134,6 +134,40 @@ class ServerTest(unittest.TestCase):
         with mock.patch.object(summarize, "_local_open", lambda request, timeout: _Reply(reply)):
             with self.assertRaisesRegex(summarize.Error, "no summary"):
                 server.summarize("text", "English")
+
+    def test_local_writer_sends_the_mode_prompt_and_keeps_line_breaks(self):
+        sent = []
+
+        def local(request, timeout):
+            sent.append(json.loads(request.data))
+            content = "<think>x</think>\nHi Dana,\n\nThanks.\n"
+            return _Reply(json.dumps({"choices": [{"message": {"content": content}}]}).encode())
+        server = summarize.Server()
+        server._proc, server._port = SimpleNamespace(poll=lambda: None), 1234
+        source = summarize.LocalWriter(server)
+        with mock.patch.object(summarize, "_local_open", local):
+            self.assertEqual(source.rewrite("SYSTEM", "hi dana thanks", None, None, lambda: False),
+                             "Hi Dana,\n\nThanks.")
+            with self.assertRaises(writer.Cancelled):
+                source.rewrite("SYSTEM", "hi", None, None, lambda: True)
+        self.assertEqual([m["content"] for m in sent[0]["messages"]], ["SYSTEM", "hi dana thanks"])
+        self.assertEqual(sent[0]["max_tokens"], 800)
+        with self.assertRaisesRegex(summarize.Error, "too long"):
+            source.rewrite("SYSTEM", "x" * (summarize.MAX_CHARS // 2 + 1), None, None, lambda: False)
+
+    def test_local_writer_refuses_a_reply_cut_off_at_the_token_limit(self):
+        sent = []
+
+        def local(request, timeout):
+            sent.append(json.loads(request.data))
+            return _Reply(json.dumps({"choices": [{"message": {"content": "你好"}, "finish_reason": "length"}]}).encode())
+        server = summarize.Server()
+        server._proc, server._port = SimpleNamespace(poll=lambda: None), 1234
+        with mock.patch.object(summarize, "_local_open", local):
+            with self.assertRaisesRegex(summarize.Error, "cut off"):
+                summarize.LocalWriter(server).rewrite("SYSTEM", "你" * 3000, None, None, lambda: False)
+            self.assertEqual(server.summarize("text", "English"), "你好")  # summaries may still end early
+        self.assertEqual(sent[0]["max_tokens"], 3000)
 
 
     def test_stop_does_not_wait_for_the_model_to_load(self):

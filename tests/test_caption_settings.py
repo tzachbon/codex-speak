@@ -89,11 +89,11 @@ class CaptionSettingsUi(unittest.TestCase):
     def test_the_sidebar_shows_one_page_and_marks_voices_while_a_source_needs_a_sign_in(self):
         self.make_window(dict(settings.DEFAULTS), lambda *args: None, statuses=lambda: {"Cursor": "signed_out"})
         self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages],
-                         [True, False, False, False, False, False])
+                         [True, False, False, False, False, False, False])
         self.assertEqual(str(self.window.nav[0]["image"]), str(self.window._tiles["Voices"][1]))
         self.window.nav[4].invoke()
         self.assertEqual([bool(p.winfo_manager()) for p in self.window.pages],
-                         [False, False, False, False, True, False])
+                         [False, False, False, False, True, False, False])
         self.assertEqual(self.window.title["text"], "Speech to Text")
         self.window.statuses = lambda: {"Cursor": "ready"}
         self.window.refresh_sources()
