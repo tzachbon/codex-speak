@@ -52,24 +52,37 @@ def _name(key):
 
 
 class HotKey:
-    """Fires once every key of the shortcut is up, so a borrowed Ctrl+C isn't sent as Ctrl+Alt+C."""
+    """Fires once every key of the shortcut is up, so a borrowed Ctrl+C isn't sent as Ctrl+Alt+C.
+    With on_release, fires at key-down instead and calls on_release once the chord is all up,
+    for hold-to-act shortcuts like dictation."""
 
-    def __init__(self, spec, on_hotkey):
+    def __init__(self, spec, on_hotkey, on_release=None):
         mods, key = hotkeys.parse(spec)
-        self.on_hotkey, self._keys, self._held, self._pending = on_hotkey, {*mods, VK[key]}, set(), False
+        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, VK[key]}, set()
+        self._pending, self._armed = False, True  # armed blocks auto-repeat and a re-press during a partial release
         self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
         self._listener.start()
 
     def _press(self, key):
         self._held.add(_name(key))
-        if self._held == self._keys:  # exactly the shortcut: Ctrl+Alt+Shift+R isn't Ctrl+Alt+R
+        if not self._armed or self._held != self._keys:  # exactly the shortcut: Ctrl+Alt+Shift+R isn't Ctrl+Alt+R
+            return
+        if self.on_release is None:
             self._pending = True
+            return
+        self._armed = False
+        self.on_hotkey()
 
     def _release(self, key):
         self._held.discard(_name(key))
-        if self._pending and not self._held:
+        if self._held:
+            return
+        if self._pending:
             self._pending = False
             self.on_hotkey()
+        elif not self._armed:
+            self._armed = True  # rearm only once everything is released
+            self.on_release()
 
     def stop(self):
         self._listener.stop()

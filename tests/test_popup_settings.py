@@ -79,6 +79,15 @@ class PopupSettings(unittest.TestCase):
         self.app = None
         gc.collect()
 
+    def pick_overflow(self, label):
+        popup = self.app.popup
+        with patch.object(popup.overflow, "post"):
+            popup.more_btn.command()
+        popup.overflow.invoke(label)
+        while not self.app.events.empty():
+            self.app._handle(*self.app.events.get_nowait())
+        self.host.root.update()
+
     def speaking(self):
         self.assertEqual(self.app.chain.active_name, "Codex")
         return self.app.chain._active
@@ -97,14 +106,14 @@ class PopupSettings(unittest.TestCase):
         self.assertTrue(popup.playing)
         self.assertFalse(popup.paused)
         read_id = self.app._read_id
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         window = self.app.settings_win
         self.assertTrue(window.win.winfo_viewable())
         self.assertTrue(popup.paused)
         self.assertTrue(self.speaking().paused.is_set())
         self.assertEqual(popup.caption.text, "A sentence to read.")
         self.assertEqual(self.app._read_id, read_id)
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         self.assertIs(self.app.settings_win, window)
         self.assertTrue(popup.paused)
         window.close()
@@ -116,13 +125,13 @@ class PopupSettings(unittest.TestCase):
 
     def test_idle_settings_does_not_start_speech_and_closed_window_reopens(self):
         popup = self.app.popup
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         window = self.app.settings_win
         self.assertTrue(window.win.winfo_viewable())
         self.assertFalse(popup.playing)
         self.assertIsNone(self.app.chain._active)
         window.close()
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         self.assertIsNot(self.app.settings_win, window)
         self.assertTrue(self.app.settings_win.win.winfo_viewable())
         self.assertFalse(popup.playing)
@@ -165,7 +174,7 @@ class PopupSettings(unittest.TestCase):
         popup.set_summarize_progress(0.42)
         self.assertEqual(label["text"], "42%")
         popup.set_summarize_progress(None)
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         self.app.settings_win.nav[3].invoke()
         self.assertEqual(self.app.settings_win.summary_status["text"], "Ready")
 
@@ -174,7 +183,7 @@ class PopupSettings(unittest.TestCase):
         self.click(popup.btn)
         self.click(popup.btn)
         self.assertTrue(popup.paused)
-        self.click(popup.settings_btn)
+        self.pick_overflow("Settings…")
         self.assertTrue(self.app.settings_win.win.winfo_viewable())
         self.assertTrue(popup.paused)
         self.assertTrue(self.speaking().paused.is_set())
