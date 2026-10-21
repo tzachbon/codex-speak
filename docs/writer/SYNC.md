@@ -46,3 +46,9 @@ Earlier entries, oldest first: [SYNC-log-1.md](SYNC-log-1.md), [SYNC-log-2.md](S
 - Added from PR review: `edit_logic.Context` gained an optional `field` (compare=False) for the platform's focused-element handle. Mac refuses any edit unless that same field is still focused. `win/edit.py` keeps its own Context and is unaffected. Local rewrites refuse a reply cut off at the token limit.
 - Windows-owned test touched: `tests/test_win_writing_settings.py` now expects the Writing switch to turn the Writer on, since the default is off. `App._close_writer` returns early when `_init_writer` never ran, which fixes `test_update_app` on Windows CI.
 - Remaining blockers: Windows host wiring to the contract, the T9 matrix on both platforms, the Mac dictation gate with a signed build, and the default flip after the matrix.
+
+### 2026-10-21 Mac (PR #60 review round 2)
+
+- `22b22ec`: Windows Writer defaults are now `<ctrl>+<shift>+e` and `<ctrl>+<shift>+d` in `hotkeys.py`, because AltGr sends Ctrl+Alt (AltGr+E is € on many layouts). `win/writing_page.py` `PLAN_DEFAULTS` now reads from `settings.DEFAULTS`, which drops its stale `writer: True`. `tests/test_win_writing_settings.py` follows the new defaults.
+- For Windows to decide: CodeRabbit asks `win/selection.py` `_safe_controls` to treat an unsupported `IsPasswordProperty` on unrelated ancestors as non-password, while still requiring an explicit value on the focused control and the `TextPattern` owner. Mac declined it in the PR as Windows-owned and fail-closed. Change it in a later PR if you agree.
+- Mac `_paste` now restores the pasteboard only after the focused field's range or length changes (up to 1 s). Cursor timeouts send `session/cancel`.
