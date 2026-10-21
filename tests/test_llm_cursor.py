@@ -11,8 +11,9 @@ from harness_discussion import llm_cursor, writer
 class FakeAcp:
     cwd, alive = "/tmp/empty", True
 
-    def __init__(self, chunks=("Fixed", " text.")):
+    def __init__(self, chunks=("Fixed", " text."), stop="end_turn"):
         self.calls, self.notes, self.updates, self._chunks, self.closed = [], [], queue.Queue(), chunks, False
+        self.stop = stop
 
     def call(self, method, params, timeout=20):
         self.calls.append((method, params))
@@ -23,7 +24,7 @@ class FakeAcp:
             for chunk in self._chunks:
                 self.updates.put({"method": "session/update", "params": {"sessionId": "s1", "update": {
                     "sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}}}})
-            return {"stopReason": "end_turn"}
+            return {"stopReason": self.stop}
         return {}
 
     def notify(self, method, params):
@@ -47,6 +48,11 @@ class CursorWriterTest(unittest.TestCase):
         prompt = self.acp.calls[3][1]["prompt"][0]["text"]
         self.assertTrue(prompt.startswith("SYSTEM"))
         self.assertIn("fixd txt", prompt)
+
+    def test_a_turn_that_ran_out_of_tokens_is_refused(self):
+        self.acp.stop = "max_tokens"
+        with self.assertRaisesRegex(RuntimeError, "max_tokens"):
+            self.source.rewrite("SYSTEM", "long text", None, None, lambda: False)
 
     def test_the_process_stays_warm_between_rewrites(self):
         starts = []

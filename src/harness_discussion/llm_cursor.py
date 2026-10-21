@@ -208,6 +208,9 @@ class CursorWriter:
                     out.append((update.get("content") or {}).get("text", ""))
             if "error" in result:
                 raise result["error"]
+            stop = (result.get("ok") or {}).get("stopReason")
+            if stop != "end_turn":  # max_tokens or refusal: a partial rewrite must never replace the selection
+                raise RuntimeError(f"Cursor stopped early: {stop}")
             return "".join(out)
         finally:
             self._used = time.monotonic()
