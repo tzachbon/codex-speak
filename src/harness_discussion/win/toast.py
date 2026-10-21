@@ -1,12 +1,16 @@
-"""The small pill shown after an in-place rewrite: a message, then Undo, Review, and Mode. Never takes focus."""
+"""The small pill shown after an in-place rewrite. Never takes focus."""
 import tkinter as tk
 
 from .captions import _get_parent, _get_style, _set_style
-from .popup import (BG, CHEVRON, DIVIDER, FG, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-                    _FlatButton, fonts, round_corners, work_area)
+from .popup import (ACCENT, BG, CHEVRON, DIVIDER, FG, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+                    WS_EX_TOPMOST, _FlatButton, fonts, round_corners, work_area)
 
 HIDE_MS = 6000
+ACTIVITY_MS = 120
 ACTIONS = ("undo", "review", "mode", "copy")
+LEGACY_ACTIONS = ACTIONS[:3]
+ACTIVITY = ("◐", "◓", "◑", "◒")
+
 
 def floating(root, **options):
     """A borderless, topmost, rounded window that never activates, so the target app keeps focus and its caret."""
@@ -20,6 +24,7 @@ def floating(root, **options):
     round_corners(hwnd)
     return w
 
+
 def place(w, x, y):
     """Below the point, kept inside the work area of its monitor."""
     w.update_idletasks()
@@ -27,63 +32,188 @@ def place(w, x, y):
     top = y + 16 if y + 16 + height <= area.bottom else y - height - 14
     w.geometry(f"+{max(area.left, min(x - width // 2, area.right - width))}+{max(area.top, top)}")
 
+
 class Toast:
-    def __init__(self, root, on_action):
-        """on_action(name) gets one of ACTIONS. The caller decides whether the toast stays."""
-        self._hide_job = None
-        self._hovered = False
+    def __init__(self, root, on_action=None):
+        """Legacy action IDs call on_action(name); shared actions carry their own callbacks."""
+        self._root, self.on_action, self.on_hide = root, on_action, None
+        self._hide_job = self._activity_job = self._menu_close_job = None
+        self._hovered = self._busy = self._menu_open = False
+        self._activity_frame = 0
+        self._menu_win = None
+        self._action_buttons = []
         icons, text = self.fonts = fonts(root)
         w = self.win = floating(root)
+        self.spinner = tk.Label(w, bg=BG, fg=ACCENT, font=(icons, 10), padx=0, pady=0)
         self.label = tk.Label(w, bg=BG, fg=FG, font=(text, 10), padx=0, pady=0)
+        self.spinner.pack(side="left", padx=("8p", "4p"), pady="4p")
         self.label.pack(side="left", padx=("8p", "4p"), pady="4p")
         self.divider = tk.Frame(w, bg=DIVIDER, width=1)
-        self.divider.pack(side="left", fill="y", pady="5p", padx="2p")
         self.buttons = {}
         for name in ACTIONS:
             parts = [(name.title(), (text, 10), FG)] + ([(CHEVRON, (icons, 7), FG)] if name == "mode" else [])
-            self.buttons[name] = _FlatButton(w, lambda name=name: on_action(name), *parts)
+            self.buttons[name] = _FlatButton(w, lambda name=name: self._legacy_action(name), *parts)
         w.bind("<Enter>", self._enter)
         w.bind("<Leave>", self._leave)
 
-    def show(self, message, actions=("undo", "review", "mode"), x=None, y=None):
-        """Near (x, y), or the mouse pointer when not given. Replaces whatever the toast showed before."""
+    def show(self, message, x=None, y=None, actions=None, busy=False):
+        """Show at (x, y), or the pointer. Shared actions are (title, fn) or (title, [(title, fn, checked)])."""
+        self._close_menu()
+        self._clear_shared_actions()
         self.label["text"] = message
+        if actions is None:
+            actions = LEGACY_ACTIONS if self.on_action is not None else ()
         for button in self.buttons.values():
             button.pack_forget()
-        for name in actions:
-            self.buttons[name].pack(side="left", padx=(0, "2p"), pady="2p")
-        if actions:
-            self.divider.pack(side="left", fill="y", pady="5p", padx="2p", before=self.buttons[actions[0]])
+        shown = []
+        for action in actions:
+            if isinstance(action, str):
+                button = self.buttons[action]
+            else:
+                title, callback = action
+                if isinstance(callback, list):
+                    holder = {}
+                    button = _FlatButton(self.win,
+                                         lambda entries=callback, h=holder: self._open_menu(h["button"], entries),
+                                         (f"{title} ▾", (self.fonts[1], 10), FG))
+                    holder["button"] = button
+                else:
+                    button = _FlatButton(self.win, lambda fn=callback: self._shared_action(fn),
+                                         (title, (self.fonts[1], 10), FG))
+                self._action_buttons.append(button)
+            button.pack(side="left", padx=(0, "2p"), pady="2p")
+            shown.append(button)
+        if shown:
+            self.divider.pack(side="left", fill="y", pady="5p", padx="2p", before=shown[0])
         else:
             self.divider.pack_forget()
+
         if x is None or y is None:
             x, y = self.win.winfo_pointerxy()
         place(self.win, x, y)
         self.win.deiconify()
-        self._schedule_hide()
+        self._busy = bool(busy)
+        if self._busy:
+            self.spinner["text"] = ACTIVITY[self._activity_frame]
+            self.spinner.pack(side="left", before=self.label, padx=("8p", "4p"), pady="4p")
+            self._schedule_activity()
+            self._cancel_hide()
+        else:
+            self.spinner.pack_forget()
+            self._cancel_activity()
+            self._schedule_hide()
 
     def hide(self):
+        was_visible = self.visible
         self._cancel_hide()
-        self._hovered = False
-        self.win.withdraw()
+        self._cancel_activity()
+        self._close_menu()
+        self._busy = self._hovered = False
+        try:
+            self.win.withdraw()
+        except tk.TclError:
+            pass
+        if was_visible and self.on_hide:
+            self.on_hide()
 
     def destroy(self):
-        self._cancel_hide()
-        self.win.destroy()
+        self.hide()
+        try:
+            self.win.destroy()
+        except tk.TclError:
+            pass
 
     @property
     def visible(self):
-        return bool(self.win.winfo_exists() and self.win.winfo_viewable())
+        try:
+            return bool(self.win.winfo_exists() and self.win.winfo_viewable())
+        except tk.TclError:
+            return False
 
     def contains(self, x, y):
         w = self.win
         return (self.visible and w.winfo_rootx() <= x < w.winfo_rootx() + w.winfo_width()
                 and w.winfo_rooty() <= y < w.winfo_rooty() + w.winfo_height())
 
+    def _legacy_action(self, name):
+        if self.on_action:
+            self.on_action(name)
+
+    def _shared_action(self, callback):
+        self.hide()
+        if callback:
+            callback()
+
+    def _open_menu(self, anchor, entries):
+        self._close_menu()
+        self._cancel_hide()
+        self._menu_open = True
+        menu = self._menu_win = floating(self._root)
+        for title, callback, checked in entries:
+            mark = "✓ " if checked else "   "
+            button = _FlatButton(menu, lambda fn=callback: self._shared_action(fn),
+                                 (mark + title, (self.fonts[1], 10), FG))
+            button.pack(fill="x", padx="2p", pady="1p")
+        menu.bind("<Enter>", lambda _event: self._cancel_menu_close())
+        menu.bind("<Leave>", lambda _event: self._schedule_menu_close())
+        menu.update_idletasks()
+        x, y = anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height()
+        area, width, height = work_area(x, y), menu.winfo_reqwidth(), menu.winfo_reqheight()
+        top = y if y + height <= area.bottom else max(area.top, y - height - anchor.winfo_height())
+        menu.geometry(f"+{max(area.left, min(x, area.right - width))}+{top}")
+        menu.deiconify()
+
+    def _schedule_menu_close(self):
+        self._cancel_menu_close()
+        if self._menu_win and self._menu_win.winfo_exists():
+            self._menu_close_job = self.win.after(250, self._menu_left)
+
+    def _cancel_menu_close(self):
+        self._cancel_after("_menu_close_job")
+
+    def _menu_left(self):
+        self._menu_close_job = None
+        self._close_menu()
+        self._schedule_hide()
+
+    def _close_menu(self):
+        self._cancel_menu_close()
+        menu, self._menu_win = self._menu_win, None
+        self._menu_open = False
+        if menu:
+            try:
+                menu.destroy()
+            except tk.TclError:
+                pass
+
+    def _clear_shared_actions(self):
+        for button in self._action_buttons:
+            try:
+                button.destroy()
+            except tk.TclError:
+                pass
+        self._action_buttons.clear()
+
     def _schedule_hide(self):
         self._cancel_hide()
-        if not self._hovered:
-            self._hide_job = self.win.after(HIDE_MS, self.hide)
+        if not self._hovered and not self._busy and not self._menu_open and self.visible:
+            self._hide_job = self.win.after(HIDE_MS, self._hide_timeout)
+
+    def _hide_timeout(self):
+        self._hide_job = None
+        self.hide()
+
+    def _schedule_activity(self):
+        self._cancel_activity()
+        if self._busy and self.visible:
+            self._activity_job = self.win.after(ACTIVITY_MS, self._animate_activity)
+
+    def _animate_activity(self):
+        self._activity_job = None
+        if self._busy and self.visible:
+            self._activity_frame = (self._activity_frame + 1) % len(ACTIVITY)
+            self.spinner["text"] = ACTIVITY[self._activity_frame]
+            self._activity_job = self.win.after(ACTIVITY_MS, self._animate_activity)
 
     def _enter(self, _event):
         self._hovered = True
@@ -91,9 +221,20 @@ class Toast:
 
     def _leave(self, _event):
         self._hovered = False
-        self._schedule_hide()
+        if not self._menu_open:
+            self._schedule_hide()
 
     def _cancel_hide(self):
-        if self._hide_job:
-            self.win.after_cancel(self._hide_job)
-            self._hide_job = None
+        self._cancel_after("_hide_job")
+
+    def _cancel_activity(self):
+        self._cancel_after("_activity_job")
+
+    def _cancel_after(self, attr):
+        job = getattr(self, attr)
+        setattr(self, attr, None)
+        if job:
+            try:
+                self.win.after_cancel(job)
+            except tk.TclError:
+                pass

@@ -11,6 +11,7 @@ from PIL import ImageTk
 
 from .. import icons, lang, settings
 from .captions import CaptionSurface, _get_parent, _get_style, _set_style
+from .trigger import Escape
 
 GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST = -20, 0x08000000, 0x80, 0x8
 DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
@@ -84,15 +85,21 @@ class _FlatButton(tk.Frame):
 
 class Popup:
     def __init__(self, root, speed, *, on_play, on_stop, on_pause, on_resume, on_lang, on_speed, on_settings,
-                 on_source, sources, on_skip, on_summarize=lambda text, tag: None):
-        """sources: returns the source names the menu offers; on_source(name) picks one. on_skip(-1 or 1)."""
+                 on_source, sources, on_skip, on_summarize=lambda text, tag: None, on_rewrite=None,
+                 modes=lambda: [], on_escape=None):
+        """Sources lists menu choices; on_rewrite receives (text, mode name); on_skip takes -1 or 1."""
         self.on_play, self.on_stop, self.on_pause, self.on_resume = on_play, on_stop, on_pause, on_resume
         self.on_summarize = on_summarize
         self.on_lang, self.on_speed, self.on_source, self.sources = on_lang, on_speed, on_source, sources
         self.on_settings = on_settings
-        self.editable = self.writer_enabled = False
-        self.escape_wired = False  # the host sets it once Esc dismisses the bar; until then ✕ stays
-        self.on_rewrite, self.modes, self.default_mode = lambda name: None, lambda: (), lambda: "Fix errors"
+        self.editable, self.rewriting = False, False
+        self.on_rewrite, self.modes, self.default_mode = on_rewrite, modes, lambda: "Fix errors"
+        self.writer_enabled = on_rewrite is not None
+        self._legacy_writer = False
+        self._last_mode = None
+        self._visible = self.escape_wired = self._is_destroyed = False
+        self._esc = (Escape(on_escape, suppress=lambda: self._visible, autostart=False)
+                     if on_escape is not None else None)
         self.text, self.playing, self.paused, self.menu_open, self._hide_job = "", False, False, False, None
         self.lang = tk.StringVar(master=root, value="")  # "" means Auto
         self.speed = tk.DoubleVar(master=root, value=speed)
@@ -137,13 +144,14 @@ class Popup:
         self.sources_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         self.more_btn = _FlatButton(w, self._overflow_menu, ("…", (text, 12), FG))
         self.overflow = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
-        self.rewrite_btn = _FlatButton(w, lambda: self.on_rewrite(self.default_mode()),
+        self.rewrite_btn = _FlatButton(w, lambda: self._rewrite(),
                                       ("✎ Rewrite", (text, 10, "bold"), ACCENT))
         self.mode_btn = _FlatButton(w, self.show_modes, ("Mode", (text, 10), FG), (CHEVRON, (icons, 7), FG))
         self.mode_menu = tk.Menu(w, tearoff=0, postcommand=self._menu_posted)
         self._icons = {}
         w.bind("<Enter>", lambda _e: self._cancel_hide())
         w.bind("<Leave>", lambda _e: self.schedule_hide())
+        w.bind("<Destroy>", self._destroyed, add="+")
         w.withdraw()
         w.update_idletasks()
         hwnd = _get_parent(w.winfo_id())
@@ -152,17 +160,24 @@ class Popup:
         round_corners(hwnd)
         self.caption = CaptionSurface(w, text, self._caption_placement)
 
-    def show(self, text, x, y):
+    def show(self, text, x, y, editable=False):
         self.text = text
+        if not self._legacy_writer or editable:
+            self.set_editable(editable)
         self.set_playing(False)
         self.lang.set("")
         self.lang_btn.parts[1]["text"] = "Auto"
         w = self.win
+        if self._esc:
+            self._esc.start()
+            self.escape_wired = True
+        self._layout()
         w.update_idletasks()
         area, h = work_area(x, y), w.winfo_reqheight()
         top = y - h - 14 if y - h - 14 >= area.top else y + 16  # above: Windows' own text bar sits below
         w.geometry(f"+{max(area.left, min(x + 12, area.right - w.winfo_reqwidth()))}"
                    f"+{max(area.top, min(top, area.bottom - h))}")
+        self._visible = True
         w.deiconify()
         self.schedule_hide()
 
@@ -172,14 +187,37 @@ class Popup:
         self.hide()
 
     def hide(self):
+        if self._is_destroyed:
+            return
         self._cancel_hide()
+        self._visible = False
+        if self._esc and self.escape_wired:
+            self._esc.stop()
+        self.escape_wired = False
         self.caption.hide()
         self.win.withdraw()
         self.on_stop()  # drops the Codex session warmed up for this popup
 
+    def destroy(self):
+        if self._is_destroyed:
+            return
+        self.hide()
+        self.win.destroy()
+
+    def _destroyed(self, event):
+        if event.widget is self.win:
+            was_wired = self.escape_wired
+            self._is_destroyed = True
+            self._visible = self.escape_wired = False
+            if self._esc and was_wired:
+                self._esc.stop()
+
     @property
     def visible(self):
-        return self.win.winfo_viewable()
+        return self._visible and not self._is_destroyed and self.win.winfo_viewable()
+
+    def anchor(self):
+        return self.win.winfo_rootx(), self.win.winfo_rooty(), self.win.winfo_height()
 
     def contains(self, x, y):
         w = self.win
@@ -299,7 +337,7 @@ class Popup:
         controls = ([primary, self.back_btn, self.next_btn, self.stop_btn, self.more_btn]
                     if self.playing else [primary, self.ai_btn, self.more_btn])
         if not self.playing and self.writer_enabled and self.editable:
-            self.rewrite_btn.parts[1]["text"] = "✎ " + self.default_mode()
+            self.rewrite_btn.parts[1]["text"] = "✎ " + ("Rewriting…" if self.rewriting else self._current_mode())
             controls = [self.rewrite_btn, self.mode_btn, primary, self.more_btn]
         if not self.escape_wired:
             controls.append(self.close_btn)
@@ -317,7 +355,7 @@ class Popup:
         menu.add_command(label="Summarize", command=self._summarize)
         self._mode_choices()
         menu.add_cascade(label="Rewrite", menu=self.mode_menu,
-                         state="normal" if self.writer_enabled else "disabled")
+                         state="normal" if self.writer_enabled and self.editable else "disabled")
         menu.add_separator()
         menu.add_command(label="Settings…", command=self._open_settings)
         self._post_menu(self.more_btn, menu)
@@ -325,23 +363,64 @@ class Popup:
     def configure_writer(self, on_rewrite, modes, default_mode, enabled=True):
         """Mode-name callbacks and live suppliers from the shared Writer coordinator."""
         self.on_rewrite, self.modes, self.default_mode = on_rewrite, modes, default_mode
+        self._legacy_writer = True
         self.set_writer(enabled)
 
     def set_writer(self, enabled):
-        self.writer_enabled = bool(enabled)
+        self.writer_enabled = bool(enabled and self.on_rewrite is not None)
+        self.editable = self.editable and self.writer_enabled
         self._layout()
 
     def set_mode(self, editable):
-        self.editable = bool(editable)
+        self.set_editable(editable)
+
+    def set_editable(self, editable):
+        self.editable = bool(editable and self.writer_enabled)
         self._layout()
+
+    def set_last_mode(self, name):
+        self._last_mode = name
+        self._layout()
+
+    def set_rewriting(self, on):
+        self.rewriting = bool(on)
+        self._layout()
+        if self.rewriting:
+            self._cancel_hide()
+        else:
+            self.schedule_hide()
+
+    def _mode_names(self):
+        names = []
+        for mode in self.modes():
+            names.append(mode if isinstance(mode, str) else mode.name)
+        return names
+
+    def _current_mode(self):
+        if self._last_mode:
+            return self._last_mode
+        if self._legacy_writer:
+            return self.default_mode() or "Fix errors"
+        names = self._mode_names()
+        return names[0] if names else "Fix errors"
+
+    def _rewrite(self, name=None):
+        if not self.writer_enabled or not self.editable or self.rewriting or self.on_rewrite is None:
+            return
+        name = name or self._current_mode()
+        self.set_last_mode(name)
+        if self._legacy_writer:
+            self.on_rewrite(name)
+        else:
+            self.on_rewrite(self.text, name)
 
     def _mode_choices(self):
         self.mode_menu.delete(0, "end")
-        for mode in self.modes():
-            self.mode_menu.add_command(label=mode.name, command=lambda name=mode.name: self.on_rewrite(name))
+        for name in self._mode_names():
+            self.mode_menu.add_command(label=name, command=lambda name=name: self._rewrite(name))
 
     def show_modes(self, x=None, y=None):
-        if not self.writer_enabled:
+        if not self.writer_enabled or not self.editable:
             return
         self._mode_choices()
         if x is None or y is None:
@@ -407,7 +486,7 @@ class Popup:
 
     def schedule_hide(self):
         self._cancel_hide()
-        if not (self.playing or self.menu_open) and self.visible:  # a hidden popup must not stop reads
+        if not (self.playing or self.menu_open or self.rewriting) and self.visible:  # a hidden popup must not stop reads
             self._hide_job = self.win.after(IDLE_HIDE_MS, self.hide)
 
     def _cancel_hide(self):
