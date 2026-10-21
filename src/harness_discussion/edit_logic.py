@@ -1,0 +1,44 @@
+"""The platform-free part of in-place editing: the context, guards, UTF-16 lengths, and the undo sequence.
+
+A platform module (`mac/edit.py`, `win/edit.py`) provides `capture(clipboard_fallback)`, `replace(text)`,
+`type_at_caret(text)`, and `select_back(n)`.
+"""
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Context:
+    text: str
+    app: int  # process id
+    window: int  # window number (Mac) or hwnd (Windows)
+    editable: bool
+    secure: bool
+
+
+def utf16_len(text: str, newline: str = "\n") -> int:
+    """Length as the target stores it: UTF-16 code units, with each newline written as `newline`."""
+    text = text.replace("\r\n", "\n").replace("\n", newline)
+    return len(text.encode("utf-16-le")) // 2
+
+
+def same_context(ctx: Context, now) -> bool:
+    """Same app and window, and the selection still reads as the captured text. An empty read counts as changed."""
+    return (now is not None and now.app == ctx.app and now.window == ctx.window
+            and bool(now.text) and now.text == ctx.text)
+
+
+def restore_clipboard(count_now: int, count_after_set: int) -> bool:
+    """Put the user's clipboard back only if nothing else wrote to it after we did."""
+    return count_now == count_after_set
+
+
+def undo(platform, ctx: Context, original: str, inserted: str, newline: str = "\n") -> bool:
+    """Select the inserted text, check it is still what we pasted in the same window, then put the original back.
+    False when any check fails: the caller tells the user to use the app's own undo."""
+    if not platform.select_back(utf16_len(inserted, newline)):
+        return False
+    now = platform.capture(True)
+    if not same_context(Context(inserted, ctx.app, ctx.window, ctx.editable, ctx.secure), now):
+        platform.collapse()
+        return False
+    return platform.replace(original)

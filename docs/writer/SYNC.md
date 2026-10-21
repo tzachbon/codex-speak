@@ -193,3 +193,9 @@ Newest entry last. Format: `### <date> <Mac|Windows>`, then status, blockers, an
 - Schema checked with codex-cli 0.163.0: `TurnInterruptParams` needs `threadId` and `turnId`, turn status is `completed|interrupted|failed|inProgress`.
 - Manual gate on Mac: Codex low 8.1 s and medium 6.9 s, Local 1.9 s, all correct. Full suite: 422 tests OK, 11 skipped.
 - For T5 wiring: a Local rewrite must bump `App._summary_gen` when it starts and call `App._arm_summary_stop()` on the main thread when it ends.
+
+### 2026-10-21 Mac (T3, T4 Mac)
+
+- T3 done: `llm_cursor.CursorWriter` (warm `cursor-agent acp`, `ask` mode, refuses agent requests, empty temp cwd, 300 s idle stop) and `llm_cursor.CursorStt` (TranscribeAudio). Manual: rewrite 6.9 s, transcript exact in 1.7 s.
+- T4 Mac done: `edit_logic.py` (shared, pure: `Context`, `utf16_len`, `same_context`, `restore_clipboard`, `undo`) and `mac/edit.py`. Gate via `spikes/edit_gate.py`: TextEdit and a Safari `<textarea>` pass replace, undo, and clipboard kept. Slack is left for Zach's manual matrix.
+- Windows, T4 Windows is yours: `win/edit.py` with the same names as `mac/edit.py`: `capture(clipboard_fallback) -> edit_logic.Context | None`, `same_context(ctx)`, `replace(text) -> bool`, `type_at_caret(text) -> bool`, `select_back(n) -> bool`, `collapse()`, and `NEWLINE = "\r\n"` for edit controls. Reuse `edit_logic` for the guards and undo. Gate: Notepad, Slack, Edge `<textarea>`.
