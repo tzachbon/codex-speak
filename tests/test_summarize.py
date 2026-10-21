@@ -155,6 +155,20 @@ class ServerTest(unittest.TestCase):
         with self.assertRaisesRegex(summarize.Error, "too long"):
             source.rewrite("SYSTEM", "x" * (summarize.MAX_CHARS // 2 + 1), None, None, lambda: False)
 
+    def test_local_writer_refuses_a_reply_cut_off_at_the_token_limit(self):
+        sent = []
+
+        def local(request, timeout):
+            sent.append(json.loads(request.data))
+            return _Reply(json.dumps({"choices": [{"message": {"content": "你好"}, "finish_reason": "length"}]}).encode())
+        server = summarize.Server()
+        server._proc, server._port = SimpleNamespace(poll=lambda: None), 1234
+        with mock.patch.object(summarize, "_local_open", local):
+            with self.assertRaisesRegex(summarize.Error, "cut off"):
+                summarize.LocalWriter(server).rewrite("SYSTEM", "你" * 3000, None, None, lambda: False)
+            self.assertEqual(server.summarize("text", "English"), "你好")  # summaries may still end early
+        self.assertEqual(sent[0]["max_tokens"], 3000)
+
 
     def test_stop_does_not_wait_for_the_model_to_load(self):
         proc = mock.Mock()

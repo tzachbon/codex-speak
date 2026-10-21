@@ -223,8 +223,8 @@ class Server:
         self.stop()
         raise Error("The Summarize model took too long to load.")
 
-    def complete(self, system, user, max_tokens=800, timeout=180):
-        """The model's raw reply, without any <think> block."""
+    def complete(self, system, user, max_tokens=800, timeout=180, whole=False):
+        """The model's raw reply, without any <think> block. With `whole`, a reply cut off at `max_tokens` raises."""
         with self._starting:
             if not self.running:
                 self._start(90)
@@ -238,9 +238,13 @@ class Server:
         with _local_open(request, timeout=timeout) as reply:
             data = json.loads(reply.read())
         try:
-            return re.sub(r"<think>.*?</think>", "", data["choices"][0]["message"]["content"], flags=re.S).strip()
+            choice = data["choices"][0]
+            content = re.sub(r"<think>.*?</think>", "", choice["message"]["content"], flags=re.S).strip()
         except (KeyError, IndexError, TypeError) as e:
             raise Error("The Summarize model sent an unexpected reply.") from e
+        if whole and choice.get("finish_reason") == "length":
+            raise Error("The local model's reply was cut off.")
+        return content
 
     def summarize(self, text, language, timeout=180):
         summary = _clean(self.complete(PROMPT.format(lang=language), text[:MAX_CHARS], 400, timeout))
@@ -273,7 +277,9 @@ class LocalWriter:
     def rewrite(self, system, text, model, effort, cancelled):
         if len(text) > MAX_CHARS // 2:  # the reply is about as long as the text, and both share the context
             raise Error("The text is too long for the local model.")
-        out = self._server.complete(system, text, max(800, len(text) // 3))
+        # about one token per character covers CJK text and code, within the 8192-token context.
+        # A reply that still runs out is refused, never pasted.
+        out = self._server.complete(system, text, min(max(800, len(text)), 4096), whole=True)
         if cancelled():
             raise writer.Cancelled("The rewrite was cancelled.")
         return out

@@ -4,7 +4,7 @@ A platform module (`mac/edit.py`, `win/edit.py`) provides `capture(clipboard_fal
 `type_at_caret(text, ctx)`, and `select_back(n, ctx)`, each refusing when the target is no longer `ctx`'s, and
 optionally `collapse()`.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field as _field
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class Context:
     window: int  # window number (Mac) or hwnd (Windows)
     editable: bool
     secure: bool
+    field: object = _field(default=None, compare=False)  # the platform's focused-element handle, or None
 
 
 def utf16_len(text: str, newline: str = "\n") -> int:

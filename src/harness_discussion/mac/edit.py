@@ -11,7 +11,7 @@ import Quartz
 from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
                                  AXUIElementIsAttributeSettable, AXUIElementSetAttributeValue, AXValueCreate,
                                  AXValueGetValue, kAXErrorSuccess, kAXValueCFRangeType)
-from CoreFoundation import CFRangeMake
+from CoreFoundation import CFEqual, CFRangeMake
 
 from .. import edit_logic
 from ..edit_logic import Context
@@ -75,7 +75,7 @@ def capture(clipboard_fallback=False):
             text = pasteboard.copy_selection()
     if _frontmost_pid() != pid:
         return None
-    return Context(text, pid, _window_number(pid), _editable(element), secure)
+    return Context(text, pid, _window_number(pid), _editable(element), secure, element)
 
 
 def same_context(ctx):
@@ -107,11 +107,12 @@ def _paste(text):
 
 
 def _same_target(ctx):
-    """With a captured Context, the same app and window still has an editable, non-secure field focused."""
+    """With a captured Context, the same app, window, and field is still focused, editable, and not secure."""
     if ctx is None:
         return True
     now = capture(False)
-    return now is not None and (now.app, now.window) == (ctx.app, ctx.window) and now.editable and not now.secure
+    return (now is not None and (now.app, now.window) == (ctx.app, ctx.window) and now.editable and not now.secure
+            and ctx.field is not None and now.field is not None and bool(CFEqual(now.field, ctx.field)))
 
 
 def replace(text, ctx=None):

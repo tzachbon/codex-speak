@@ -47,7 +47,7 @@ class WritingSettingsUi(unittest.TestCase):
         w.nav[settings_ui.PAGES.index("Writing")].invoke()
         self.assertEqual(w.title["text"], "Writing")
         w.writer_check.invoke()
-        self.assertEqual(self.changes[-1], ("writer", False))
+        self.assertEqual(self.changes[-1], ("writer", True))  # off by default until the T9 matrix passes
         w.writer_rows["Codex"]["toggle"].invoke()
         self.assertEqual(self.changes[-1], ("writer_sources", [["Cursor", True], ["Codex", False], ["Local", True]]))
         self.assertFalse(w.writer_rows["Codex"]["on"].get())

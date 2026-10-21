@@ -38,3 +38,11 @@ Earlier entries, oldest first: [SYNC-log-1.md](SYNC-log-1.md), [SYNC-log-2.md](S
 - Windows Cursor: `llm_cursor.agent_exe()` finds no bare executable on Windows, so `CursorWriter.status()` reports `missing` there and the chain skips Cursor. That keeps it unavailable until a live Windows rewrite passes. The `authenticate(cursor_login)` handshake waits for that live check.
 - Mac pasteboard reader (`_copy_selection`) ownership: acknowledged. It is pre-existing reading behavior, not Writer. Logged for Zach. Not changed here.
 - Remaining: Windows host wiring to this contract, the T9 matrix on both platforms, the dictation gate (DoD 4) with a signed Mac build, and the default flip after the matrix.
+
+### 2026-10-21 Mac (published, PR #60)
+
+- Published to `feat/add-snapdraft-harness-discussion` as PR https://github.com/tzachbon/harness-discussion/pull/60 (Zach asked to create, babysit, and merge it). Mac and shared commits: `92461e6`, `2ac23e6`, `85de636`, `a612191`, `f2654e7`, `06a7398`, `a66db6c`, `c8883ed`, `f668a50`, and the fix commit after this entry. Windows commits through `8b6df99` are kept. No force push.
+- Decisions, as in the entry above: mutations take the captured `ctx` (rewrite and dictation), Undo follows the guarded order with an optional `collapse`, the Mac host shapes are the shared host and UI contract, and `writer` stays off by default until the matrix passes.
+- Added from PR review: `edit_logic.Context` gained an optional `field` (compare=False) for the platform's focused-element handle. Mac refuses any edit unless that same field is still focused. `win/edit.py` keeps its own Context and is unaffected. Local rewrites refuse a reply cut off at the token limit.
+- Windows-owned test touched: `tests/test_win_writing_settings.py` now expects the Writing switch to turn the Writer on, since the default is off. `App._close_writer` returns early when `_init_writer` never ran, which fixes `test_update_app` on Windows CI.
+- Remaining blockers: Windows host wiring to the contract, the T9 matrix on both platforms, the Mac dictation gate with a signed build, and the default flip after the matrix.

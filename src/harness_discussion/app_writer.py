@@ -355,6 +355,8 @@ class Writer:
             self.popup.close()
 
     def _close_writer(self):
+        if not hasattr(self, "_rewrite_cancel"):  # quit before _init_writer ran
+            return
         self._rewrite_cancel.set()
         for source in self.writer_sources:
             close = getattr(source, "close", None)
