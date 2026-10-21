@@ -189,7 +189,7 @@ class CursorWriter:
             def prompt():
                 try:
                     result["ok"] = acp.call("session/prompt", {"sessionId": sid, "prompt": [
-                        {"type": "text", "text": f"{system}\n\nText:\n<<<\n{text}\n>>>"}]}, TIMEOUT_S)
+                        {"type": "text", "text": f"{system}\n\n{text}"}]}, TIMEOUT_S)
                 except Exception as e:
                     result["error"] = e
                 done.set()

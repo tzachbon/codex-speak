@@ -47,8 +47,7 @@ class CursorWriterTest(unittest.TestCase):
         self.assertEqual(methods, ["session/new", "session/set_mode", "session/set_model", "session/prompt"])
         self.assertEqual(self.acp.calls[1][1], {"sessionId": "s1", "modeId": "ask"})
         prompt = self.acp.calls[3][1]["prompt"][0]["text"]
-        self.assertTrue(prompt.startswith("SYSTEM"))
-        self.assertIn("fixd txt", prompt)
+        self.assertEqual(prompt, "SYSTEM\n\nfixd txt")  # writer.rewrite has already wrapped the text
 
     def test_a_turn_that_ran_out_of_tokens_is_refused(self):
         self.acp.stop = "max_tokens"

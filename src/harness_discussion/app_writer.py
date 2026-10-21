@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from . import dictation, edit_logic, hotkeys, lang, mic, sources, writer
+from . import dictation, edit_logic, hotkeys, mic, sources, writer
 from .llm_codex import CodexWriter
 from .llm_cursor import CursorWriter
 from .summarize import LocalWriter
@@ -150,8 +150,7 @@ class Writer:
                     if ctx is None or not ctx.text.strip():
                         raise writer.Error("Select text to rewrite.")
                 text = prev[1] if prev else ctx.text
-                language = lang.name(lang.detect(text)) or "the language of the text"
-                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set, language=language)
+                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
             except Exception as e:
                 result = e
             self.events.put(("rewrite", rid, ctx, mode.name, result, prev, at))
@@ -301,8 +300,7 @@ class Writer:
                 text, _ = dictation.transcribe(audio, chain, order)
                 if cancel.is_set():
                     raise writer.Cancelled("The dictation was cancelled.")
-                language = lang.name(lang.detect(text)) or "the language of the text"
-                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set, language=language)
+                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
             except Exception as e:
                 result = e
             self.events.put(("dictated", rid, mode.name, result, at))

@@ -35,10 +35,58 @@ class ModesTest(unittest.TestCase):
         modes = writer.all_modes([])
         self.assertEqual(writer.find_mode("Gone", modes).name, "Fix errors")
 
-    def test_prompt_has_language_and_instructions(self):
-        p = writer.system_prompt(writer.BUILTIN_MODES[1], "Hebrew")
-        self.assertIn("in Hebrew", p)
-        self.assertIn("Write a short, friendly chat message.", p)
+    def test_full_prompt_has_mode_rules_and_data_framing(self):
+        message = writer.find_mode("Message", writer.BUILTIN_MODES)
+        p = writer.system_prompt(message)
+        self.assertIn(message.instructions, p)
+        self.assertIn("<text>", p)
+        self.assertIn(writer.STYLE, p)
+        self.assertNotIn(writer.STYLE, writer.system_prompt(writer.find_mode("Fix errors", writer.BUILTIN_MODES)))
+
+    def test_short_prompts_stay_small(self):
+        for mode in writer.BUILTIN_MODES:
+            self.assertLessEqual(len(writer.system_prompt(mode, short=True).split()), 170, mode.name)
+
+    def test_override_keeps_style_but_uses_its_own_words_on_the_short_tier(self):
+        long = "Sound like me. " + "word " * 300
+        mode = writer.find_mode("Message", writer.all_modes([{"name": "Message", "instructions": long}]))
+        self.assertIn(writer.STYLE, writer.system_prompt(mode))
+        short = writer.system_prompt(mode, short=True)
+        self.assertIn("Sound like me.", short)
+        self.assertNotIn(writer.find_mode("Message", writer.BUILTIN_MODES).brief, short)
+        self.assertLessEqual(len(short.split()), 170)
+
+    def test_custom_mode_short_tier_uses_its_instructions(self):
+        mode = writer.find_mode("Tweet", writer.all_modes([{"name": "Tweet", "instructions": "Under 280 characters."}]))
+        self.assertIn("Under 280 characters.", writer.system_prompt(mode, short=True))
+        self.assertNotIn(writer.STYLE, writer.system_prompt(mode))
+
+
+class TidyTest(unittest.TestCase):
+    def test_strips_a_preamble_line(self):
+        self.assertEqual(writer.tidy("Here is the rewritten text:\nShip it.", "ship it"), "Ship it.")
+
+    def test_keeps_a_preamble_the_draft_had(self):
+        draft = "Here are the steps:\n1. Build\n2. Ship"
+        self.assertEqual(writer.tidy(draft, draft), draft)
+
+    def test_unwraps_quotes_the_draft_did_not_have(self):
+        self.assertEqual(writer.tidy('"Ship it."', "ship it"), "Ship it.")
+        self.assertEqual(writer.tidy('"Ship it."', '"ship it"'), '"Ship it."')
+
+    def test_strips_echoed_tags(self):
+        self.assertEqual(writer.tidy("<text>\nShip it.\n</text>", "ship it"), "Ship it.")
+
+    def test_plain_punctuation_in_prose_only(self):
+        self.assertEqual(writer.tidy("We ship — today. “Done” it’s…", "x"), "We ship, today. \"Done\" it's...")
+        self.assertEqual(writer.tidy("Run `a — b` now", "x"), "Run `a — b` now")
+        self.assertEqual(writer.tidy("```\na — b\n```", "x"), "```\na — b\n```")
+        self.assertEqual(writer.tidy("— first\n— second", "x"), "- first\n- second")
+        self.assertEqual(writer.tidy("pages 3–5", "x"), "pages 3–5")
+
+    def test_idempotent(self):
+        once = writer.tidy("Sure, here you go:\n“A” — b", "a b")
+        self.assertEqual(writer.tidy(once, "a b"), once)
 
 
 class ChainTest(unittest.TestCase):
@@ -64,6 +112,19 @@ class ChainTest(unittest.TestCase):
     def test_empty_reply_counts_as_failure(self):
         empty, good = Fake("Codex", reply="   "), Fake("Local", reply="ok")
         self.assertEqual(writer.rewrite("hi", writer.BUILTIN_MODES[0], [empty, good])[1], "Local")
+
+    def test_reply_that_is_only_an_echo_counts_as_failure(self):
+        echo, good = Fake("Codex", reply="<text></text>"), Fake("Local", reply="ok")
+        self.assertEqual(writer.rewrite("hi", writer.BUILTIN_MODES[0], [echo, good])[1], "Local")
+
+    def test_wraps_text_tidies_reply_and_picks_tier_per_source(self):
+        cloud, local = Fake("Codex", error=RuntimeError("x")), Fake("Local", reply="Sure:\n“Hi” — there")
+        local.short_prompt = True
+        mode = writer.BUILTIN_MODES[0]
+        out, _ = writer.rewrite("hi there", mode, [cloud, local])
+        self.assertEqual(out, "\"Hi\", there")
+        self.assertEqual(cloud.calls[0][:2], (writer.system_prompt(mode), writer.wrap("hi there")))
+        self.assertEqual(local.calls[0][0], writer.system_prompt(mode, short=True))
 
     def test_passes_chosen_model_and_effort(self):
         s = Fake("Codex", reply="x")

@@ -10,19 +10,33 @@ import av
 from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from . import lang, richtext, sentences
-from .prompts import CUE_PROMPT, PROMPT, read_cue
+from .prompts import CUE_PROMPT, PROMPT, envelope, read_cue
 from .audio import NoAudioError, PcmPlayer, Stretcher, VOICED, peak
 
 NO_STUN = RTCConfiguration(iceServers=[])  # OpenAI side is public; STUN lookup cost ~5 s
 # Asking again in the same session never helped; a fresh session is a new, independent chance.
 ATTEMPTS = 3
 # app-server splits appended text into 500-character items and the voice may read only the last of them,
-# so a longer text goes in piece by piece, each read before the next ("Text to read:\n" takes 14 more).
-PIECE_CHARS = 480
+# so a longer text goes in piece by piece, each read before the next. The JSON envelope takes 54 more,
+# and quotes or line breaks in the text take one more each.
+ITEM_CHARS = 500
+PIECE_CHARS = 420
 
 
 class Silent(TimeoutError):
     """The session connected, but the voice never started reading."""
+
+
+def _pieces(text):
+    """The text in pieces whose envelope fits one appended item."""
+    out, todo = [], sentences.chunks(text, PIECE_CHARS) or [text]
+    while todo:
+        piece = todo.pop(0)
+        if len(envelope(piece)) <= ITEM_CHARS or len(piece) < 2:
+            out.append(piece)
+        else:
+            todo[:0] = sentences.chunks(piece, len(piece) // 2)
+    return out
 
 
 class CueTrack(AudioStreamTrack):
@@ -365,12 +379,12 @@ class CodexEngine:
             voice["stretch"] = Stretcher(min(self.speed, self.max_speed))  # read at Play: settings apply
             player.arm(on_audio)
             voice["submitted"] = True
-            for i, piece in enumerate(sentences.chunks(text, PIECE_CHARS) or [text]):
+            for i, piece in enumerate(_pieces(text)):
                 if cue:
                     mic.pcm = cue
                     await asyncio.sleep(len(cue) / 16000)  # the text lands as the cue ends, before the turn closes
-                    piece = "Text to read:\n" + piece  # so text that reads like an instruction stays text to read
-                await call("thread/realtime/appendText", {"threadId": tid, "text": piece, "role": "user"})
+                # the envelope keeps text that reads like an instruction as text to read
+                await call("thread/realtime/appendText", {"threadId": tid, "text": envelope(piece), "role": "user"})
                 for _ in range(30 if i == 0 else 0):
                     if voice["first"]:
                         break
