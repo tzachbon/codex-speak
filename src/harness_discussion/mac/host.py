@@ -7,9 +7,12 @@ from .. import icons, settings, updates
 from ..codex_rt import CodexEngine
 from ..cursor_tts import CursorEngine
 from ..kokoro_tts import KokoroEngine
-from . import selection, ui
-from .popup import Popup
+from . import edit, selection, ui
+from .esc import EscWatcher
+from .popup import Popup, build_menu
+from .review import Review
 from .settings_ui import SettingsWindow
+from .toast import Toast
 from .trigger import HotKey, SelectionTrigger, top_left
 from .voice import MacVoiceEngine
 
@@ -33,10 +36,13 @@ class _Delegate(NSObject):
 
 
 class MacHost:
+    edit = edit  # in-place editing, which turns the Writer on
+
     def __init__(self):
         self.app = None  # set by core.App
         self.watcher = None  # set by mac.main
         self.trigger, self.hotkey, self._missing, self._error = None, None, False, None
+        self.shortcuts = {}  # name -> HotKey for the writer's shortcuts
         self.ns = AppKit.NSApplication.sharedApplication()
         self.ns.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
         self.delegate = _Delegate.alloc().initWithHost_(self)
@@ -161,6 +167,33 @@ class MacHost:
         if self.hotkey:
             self.hotkey.stop()
         self.hotkey = HotKey(spec, on_hotkey) if spec else None
+
+    def set_shortcut(self, name, spec, fn):
+        """Replaces one of the writer's shortcuts; "" turns it off."""
+        old = self.shortcuts.pop(name, None)
+        if old:
+            old.stop()
+        if spec:
+            self.shortcuts[name] = HotKey(spec, fn)
+
+    def make_toast(self):
+        return Toast()
+
+    def make_review(self):
+        return Review()
+
+    def esc_watcher(self, fn):
+        return EscWatcher(fn)
+
+    def copy_text(self, text):
+        board = AppKit.NSPasteboard.generalPasteboard()
+        board.clearContents()
+        board.setString_forType_(text, AppKit.NSPasteboardTypeString)
+
+    def pick_mode(self, names, current, pick):
+        """The mode menu at the pointer, for a double press of the rewrite shortcut."""
+        menu = build_menu([(n, lambda n=n: pick(n), n == current) for n in names])
+        menu.popUpMenuPositioningItem_atLocation_inView_(None, AppKit.NSEvent.mouseLocation(), None)
 
     def pointer(self):
         return top_left(AppKit.NSEvent.mouseLocation())

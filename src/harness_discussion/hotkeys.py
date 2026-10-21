@@ -5,6 +5,15 @@ MODS = ("ctrl", "alt", "shift", "cmd")  # display order
 KEYS = {*"abcdefghijklmnopqrstuvwxyz0123456789", *(f"f{n}" for n in range(1, 13))}
 COPY = {(frozenset({"ctrl"}), "c"), (frozenset({"cmd"}), "c")}  # the clipboard fallback sends these
 DEFAULT = "<cmd>+<alt>+r" if sys.platform == "darwin" else "<ctrl>+<alt>+r"
+REWRITE = "<cmd>+<alt>+e" if sys.platform == "darwin" else "<ctrl>+<alt>+e"
+DICTATE = "<cmd>+<alt>+d" if sys.platform == "darwin" else "<ctrl>+<alt>+d"  # held
+SHORTCUTS = ("hotkey", "rewrite_hotkey", "dictate_hotkey")
+
+
+def conflict(cfg, key, spec):
+    """The other shortcut setting that already uses `spec`, or None."""
+    parsed = parse(spec)
+    return next((k for k in SHORTCUTS if k != key and parsed and parse(cfg.get(k)) == parsed), None)
 
 
 def parse(spec):

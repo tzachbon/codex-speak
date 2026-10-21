@@ -117,5 +117,21 @@ class DiffTest(unittest.TestCase):
         self.assertEqual("".join(t for op, t in out if op in "=-"), old)
 
 
+class HunksTest(unittest.TestCase):
+    def test_each_change_reverts_on_its_own(self):
+        old, new = "i thinks we should of shiped it", "I think we should have shipped it"
+        pairs = writer.hunks(old, new)
+        changes = [i for i, (a, b) in enumerate(pairs) if a != b]
+        self.assertEqual(writer.merge(pairs, set()), new)
+        self.assertEqual(writer.merge(pairs, set(changes)), old)
+        self.assertEqual(writer.merge(pairs, {changes[0]}), "i think we should have shipped it")
+
+    def test_pure_insert_and_delete(self):
+        pairs = writer.hunks("a b", "a x b")
+        self.assertEqual(writer.merge(pairs, {i for i, (a, b) in enumerate(pairs) if a != b}), "a b")
+        pairs = writer.hunks("a x b", "a b")
+        self.assertEqual(writer.merge(pairs, set()), "a b")
+
+
 if __name__ == "__main__":
     unittest.main()

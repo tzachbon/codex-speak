@@ -108,3 +108,22 @@ def diff(old: str, new: str) -> list[tuple[str, str]]:
         if j2 > j1:
             out.append(("+", "".join(b[j1:j2])))
     return out
+
+
+def hunks(old: str, new: str) -> list[tuple[str, str]]:
+    """The diff as (old, new) pairs: equal text has old == new, and each change is one pair to keep or revert."""
+    out = []
+    for op, text in diff(old, new):
+        if op == "=":
+            out.append((text, text))
+        elif out and out[-1][0] != out[-1][1]:  # extend the open change: "-" then "+"
+            a, b = out[-1]
+            out[-1] = (a + text, b) if op == "-" else (a, b + text)
+        else:
+            out.append((text, "") if op == "-" else ("", text))
+    return out
+
+
+def merge(pairs, reverted) -> str:
+    """The rewrite with the changes at the `reverted` indexes put back to the original."""
+    return "".join(a if i in reverted else b for i, (a, b) in enumerate(pairs))

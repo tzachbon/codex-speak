@@ -1,0 +1,203 @@
+"""The Writer flow with a fake host, editor, and sources: paste guards, toast actions, undo, review, Esc, hotkey."""
+import queue
+import unittest
+from types import SimpleNamespace
+
+from harness_discussion import app_summarize, app_writer, writer
+from harness_discussion.edit_logic import Context
+
+CTX = Context("hi there ", app=1, window=2, editable=True, secure=False)
+
+
+class FakeEdit:
+    NEWLINE = "\n"
+
+    def __init__(self, ctx=CTX):
+        self.ctx, self.same, self.pasted, self.log = ctx, True, [], []
+
+    def capture(self, clipboard_fallback):
+        return self.ctx
+
+    def same_context(self, ctx):
+        return self.same
+
+    def replace(self, text):
+        self.pasted.append(text)
+        self.ctx = Context("", self.ctx.app, self.ctx.window, True, False)
+        return True
+
+    def select_back(self, n):
+        self.log.append(("select_back", n))
+        self.ctx = Context(self.pasted[-1], self.ctx.app, self.ctx.window, True, False)
+        return True
+
+    def collapse(self):
+        self.log.append(("collapse",))
+
+
+class FakeToast:
+    visible = False
+
+    def __init__(self):
+        self.shown, self.on_hide = [], lambda: None
+
+    def show(self, message, x, y, actions=(), busy=False):
+        self.visible = True
+        self.shown.append((message, dict(actions), busy))
+
+    def hide(self):
+        self.visible = False
+        self.on_hide()
+
+    def action(self, title):
+        return self.shown[-1][1][title]
+
+
+class Source:
+    def __init__(self, name, reply="Hi there.", status="ready"):
+        self.name, self.reply, self._status, self.texts = name, reply, status, []
+
+    def status(self):
+        return self._status
+
+    def rewrite(self, system, text, model, effort, cancelled):
+        self.texts.append(text)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
+class _App(app_summarize.Summaries, app_writer.Writer):
+    def __init__(self, sources=None):
+        self.events, self.timers, self.copied, self.picks = queue.Queue(), [], [], []
+        self.toast_ = FakeToast()
+        self.review_ = SimpleNamespace(shown=[], show=lambda *a: self.review_.shown.append(a))
+        self.esc = SimpleNamespace(on=False, start=lambda: setattr(self.esc, "on", True),
+                                   stop=lambda: setattr(self.esc, "on", False))
+        self.host = SimpleNamespace(
+            edit=FakeEdit(), make_toast=lambda: self.toast_, make_review=lambda: self.review_,
+            esc_watcher=lambda fn: self.esc, pointer=lambda: (10, 10), after=lambda ms, fn: self.timers.append(fn),
+            copy_text=self.copied.append, set_shortcut=lambda *a: None,
+            pick_mode=lambda names, current, pick: self.picks.append((names, current, pick)))
+        self.cfg = {"writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
+                    "writer_models": {}, "modes": [], "default_mode": "Fix errors", "clipboard_fallback": True}
+        self.popup = SimpleNamespace(visible=False, hidden=0, rewriting=False, mode=None,
+                                     set_rewriting=lambda on: setattr(self.popup, "rewriting", on),
+                                     set_last_mode=lambda m: setattr(self.popup, "mode", m),
+                                     hide=lambda: setattr(self.popup, "hidden", self.popup.hidden + 1))
+        self.summary_server = SimpleNamespace(stop=lambda: None)
+        self._summary_gen = 0
+        self._init_writer()
+        self.writer_sources = sources or [Source("Cursor")]
+
+    def drain(self):
+        kind, *args = self.events.get(timeout=5)
+        {"rewrite": self._rewrite_done}[kind](*args)
+
+
+class FlowTest(unittest.TestCase):
+    def test_a_rewrite_pastes_keeps_the_trailing_space_and_offers_undo_review_mode(self):
+        app = _App()
+        app.rewrite_selection()
+        self.assertTrue(app.popup.rewriting and app.esc.on)
+        self.assertEqual(app.toast_.shown[-1][0], "Rewriting · Fix errors")
+        app.drain()
+        self.assertEqual(app.host.edit.pasted, ["Hi there. "])
+        message, actions, busy = app.toast_.shown[-1]
+        self.assertEqual((message, sorted(actions), busy), ("Fix errors · Cursor", ["Mode", "Review", "Undo"], False))
+        self.assertFalse(app.popup.rewriting)
+        self.assertEqual(len(app.timers), 1)  # the local model's idle stop is armed again
+
+    def test_undo_selects_the_paste_and_puts_the_original_back(self):
+        app = _App()
+        app.rewrite_selection()
+        app.drain()
+        app.toast_.action("Undo")()
+        self.assertEqual(app.host.edit.log, [("select_back", 10)])
+        self.assertEqual(app.host.edit.pasted, ["Hi there. ", "hi there "])
+        self.assertEqual(app.toast_.shown[-1][0], "Original restored.")
+
+    def test_a_changed_context_never_pastes_and_offers_copy(self):
+        app = _App()
+        app.host.edit.same = False
+        app.rewrite_selection()
+        app.drain()
+        self.assertEqual(app.host.edit.pasted, [])
+        self.assertEqual(app.toast_.shown[-1][0], "Text changed. Copy the rewrite?")
+        app.toast_.action("Copy")()
+        self.assertEqual(app.copied, ["Hi there. "])
+
+    def test_no_selection_and_password_fields_show_a_hint_only(self):
+        app = _App()
+        app.host.edit.ctx = Context("", 1, 2, True, False)
+        app.rewrite_selection()
+        app.drain()
+        self.assertEqual(app.toast_.shown[-1][0], "Select text to rewrite.")
+        app.host.edit.ctx = Context("secret", 1, 2, True, True)
+        app.rewrite_selection()
+        app.drain()
+        self.assertEqual(app.toast_.shown[-1][0], "Password fields are never rewritten.")
+        self.assertEqual(app.writer_sources[0].texts, [])
+
+    def test_a_failing_source_falls_through_and_the_toast_names_the_next(self):
+        app = _App([Source("Cursor", RuntimeError("x")), Source("Codex", status="signed_out"), Source("Local", "Hi.")])
+        app.rewrite_selection()
+        app.drain()
+        self.assertEqual(app.toast_.shown[-1][0], "Fix errors · Local")
+
+    def test_another_mode_rewrites_the_original_in_place_of_the_paste(self):
+        app = _App()
+        app.rewrite_selection()
+        app.drain()
+        app.writer_sources[0].reply = "Hello there!"
+        mode_menu = app.toast_.action("Mode")
+        dict((t, fn) for t, fn, _ in mode_menu)["Email"]()
+        app.drain()
+        self.assertEqual(app.writer_sources[0].texts, ["hi there ", "hi there "])
+        self.assertEqual(app.host.edit.pasted, ["Hi there. ", "Hello there! "])
+        self.assertEqual(app.toast_.shown[-1][0], "Email · Cursor")
+
+    def test_review_replace_swaps_the_paste(self):
+        app = _App()
+        app.rewrite_selection()
+        app.drain()
+        app.toast_.action("Review")()
+        original, inserted, replace, copy = app.review_.shown[-1]
+        self.assertEqual((original, inserted), ("hi there ", "Hi there. "))
+        replace("hi there. ")
+        self.assertEqual(app.host.edit.pasted[-1], "hi there. ")
+
+    def test_escape_cancels_a_rewrite_and_its_late_result_is_ignored(self):
+        app = _App()
+        app.rewrite_selection()
+        app._escape()
+        self.assertFalse(app.rewriting)
+        app.drain()
+        self.assertEqual(app.host.edit.pasted, [])
+        self.assertFalse(app.toast_.visible)
+
+    def test_a_double_press_opens_the_mode_menu_and_a_single_press_rewrites(self):
+        app = _App()
+        app._rewrite_hotkey()
+        app._rewrite_hotkey()
+        self.assertEqual(app.picks[0][:2], (["Fix errors", "Message", "Email", "Improve writing"], "Fix errors"))
+        for timer in app.timers:
+            timer()
+        self.assertTrue(app.events.empty())  # the first press's timer was cancelled by the second
+        app.timers.clear()
+        app._press_at = 0.0
+        app._rewrite_hotkey()
+        app.timers[0]()
+        app.drain()
+        self.assertEqual(app.host.edit.pasted, ["Hi there. "])
+
+    def test_the_log_never_holds_the_text(self):
+        app = _App()
+        with self.assertLogs("harness_discussion", level="INFO") as logs:
+            app.rewrite_selection()
+            app.drain()
+        self.assertNotIn("hi there", "\n".join(logs.output))
+
+
+if __name__ == "__main__":
+    unittest.main()
