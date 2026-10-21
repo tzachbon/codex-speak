@@ -105,6 +105,15 @@ class PermissionTest(unittest.TestCase):
         self.assertFalse(permission.is_stale(None, "0.1.1+def"))  # never granted
         self.assertFalse(permission.is_stale("0.1.0+abc", None))  # source run has no build key
 
+    def test_a_grant_turns_on_every_shortcut(self):
+        app = mock.Mock(cfg={"hotkey": "<cmd>+<shift>+r", "rewrite_hotkey": "<cmd>+<alt>+e",
+                             "dictate_hotkey": "<cmd>+<alt>+d", "ax_granted_build": "b"})
+        with mock.patch.object(permission, "current_build_id", return_value="b"):
+            permission.Watcher(app)._changed(True)
+        self.assertEqual([c.args for c in app.apply.call_args_list],
+                         [("hotkey", "<cmd>+<shift>+r"), ("rewrite_hotkey", "<cmd>+<alt>+e"),
+                          ("dictate_hotkey", "<cmd>+<alt>+d")])
+
     def test_reset_uses_fixed_arguments(self):
         with mock.patch.object(permission.subprocess, "run") as run:
             run.return_value.returncode = 0

@@ -49,12 +49,20 @@ class ReadingPage:
             if not self.win.isVisible():  # Settings closed while recording: let keys through again
                 self._stop_recording()
                 return event
+            label = self.shortcut_labels[key]
+            if event.type() == AppKit.NSEventTypeFlagsChanged:  # held modifiers show while the key is chosen
+                held = hotkeys.mac_mods(trigger.event_mods(event))
+                label.setStringValue_(held + "…" if held else "Press keys…")
+                return event
             if event.keyCode() == 53:  # Esc
                 self._stop_recording()
             elif spec := trigger.event_spec(event):
                 self._set_hotkey(spec, key)
+            else:
+                label.setStringValue_("Add ⌘, ⌥, ⌃ or ⇧ to a letter, digit or F-key")
             return None  # keys pressed while recording don't reach the window
-        self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(AppKit.NSEventMaskKeyDown, on_key)
+        self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            AppKit.NSEventMaskKeyDown | AppKit.NSEventMaskFlagsChanged, on_key)
         # closing Settings with its red button ends recording; the key monitor sees no keys once the app is inactive
         self._closed = AppKit.NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
             AppKit.NSWindowWillCloseNotification, self.win, None, lambda _n: self._stop_recording())
