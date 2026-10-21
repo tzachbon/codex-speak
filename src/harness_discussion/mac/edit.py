@@ -106,8 +106,18 @@ def _paste(text):
     return True
 
 
-def replace(text):
-    """Replaces the selection. False if the app ignored the paste (the same text is still selected)."""
+def _same_target(ctx):
+    """With a captured Context, the same app and window still has an editable, non-secure field focused."""
+    if ctx is None:
+        return True
+    now = capture(False)
+    return now is not None and (now.app, now.window) == (ctx.app, ctx.window) and now.editable and not now.secure
+
+
+def replace(text, ctx=None):
+    """Replaces the selection. False if the target moved or the app ignored the paste (same text still selected)."""
+    if not _same_target(ctx):
+        return False
     pid = _frontmost_pid()
     before = _attr(_focused(pid), "AXSelectedText") if pid else None
     if not _paste(text):
@@ -116,8 +126,8 @@ def replace(text):
     return not (before and after and str(after) == str(before) and str(before) != text)
 
 
-def type_at_caret(text):
-    return _paste(text)
+def type_at_caret(text, ctx=None):
+    return _same_target(ctx) and _paste(text)
 
 
 def _range(element):
@@ -128,8 +138,10 @@ def _range(element):
     return rng if ok else None
 
 
-def select_back(n):
+def select_back(n, ctx=None):
     """Selects the `n` UTF-16 units before the caret. AX range first, Shift+Left × n as the fallback."""
+    if not _same_target(ctx):
+        return False
     pid = _frontmost_pid()
     element = _focused(pid) if pid else None
     rng = _range(element) if element is not None else None

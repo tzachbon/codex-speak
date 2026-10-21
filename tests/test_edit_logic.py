@@ -9,10 +9,11 @@ CTX = Context("old", app=10, window=20, editable=True, secure=False)
 
 class FakePlatform:
     def __init__(self, now):
-        self.now, self.log = now, []
+        self.now, self.log, self.ctxs = now, [], []
 
-    def select_back(self, n):
+    def select_back(self, n, ctx):
         self.log.append(("select_back", n))
+        self.ctxs.append(ctx)
         return True
 
     def capture(self, clipboard_fallback):
@@ -22,8 +23,9 @@ class FakePlatform:
     def collapse(self):
         self.log.append(("collapse",))
 
-    def replace(self, text):
+    def replace(self, text, ctx):
         self.log.append(("replace", text))
+        self.ctxs.append(ctx)
         return True
 
 
@@ -51,11 +53,18 @@ class UndoTest(unittest.TestCase):
         platform = FakePlatform(Context("new 👋", 10, 20, True, False))
         self.assertTrue(edit_logic.undo(platform, CTX, "old", "new 👋"))
         self.assertEqual(platform.log, [("select_back", 6), ("capture",), ("replace", "old")])
+        self.assertEqual(platform.ctxs, [CTX, platform.now])  # select within the paste's target, replace the fresh span
 
     def test_undo_stops_when_the_check_fails(self):
         platform = FakePlatform(Context("something else", 10, 20, True, False))
         self.assertFalse(edit_logic.undo(platform, CTX, "old", "new"))
         self.assertEqual(platform.log, [("select_back", 3), ("capture",), ("collapse",)])
+
+    def test_a_platform_without_collapse_leaves_the_selection(self):
+        bare = type("Bare", (), {k: v for k, v in vars(FakePlatform).items() if k != "collapse"})(
+            Context("something else", 10, 20, True, False))
+        self.assertFalse(edit_logic.undo(bare, CTX, "old", "new"))
+        self.assertEqual(bare.log, [("select_back", 3), ("capture",)])
 
 
 if __name__ == "__main__":

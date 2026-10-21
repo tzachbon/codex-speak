@@ -59,6 +59,7 @@ board.clearContents()
 board.setString_forType_(MARK, AppKit.NSPasteboardTypeString)
 host = mac_host.MacHost()
 app = core.App(host)
+app.cfg["writer"] = True  # off by default until the T9 matrix passes. Not saved.
 osa(f'tell application "TextEdit" to make new document with properties {{text:"{SAMPLE}"}}')
 try:
     select_all()

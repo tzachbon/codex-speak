@@ -54,6 +54,8 @@ class PopupSourceTest(unittest.TestCase):
         picked = []
         bar = _bar(on_rewrite=lambda text, mode: picked.append((text, mode)), modes=lambda: ["Fix errors", "Email"])
         bar.text = "hi"
+        self.assertNotIn("Rewrite", [e and e[0] for e in bar.menu_entries()])  # a selection that can't be edited
+        bar.set_editable(True)
         rewrite = _walk(bar.menu_entries(), ["Rewrite"])[1]
         self.assertEqual([m[0] for m in rewrite], ["Fix errors", "Email"])
         rewrite[1][1]()

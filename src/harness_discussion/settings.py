@@ -30,7 +30,7 @@ DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "spee
             "caption_background": False, "caption_background_opacity": 0.6, "ax_granted_build": None,
             "hotkey": hotkeys.DEFAULT,  # "" turns the read shortcut off
             # Writer: rewrite in place. Sources follow the voice order; models and modes are chosen in Settings.
-            "writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
+            "writer": False, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
             "writer_models": {}, "modes": [], "default_mode": "Fix errors",
             "rewrite_hotkey": hotkeys.REWRITE, "dictate_hotkey": hotkeys.DICTATE,
             "stt_sources": [["Codex", True], ["Cursor", True]]}

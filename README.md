@@ -30,6 +30,8 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **Then local voices.** If none of those can speak, Edge neural voices take over, then the offline Windows voices. On a Mac, the built-in macOS voice takes over.
 - **You set the order.** Settings → Voices lists the sources in reading order. Turn each one on or off, move it up or down, pick its voice, and test it. A source that needs installing or a sign-in shows a button that opens the download page or starts the sign-in. The bar's source menu moves a source to the top. Picked during a read, it takes over from the sentence being read. Picked during a read, it takes over from the sentence being read.
 - **Summarize.** ✦ next to Play summarizes the selection on your computer with Qwen3-4B through [llama.cpp](https://github.com/ggml-org/llama.cpp), then reads the summary. The first click asks to download the model once (2.5 GB, verified by SHA-256). Settings → Summarize shows its status and removes it.
+- **Rewrite in place (Mac).** Over text you can edit, ✎ on the bar or ⌥⌘E rewrites the selection with the default mode and pastes it back. Modes are Fix errors, Message, Email, Improve writing, and your own. A toast offers Undo, Review (keep or revert each change), and another mode. Press ⌥⌘E twice quickly to pick a mode first. Esc cancels. Cursor, Codex, then the local Qwen3-4B model rewrite, in the order you set. Off by default. Turn it on in Settings → Writing.
+- **Dictation (Mac).** Hold ⌥⌘D and speak. On release, Codex or Cursor transcribes the audio, the default mode tidies it, and the text is typed at the cursor. A short tap does nothing. It follows the Writing switch.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Skip by sentence.** ⏮ and ⏭ on the bar read again from the previous or next sentence.
 - **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading.
@@ -75,6 +77,7 @@ After an update, macOS can stop trusting the app even though System Settings sti
 3. Pick a speed from the bar's speed menu, and a source from its source menu.
 4. ⏸ pauses and ▶ continues. ■ stops. ⏮ and ⏭ move by a sentence. Selecting new text while paused replaces the paused read.
 5. Or press the read shortcut (Ctrl+Alt+R, or ⌥⌘R on a Mac) to read the selection at once.
+6. On a Mac, over text you can edit, press ✎ or ⌥⌘E to rewrite it. Hold ⌥⌘D to dictate.
 
 On a Mac, the menu bar icon's menu shows what is playing and has Pause, Stop, Speed, and Voice Source. *Show Popup on Selection* turns the bar off until you turn it back on or restart the app.
 
@@ -91,8 +94,16 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 | Windows | Nothing, it's built in | 0.5× to 2× | Stays on your PC |
 | macOS | Nothing, it's built in | 0.5× to 2× | Stays on your Mac |
 
+| Rewrite and dictation | Needs | Where your text or audio goes |
+| --- | --- | --- |
+| Cursor | Cursor CLI (`cursor-agent`), signed in | Cursor, through your Cursor sign-in |
+| Codex | Codex CLI signed in with ChatGPT | OpenAI, through your Codex sign-in |
+| Local (rewrite only) | The Summarize model | Stays on your computer |
+
 - Turn off every source except Kokoro and Windows or macOS in Settings to keep text on your computer.
-- Password fields are never read.
+- Password fields are never read or rewritten.
+- Turn off Cursor and Codex in Settings → Writing to keep rewrites on your computer. Dictation audio goes to the first ready source and is not saved.
+- A rewrite is pasted only if the same app, window, and selection are still there. Your clipboard is put back afterwards.
 - The Ctrl+C fallback is skipped in terminal windows, where it would interrupt a running command.
 - The log records the engine, timing, and errors, never the text itself.
 - Kokoro has no Hebrew, Arabic, or Russian voice, so the next source reads those.
@@ -110,6 +121,8 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 - **Read apps that hide their selection**: for apps such as VS Code, the app borrows Ctrl+C and then restores every clipboard format.
 - **Prepare speech as soon as I select text**: off by default. When Cursor or Edge reads first, the app requests the first sentence's audio as soon as the bar appears. This sends that sentence to Cursor or Microsoft before you press play.
 - **Speech-to-text server**: see [STT.md](STT.md).
+- **Writing** (Mac): turns rewriting on or off, and sets the default mode, the rewrite shortcut, and the sources in order with each one's model and effort. The modes editor adds, renames, and deletes your own modes. Built-in modes keep their name, and Reset puts back their instructions.
+- **Dictation** (Mac): the transcript sources in order, the hold shortcut, and the microphone permission.
 
 Settings are saved in `%APPDATA%\harness-discussion\settings.json`, next to a small `harness-discussion.log`.
 

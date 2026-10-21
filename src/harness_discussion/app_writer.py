@@ -190,7 +190,7 @@ class Writer:
             self._toast("Text changed. Copy the rewrite?", [("Copy", copy), ("Review", review_copy)], at=at)
             return
         else:
-            placed = self.edit.replace(inserted)
+            placed = self.edit.replace(inserted, ctx)
         if not placed:
             self._toast("Couldn't paste here.", [("Copy", copy), ("Review", review_copy)], at=at)
             return
@@ -327,7 +327,7 @@ class Writer:
         if ctx is None or now is None or (now.app, now.window) != (ctx.app, ctx.window) or now.secure:
             self._toast("The window changed. Copy the text?", [("Copy", copy)], at=at)
             return
-        if not self.edit.type_at_caret(text):
+        if not self.edit.type_at_caret(text, ctx):
             self._toast("Couldn't type here.", [("Copy", copy)], at=at)
             return
         self._toast(f"Dictated · {mode} · {source}", [("Copy", copy)], at=at)

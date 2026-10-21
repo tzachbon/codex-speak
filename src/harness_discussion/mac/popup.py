@@ -405,7 +405,7 @@ class Popup:
                   for s in settings.SPEED_PRESETS]
         entries = [("Voice", voices + ([None] if voices and fixes else []) + fixes), ("Language", languages),
                    ("Speed", speeds), None, ("Summarize", self._summarize, False)]
-        if self.on_rewrite:
+        if self.editable:
             entries.append(("Rewrite", [(m, lambda m=m: self._rewrite(m), m == self._mode) for m in self.modes()]))
         return entries + [None, ("Settings…", self._open_settings, False)]
 

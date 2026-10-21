@@ -1,7 +1,8 @@
 """The platform-free part of in-place editing: the context, guards, UTF-16 lengths, and the undo sequence.
 
-A platform module (`mac/edit.py`, `win/edit.py`) provides `capture(clipboard_fallback)`, `replace(text)`,
-`type_at_caret(text)`, and `select_back(n)`.
+A platform module (`mac/edit.py`, `win/edit.py`) provides `capture(clipboard_fallback)`, `replace(text, ctx)`,
+`type_at_caret(text, ctx)`, and `select_back(n, ctx)`, each refusing when the target is no longer `ctx`'s, and
+optionally `collapse()`.
 """
 from dataclasses import dataclass
 
@@ -35,10 +36,11 @@ def restore_clipboard(count_now: int, count_after_set: int) -> bool:
 def undo(platform, ctx: Context, original: str, inserted: str, newline: str = "\n") -> bool:
     """Select the inserted text, check it is still what we pasted in the same window, then put the original back.
     False when any check fails: the caller tells the user to use the app's own undo."""
-    if not platform.select_back(utf16_len(inserted, newline)):
+    if not platform.select_back(utf16_len(inserted, newline), ctx):
         return False
     now = platform.capture(True)
     if not same_context(Context(inserted, ctx.app, ctx.window, ctx.editable, ctx.secure), now):
-        platform.collapse()
+        if hasattr(platform, "collapse"):
+            platform.collapse()
         return False
-    return platform.replace(original)
+    return platform.replace(original, now)

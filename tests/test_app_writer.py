@@ -14,7 +14,7 @@ class FakeEdit:
     NEWLINE = "\n"
 
     def __init__(self, ctx=CTX):
-        self.ctx, self.same, self.pasted, self.log = ctx, True, [], []
+        self.ctx, self.same, self.pasted, self.log, self.ctxs = ctx, True, [], [], []
 
     def capture(self, clipboard_fallback):
         return self.ctx
@@ -22,12 +22,13 @@ class FakeEdit:
     def same_context(self, ctx):
         return self.same
 
-    def replace(self, text):
+    def replace(self, text, ctx):
         self.pasted.append(text)
+        self.ctxs.append(ctx)
         self.ctx = Context("", self.ctx.app, self.ctx.window, True, False)
         return True
 
-    def select_back(self, n):
+    def select_back(self, n, ctx):
         self.log.append(("select_back", n))
         self.ctx = Context(self.pasted[-1], self.ctx.app, self.ctx.window, True, False)
         return True
@@ -113,7 +114,7 @@ class FakeRecorder:
 class DictationTest(unittest.TestCase):
     def setUp(self):
         self.app = _App()
-        self.app.host.edit.type_at_caret = lambda text: self.app.host.edit.pasted.append(text) or True
+        self.app.host.edit.type_at_caret = lambda text, ctx: self.app.host.edit.pasted.append(text) or self.app.host.edit.ctxs.append(ctx) or True
         self.app.stt_sources = [SimpleNamespace(name="Codex", status=lambda: "ready",
                                                 transcribe=lambda audio, language="": "i thinks so")]
         patcher = unittest.mock.patch.object(app_writer.mic, "Recorder", FakeRecorder)
@@ -130,6 +131,7 @@ class DictationTest(unittest.TestCase):
         self.hold(2)
         self.app.drain()
         self.assertEqual(self.app.host.edit.pasted, ["Hi there."])
+        self.assertEqual(self.app.host.edit.ctxs, [CTX])  # typed only into the field captured at key down
         self.assertEqual(self.app.writer_sources[0].texts, ["i thinks so"])
         self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Fix errors · Cursor")
 
@@ -162,6 +164,7 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(app.toast_.shown[-1][0], "Rewriting · Fix errors")
         app.drain()
         self.assertEqual(app.host.edit.pasted, ["Hi there. "])
+        self.assertEqual(app.host.edit.ctxs, [CTX])  # the paste carries the captured target
         message, actions, busy = app.toast_.shown[-1]
         self.assertEqual((message, sorted(actions), busy), ("Fix errors · Cursor", ["Mode", "Review", "Undo"], False))
         self.assertFalse(app.popup.rewriting)
