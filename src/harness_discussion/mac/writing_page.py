@@ -53,7 +53,7 @@ class WritingPage:
                           vertical=False)]
         for row in (modes[0], modes[3]):
             row.widthAnchor().constraintEqualToConstant_(WIDTH).setActive_(True)
-        self._editing = self.cfg["default_mode"]
+        self._editing, self._loaded = self.cfg["default_mode"], None
         return [_card([on, _divider(), default, _divider(), self._shortcut_row("rewrite_hotkey")]),
                 ui.label("Sources", 13, bold=True), _card([self.writer_list]),
                 _note("Sources rewrite top to bottom. If one fails, the next one tries. Cursor and Codex send "
@@ -164,17 +164,19 @@ class WritingPage:
     def _mode_list(self):
         return writer.all_modes(self.cfg["modes"])
 
-    def _refresh_modes(self):
+    def _refresh_modes(self, reload=False):
+        """Menus follow the saved modes. The editor keeps an unsaved draft unless its mode changed or `reload`."""
         names = [m.name for m in self._mode_list()]
         default = ws.default_mode(self.cfg["default_mode"], self.cfg["modes"])
         _fill(self.default_popup, names, names.index(default))
         if self._editing not in names:
             self._editing = default
         _fill(self.mode_popup, names, names.index(self._editing))
-        self._edit_mode(self._editing)
+        if reload or self._editing != self._loaded:
+            self._edit_mode(self._editing)
 
     def _edit_mode(self, name):
-        self._editing = name
+        self._editing = self._loaded = name
         mode = writer.find_mode(name, self._mode_list())
         builtin = name in {m.name for m in writer.BUILTIN_MODES}
         self.mode_name.setStringValue_(mode.name)
@@ -194,7 +196,7 @@ class WritingPage:
         if default != self.cfg["default_mode"]:
             self._set("default_mode", default)
         self._editing = editing
-        self._refresh_modes()
+        self._refresh_modes(reload=True)
 
     def _add_mode(self):
         self._set_modes(*ws.add_mode(self.cfg["modes"]))

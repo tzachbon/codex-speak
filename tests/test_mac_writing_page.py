@@ -83,6 +83,12 @@ class WritingSettingsTest(unittest.TestCase):
         w._delete_mode()
         self.assertEqual(self.changes[-2:], [("modes", []), ("default_mode", "Fix errors")])
 
+    def test_a_status_refresh_keeps_an_unsaved_mode_draft(self):
+        w = self.win
+        w.mode_text.setStringValue_("Draft")
+        w.refresh_writing()
+        self.assertEqual(w.mode_text.stringValue(), "Draft")
+
     def test_a_shortcut_another_row_uses_is_refused(self):
         self.win._set_hotkey(self.win.cfg["hotkey"], "rewrite_hotkey")
         self.assertEqual(self.win.shortcut_labels["rewrite_hotkey"].stringValue(), "Used by Read shortcut")
