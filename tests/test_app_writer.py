@@ -1,6 +1,7 @@
 """The Writer flow with a fake host, editor, and sources: paste guards, toast actions, undo, review, Esc, hotkey."""
 import queue
 import unittest
+import unittest.mock
 from types import SimpleNamespace
 
 from harness_discussion import app_summarize, app_writer, writer
@@ -70,16 +71,19 @@ class Source:
 class _App(app_summarize.Summaries, app_writer.Writer):
     def __init__(self, sources=None):
         self.events, self.timers, self.copied, self.picks = queue.Queue(), [], [], []
+        self.mic_ok = True
         self.toast_ = FakeToast()
         self.review_ = SimpleNamespace(shown=[], show=lambda *a: self.review_.shown.append(a))
         self.esc = SimpleNamespace(on=False, start=lambda: setattr(self.esc, "on", True),
                                    stop=lambda: setattr(self.esc, "on", False))
         self.host = SimpleNamespace(
+            mic_permission=lambda then: then(self.mic_ok), open_mic_settings=lambda: None,
             edit=FakeEdit(), make_toast=lambda: self.toast_, make_review=lambda: self.review_,
             esc_watcher=lambda fn: self.esc, pointer=lambda: (10, 10), after=lambda ms, fn: self.timers.append(fn),
             copy_text=self.copied.append, set_shortcut=lambda *a: None,
             pick_mode=lambda names, current, pick: self.picks.append((names, current, pick)))
         self.cfg = {"writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
+                    "stt_sources": [["Codex", True], ["Cursor", True]],
                     "writer_models": {}, "modes": [], "default_mode": "Fix errors", "clipboard_fallback": True}
         self.popup = SimpleNamespace(visible=False, hidden=0, rewriting=False, mode=None,
                                      set_rewriting=lambda on: setattr(self.popup, "rewriting", on),
@@ -92,7 +96,62 @@ class _App(app_summarize.Summaries, app_writer.Writer):
 
     def drain(self):
         kind, *args = self.events.get(timeout=5)
-        {"rewrite": self._rewrite_done}[kind](*args)
+        {"rewrite": self._rewrite_done, "dictated": self._dictated}[kind](*args)
+
+
+class FakeRecorder:
+    def __init__(self, audio=b"RIFFwav"):
+        self.audio, self.started = audio, False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        return self.audio
+
+
+class DictationTest(unittest.TestCase):
+    def setUp(self):
+        self.app = _App()
+        self.app.host.edit.type_at_caret = lambda text: self.app.host.edit.pasted.append(text) or True
+        self.app.stt_sources = [SimpleNamespace(name="Codex", status=lambda: "ready",
+                                                transcribe=lambda audio, language="": "i thinks so")]
+        patcher = unittest.mock.patch.object(app_writer.mic, "Recorder", FakeRecorder)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def hold(self, seconds):
+        self.app._dictate_down()
+        self.assertEqual(self.app.toast_.shown[-1][0], "Listening · Codex")
+        self.app._recorded_at -= seconds
+        self.app._dictate_up()
+
+    def test_hold_transcribes_rewrites_and_types_at_the_caret(self):
+        self.hold(2)
+        self.app.drain()
+        self.assertEqual(self.app.host.edit.pasted, ["Hi there."])
+        self.assertEqual(self.app.writer_sources[0].texts, ["i thinks so"])
+        self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Fix errors · Cursor")
+
+    def test_a_tap_cancels(self):
+        self.hold(0.1)
+        self.assertTrue(self.app.events.empty())
+        self.assertFalse(self.app.toast_.visible)
+
+    def test_no_microphone_permission_offers_settings(self):
+        self.app.mic_ok = False
+        self.app._dictate_down()
+        self.assertEqual(sorted(self.app.toast_.shown[-1][1]), ["Open Settings"])
+        self.assertIsNone(self.app._recorder)
+
+    def test_a_window_change_offers_copy_instead_of_typing(self):
+        self.app._dictate_down()
+        self.app._recorded_at -= 2
+        self.app.host.edit.ctx = Context("", 9, 9, True, False)
+        self.app._dictate_up()
+        self.app.drain()
+        self.assertEqual(self.app.host.edit.pasted, [])
+        self.assertEqual(self.app.toast_.shown[-1][0], "The window changed. Copy the text?")
 
 
 class FlowTest(unittest.TestCase):

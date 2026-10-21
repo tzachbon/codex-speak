@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from . import edit_logic, lang, writer
+from . import dictation, edit_logic, hotkeys, lang, mic, writer
 from .llm_codex import CodexWriter
 from .llm_cursor import CursorWriter
 from .summarize import LocalWriter
@@ -30,6 +30,8 @@ def _edges(text):
 
 class Writer:
     rewriting, writer_ready = False, False
+    WRITER_EVENTS = {"rewrite": "_rewrite_done", "rewrite_hotkey": "_rewrite_hotkey", "dictate_down": "_dictate_down",
+                     "dictate_up": "_dictate_up", "dictated": "_dictated"}
 
     def _init_writer(self):
         self.edit = getattr(self.host, "edit", None)
@@ -39,6 +41,8 @@ class Writer:
         self._last_edit = None  # (ctx, original, inserted, mode) of the latest in-place rewrite
         self._press_at, self._press_gen, self._escaped_at = 0.0, 0, 0.0
         self.toast = self.review = self._esc = None
+        self.stt_sources = dictation.sources()
+        self._recorder, self._recorded_at, self._dictate_ctx, self._holding = None, 0.0, None, False
         if self.writer_ready:
             self.toast, self.review = self.host.make_toast(), self.host.make_review()
             self.toast.on_hide = self._watch_escape
@@ -185,13 +189,112 @@ class Writer:
         self._press_at = now
         self.host.after(int(DOUBLE_PRESS_S * 1000), lambda: gen == self._press_gen and self.rewrite_selection())
 
+    def _apply_writer(self, key, value):
+        put = self.events.put
+        if key == "rewrite_hotkey":
+            taken = hotkeys.conflict(self.cfg, key, value) == "hotkey"  # the read shortcut wins a tie
+            self.host.set_shortcut("rewrite", "" if taken else value, lambda: put(("rewrite_hotkey",)))
+        elif key == "dictate_hotkey":
+            taken = hotkeys.conflict(self.cfg, key, value) is not None
+            self.host.set_shortcut("dictate", "" if taken else value, lambda: put(("dictate_down",)),
+                                   lambda: put(("dictate_up",)))
+        elif hasattr(self, "popup"):
+            self.popup.set_last_mode(value)
+
+    def _dictate_down(self):
+        """Hold: check the microphone, then record until release."""
+        if not (self.writer_ready and self.cfg["writer"]) or self.rewriting or self._recorder:
+            return
+        self._holding = True
+        self.host.mic_permission(self._mic_answer)
+
+    def _mic_answer(self, granted):
+        if not granted:
+            self._toast("Harness Discussion needs the microphone.", [("Open Settings", self.host.open_mic_settings)])
+            return
+        if not self._holding:
+            return  # released while the permission prompt was up
+        try:
+            self._dictate_ctx = self.edit.capture(False)
+            recorder = mic.Recorder()
+            recorder.start()
+        except Exception as e:
+            log.info("microphone failed: %s", type(e).__name__)
+            self._toast("The microphone could not start.")
+            return
+        self._recorder, self._recorded_at = recorder, time.monotonic()
+        first = next((n for n, on in self.cfg["stt_sources"] if on), "Codex")
+        self._toast(f"Listening · {first}", busy=True)
+
+    def _dictate_up(self):
+        self._holding = False
+        recorder, self._recorder = self._recorder, None
+        if recorder is None:
+            return
+        held = time.monotonic() - self._recorded_at
+        audio = recorder.stop()
+        if mic.is_tap(held) or not audio:
+            self.toast.hide()
+            return
+        mode = self._find_mode(None)
+        self._rewrite_id += 1
+        rid, cancel = self._rewrite_id, threading.Event()
+        self._rewrite_cancel = cancel
+        self._set_rewriting(True)
+        self._summary_gen += 1
+        at = self._anchor()
+        sources = writer.chain(self.writer_sources, self.cfg["writer_sources"])
+        models, order, chain = self.cfg["writer_models"], self.cfg["stt_sources"], self.stt_sources
+        self._toast(f"Transcribing · {mode.name}", busy=True, at=at)
+
+        def work():
+            try:
+                text, _ = dictation.transcribe(audio, chain, order)
+                if cancel.is_set():
+                    raise writer.Cancelled("The dictation was cancelled.")
+                language = lang.name(lang.detect(text)) or "the language of the text"
+                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set, language=language)
+            except Exception as e:
+                result = e
+            self.events.put(("dictated", rid, mode.name, result, at))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _dictated(self, rid, mode, result, at):
+        if rid != self._rewrite_id:
+            return
+        self._set_rewriting(False)
+        self._arm_summary_stop()
+        if isinstance(result, writer.Cancelled):
+            self.toast.hide()
+            return
+        if isinstance(result, Exception):
+            log.info("dictation failed: %s", type(result).__name__)
+            safe = isinstance(result, (writer.Error, dictation.Error))
+            self._toast(str(result) if safe else "Could not finish the dictation.", at=at)
+            return
+        text, source = result
+        ctx, now = self._dictate_ctx, self.edit.capture(False)
+        copy = lambda: self.host.copy_text(text)
+        if ctx is None or now is None or (now.app, now.window) != (ctx.app, ctx.window) or now.secure:
+            self._toast("The window changed. Copy the text?", [("Copy", copy)], at=at)
+            return
+        if not self.edit.type_at_caret(text):
+            self._toast("Couldn't type here.", [("Copy", copy)], at=at)
+            return
+        self._toast(f"Dictated · {mode} · {source}", [("Copy", copy)], at=at)
+
     def _escape(self):
         """Esc cancels a rewrite, else hides the toast, else dismisses the bar. Both watchers can see one Esc."""
         now = time.monotonic()
         if now - self._escaped_at < 0.15:
             return
         self._escaped_at = now
-        if self.rewriting:
+        if self._recorder:
+            self._holding = False
+            self._recorder.stop()
+            self._recorder = None
+            self.toast.hide()
+        elif self.rewriting:
             self._rewrite_cancel.set()
             self._rewrite_id += 1
             self._set_rewriting(False)
@@ -211,3 +314,7 @@ class Writer:
         if self._esc:
             self._esc.stop()
             self.host.set_shortcut("rewrite", "", None)
+            self.host.set_shortcut("dictate", "", None)
+        if self._recorder:
+            self._recorder.stop()
+            self._recorder = None

@@ -67,22 +67,34 @@ def event_spec(event):
 
 
 class HotKey:
-    """Watches key-downs for one shortcut. In another app it can't swallow the key, so that app sees it too."""
+    """Watches key-downs for one shortcut. In another app it can't swallow the key, so that app sees it too.
+    With `on_release`, it also reports when the key or one of its modifiers comes up, for hold shortcuts."""
 
-    def __init__(self, spec, on_hotkey):
+    def __init__(self, spec, on_hotkey, on_release=None):
         self.keys, self.on_hotkey = hotkeys.parse(spec), on_hotkey  # parsed, so modifier order doesn't matter
-        self._monitors = [AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-            AppKit.NSEventMaskKeyDown, self._event)]
+        self.on_release, self._held = on_release, None
+        mask = AppKit.NSEventMaskKeyDown
+        if on_release:
+            mask |= AppKit.NSEventMaskKeyUp | AppKit.NSEventMaskFlagsChanged
+        self._monitors = [AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(mask, self._event)]
 
         def local(event):  # keys while one of our windows is active, which the global monitor never sees
             self._event(event)
             return event
-        self._monitors.append(AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
-            AppKit.NSEventMaskKeyDown, local))
+        self._monitors.append(AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(mask, local))
 
     def _event(self, event):
-        if not event.isARepeat() and hotkeys.parse(event_spec(event)) == self.keys:
-            self.on_hotkey()
+        kind = event.type()
+        if kind == AppKit.NSEventTypeKeyDown:
+            if not event.isARepeat() and hotkeys.parse(event_spec(event)) == self.keys:
+                self._held = event.keyCode() if self.on_release else None
+                self.on_hotkey()
+        elif self._held is not None:
+            flags = event.modifierFlags()
+            mods_down = all(flags & FLAGS[m] for m in self.keys[0])
+            if (kind == AppKit.NSEventTypeKeyUp and event.keyCode() == self._held) or not mods_down:
+                self._held = None
+                self.on_release()
 
     def stop(self):
         for monitor in self._monitors:

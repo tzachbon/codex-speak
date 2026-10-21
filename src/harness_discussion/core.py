@@ -117,11 +117,8 @@ class App(Captions, Sources, Updates, Summaries, Skips, Writer):
             self._run_stt(value)
         elif key == "hotkey":
             self.host.set_hotkey(value, lambda: self.events.put(("hotkey",)))
-        elif key == "rewrite_hotkey" and self.writer_ready:
-            taken = hotkeys.conflict(self.cfg, key, value) == "hotkey"  # the read shortcut wins a tie
-            self.host.set_shortcut("rewrite", "" if taken else value, lambda: self.events.put(("rewrite_hotkey",)))
-        elif key == "default_mode" and hasattr(self, "popup") and self.writer_ready:
-            self.popup.set_last_mode(value)
+        elif key in ("rewrite_hotkey", "dictate_hotkey", "default_mode") and self.writer_ready:
+            self._apply_writer(key, value)
 
     def _configure_captions(self):
         self.popup.configure_captions(self.cfg["caption_font_size"], self.cfg["caption_background"],
@@ -385,10 +382,10 @@ class App(Captions, Sources, Updates, Summaries, Skips, Writer):
                 p.set_source(args[0])
         elif kind == "summary":
             self._summary_done(*args)
-        elif kind == "rewrite":
-            self._rewrite_done(*args)
-        elif kind == "rewrite_hotkey":
-            self._rewrite_hotkey()
+        elif kind in self.WRITER_EVENTS:
+            getattr(self, self.WRITER_EVENTS[kind])(*args)
+        elif kind == "call":
+            args[0]()
         elif kind == "summarize_progress":
             if self._summarize_progress is not None:  # a late event after the download ended is dropped
                 self._set_summarize_progress(args[0])

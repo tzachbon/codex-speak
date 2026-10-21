@@ -29,6 +29,7 @@ plutil -replace CFBundleShortVersionString -string "$version" "$plist"
 plutil -replace CFBundleVersion -string "$version" "$plist"
 plutil -replace LSUIElement -bool true "$plist"
 plutil -replace LSMinimumSystemVersion -string 13.0 "$plist"
+plutil -replace NSMicrophoneUsageDescription -string "Harness Discussion records while you hold the dictation shortcut." "$plist"
 plutil -replace HarnessDiscussionBuild -string "$version+$commit" "$plist"
 # A Developer ID from the MACOS_* secrets gives a notarized dmg that Gatekeeper opens without a warning.
 # Otherwise the local identity from setup_signing_mac.sh keeps the Accessibility grant across rebuilds,

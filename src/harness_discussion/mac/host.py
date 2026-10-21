@@ -168,13 +168,34 @@ class MacHost:
             self.hotkey.stop()
         self.hotkey = HotKey(spec, on_hotkey) if spec else None
 
-    def set_shortcut(self, name, spec, fn):
-        """Replaces one of the writer's shortcuts; "" turns it off."""
+    def set_shortcut(self, name, spec, fn, on_release=None):
+        """Replaces one of the writer's shortcuts; "" turns it off. on_release makes it a hold shortcut."""
         old = self.shortcuts.pop(name, None)
         if old:
             old.stop()
         if spec:
-            self.shortcuts[name] = HotKey(spec, fn)
+            self.shortcuts[name] = HotKey(spec, fn, on_release)
+
+    def mic_permission(self, then):
+        """Calls then(granted) on the main thread, asking the first time."""
+        import AVFoundation
+        device, media = AVFoundation.AVCaptureDevice, AVFoundation.AVMediaTypeAudio
+        status = device.authorizationStatusForMediaType_(media)
+        if status == AVFoundation.AVAuthorizationStatusNotDetermined:
+            device.requestAccessForMediaType_completionHandler_(
+                media, lambda granted: self.app.events.put(("call", lambda: then(bool(granted)))))
+        else:
+            then(status == AVFoundation.AVAuthorizationStatusAuthorized)
+
+    def mic_status(self):
+        import AVFoundation
+        status = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(AVFoundation.AVMediaTypeAudio)
+        return {AVFoundation.AVAuthorizationStatusAuthorized: "ready",
+                AVFoundation.AVAuthorizationStatusNotDetermined: "not_asked"}.get(status, "denied")
+
+    def open_mic_settings(self):
+        AppKit.NSWorkspace.sharedWorkspace().openURL_(AppKit.NSURL.URLWithString_(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"))
 
     def make_toast(self):
         return Toast()
