@@ -1,5 +1,6 @@
 """The Writing page of the Windows Settings window: the writer's sources, models, modes and shortcuts, and Dictation."""
 import tkinter as tk
+from copy import deepcopy
 from tkinter import ttk
 
 from .. import settings, writer
@@ -142,7 +143,7 @@ class WritingPage:
     def _show_writer_models(self, name, row):
         """The model and effort menus show the app's cached catalog; with none, they say so and stay off."""
         model, effort = row["model"], row["effort"]
-        catalog = self.writer_catalogs().get(name) or []
+        catalog = row["catalog"] = deepcopy(self.writer_catalogs().get(name) or [])
         chosen = self.cfg["writer_models"].get(name) or {}
         found = next((m for m in catalog if m["id"] == chosen.get("model")), None)
         if name == "Local" or not catalog:
@@ -157,7 +158,7 @@ class WritingPage:
 
     def _writer_model_changed(self, name, effort=None):
         row = self.writer_rows[name]
-        catalog = self.writer_catalogs().get(name) or []
+        catalog = row["catalog"]
         index = row["model"].current() - 1
         models = {k: v for k, v in self.cfg["writer_models"].items() if k != name}
         if index >= 0:

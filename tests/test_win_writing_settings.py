@@ -103,6 +103,17 @@ class WritingSettingsUi(unittest.TestCase):
         self.assertEqual((w.writer_rows["Codex"]["model"].get(), w.writer_rows["Codex"]["effort"].get()),
                          ("GPT-5.5", "low"))
 
+    def test_model_choice_uses_the_catalog_shown_even_if_supplier_changes(self):
+        catalogs = {"Codex": list(CATALOGS["Codex"])}
+        w = self.make_window(writer_catalogs=lambda: catalogs)
+        model = w.writer_rows["Codex"]["model"]
+        catalogs["Codex"] = list(reversed(catalogs["Codex"]))
+        self.pick(model, "GPT-5.5")
+        self.assertEqual(self.changes[-1], ("writer_models", {"Codex": {"model": "gpt-5.5", "effort": "medium"}}))
+        catalogs["Codex"] = []
+        self.pick(model, "GPT-5.5 mini")
+        self.assertEqual(self.changes[-1], ("writer_models", {"Codex": {"model": "gpt-5.5-mini", "effort": None}}))
+
     def edit_mode(self, w, name, instructions):
         w.mode_name.delete(0, "end")
         w.mode_name.insert(0, name)
@@ -165,6 +176,15 @@ class WritingSettingsUi(unittest.TestCase):
         self.assertEqual(self.changes[-1], ("hotkey", "<ctrl>+<alt>+t"))
         self.assertEqual(w.hotkey_lbl["text"], "Ctrl+Alt+T")
         self.assertEqual(recording, [True, False])
+
+    def test_legacy_setter_still_targets_read_after_rewrite_recording_is_cancelled(self):
+        w = self.make_window()
+        for key in ("rewrite_hotkey", "dictate_hotkey"):
+            w.shortcuts[key]["change"].invoke()
+            self.press(w, 0x1B, 0)
+            w._set_hotkey("")
+            self.assertEqual(w.cfg[key], "<ctrl>+<alt>+" + ("e" if key == "rewrite_hotkey" else "d"))
+            self.assertEqual(w.cfg["hotkey"], "")
 
     def test_rewrite_and_dictate_shortcuts_record_and_refuse_a_used_chord(self):
         recording = []

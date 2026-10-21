@@ -23,6 +23,7 @@ class WriterBar(unittest.TestCase):
                          on_settings=lambda: self.calls.append("settings"), on_source=callback,
                          sources=lambda: [], on_skip=callback)
         self.addCleanup(self.root.destroy)
+        self.addCleanup(self.bar.hide)
 
     def test_reading_layout_keeps_only_play_summary_and_overflow(self):
         self.bar.show("Selected text", 140, 140)

@@ -44,14 +44,14 @@ class ShortcutRow:
 
     def _hotkey_key(self, event):
         if event.keysym == "Escape":
-            self._set_hotkey(self.cfg[self._recording])
+            self._set_hotkey(self.cfg[self._recording], self._recording)
         elif (key := KEYS.get(event.keycode)) and (
                 spec := hotkeys.spec({m for m, bit in TK_MODS.items() if event.state & bit}, key)):
-            self._set_hotkey(spec)
+            self._set_hotkey(spec, self._recording)
         return "break"
 
-    def _set_hotkey(self, spec, key=None):
-        key = key or getattr(self, "_recording", "hotkey")
+    def _set_hotkey(self, spec, key="hotkey"):
+        self._recording = None
         self.win.unbind("<KeyPress>")
         used = next((k for k in self.shortcuts if k != key and spec and hotkeys.parse(self.cfg.get(k))
                      == hotkeys.parse(spec)), None)
