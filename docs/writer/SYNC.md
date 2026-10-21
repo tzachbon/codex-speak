@@ -55,3 +55,8 @@ Earlier entries, oldest first: [SYNC-log-1.md](SYNC-log-1.md), [SYNC-log-2.md](S
 
 - Copy implementation `1ba86ad` passed fresh isolated post-review 2/3: 67 tests plus three in-memory boundary probes, no actionable defects. Root reran all 67 targeted checks successfully in 3.457 s. The archive's trailing separator warning was fixed in doc-only `ea40b2a`; combined log entry text/order is preserved and `git diff --check 50ce0d6..HEAD` passes.
 - Actual Windows and Mac CI succeeded on pre-Copy head `50ce0d6`: 583 tests/11 skipped and 503 tests/19 skipped respectively, with both packaging jobs successful. Release was intentionally skipped for the PR. These results do not cover the new Copy correction, which will get a new CI run after publication. No native acceptance or full Writer completion is claimed.
+
+### 2026-10-21 Windows (PR toast re-entry correction)
+
+- CodeRabbit found that leaving and re-entering the toast kept a pending Mode submenu-close timer. The public Tk regression reproduced the closed submenu before the fix. Toast re-entry now cancels that timer through the existing helper. All 42 scoped toast/Review, Popup, Host and Tk teardown tests pass in 15.931 s with listeners mocked. The regression also checks that a subsequent real departure still dismisses the toast. No native input, clipboard or microphone checks were performed.
+- Windows and macOS CI both passed at `4374bb0`, and Codex completed that revision without new findings. This small correction needs fresh CI after publication. PR #63 remains component preparation with Windows editing inactive, Writer off by default and all shared/native acceptance gates open. Zach authorized merging once ready.

@@ -218,6 +218,7 @@ class Toast:
     def _enter(self, _event):
         self._hovered = True
         self._cancel_hide()
+        self._cancel_menu_close()
 
     def _leave(self, _event):
         self._hovered = False

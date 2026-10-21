@@ -42,6 +42,23 @@ class Base(unittest.TestCase):
         self.addCleanup(self.root.destroy)
 
 class ToastTest(Base):
+    def test_reentering_the_toast_cancels_the_pending_submenu_close(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            menu = next(lbl for lbl in labels(self.root) if lbl["text"] == "✓ Email").winfo_toplevel()
+            toast.win.event_generate("<Leave>")
+            toast.win.event_generate("<Enter>")
+            pump(self.root, 0.4)
+            self.assertTrue(toast.visible)
+            self.assertTrue(menu.winfo_exists())
+            self.assertTrue(menu.winfo_viewable())
+            toast.win.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+
     def test_leaving_an_open_mode_menu_resumes_toast_auto_hide(self):
         toast = win_toast.Toast(self.root)
         self.addCleanup(toast.destroy)
