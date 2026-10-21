@@ -6,11 +6,35 @@ if sys.platform != "win32":
     raise unittest.SkipTest("Windows only")
 
 from copy import deepcopy
+from contextlib import contextmanager
+import ctypes
 import queue
 from unittest.mock import Mock, call, patch
 
 from harness_discussion import settings
 from harness_discussion.win import host
+
+
+@contextmanager
+def clipboard_api(previous_format=14):
+    """Win32 boundary only: no desktop clipboard access, with real allocated test buffers."""
+    native, kernel, buffers = Mock(), Mock(), []
+    native.CreateWindowExW.return_value = 123
+    native.OpenClipboard.return_value = native.EmptyClipboard.return_value = 1
+    native.EnumClipboardFormats.side_effect = [previous_format, 0]
+    native.GetClipboardData.side_effect = AssertionError("Explicit Copy must not read prior data")
+    native.SetClipboardData.side_effect = lambda fmt, address: address
+    native.IsClipboardFormatAvailable.return_value = False
+
+    def allocate(flags, size):
+        data = ctypes.create_string_buffer(size)
+        buffers.append(data)
+        return ctypes.addressof(data)
+
+    kernel.GlobalAlloc.side_effect = allocate
+    kernel.GlobalLock.side_effect = lambda address: address
+    with patch.object(host.clipboard, "u32", native), patch.object(host.clipboard, "k32", kernel):
+        yield native, kernel
 
 
 class HostWriter(unittest.TestCase):
@@ -83,18 +107,76 @@ class HostWriter(unittest.TestCase):
     def test_copy_preserves_unicode_and_whitespace_and_reports_failure_without_retry(self):
         with patch.object(host, "clipboard", create=True) as clipboard:
             self.assertTrue(self.host.copy_text(" A😀\r\nB "))
-            clipboard.restore.assert_called_once_with([(13, " A😀\r\nB \0".encode("utf-16-le"))])
-            clipboard.restore.reset_mock()
-            clipboard.restore.side_effect = OSError("clipboard unavailable")
+            clipboard.write_text.assert_called_once_with(" A😀\r\nB ")
+            clipboard.write_text.reset_mock()
+            clipboard.write_text.side_effect = OSError("clipboard unavailable")
             self.assertFalse(self.host.copy_text("private result"))
-            clipboard.restore.assert_called_once()
+            clipboard.write_text.assert_called_once()
         notification = self.host.icon.notify.call_args.args[0]
         self.assertNotIn("private result", notification)
+
+    def test_explicit_copy_overwrites_unsupported_formats_without_reading_them(self):
+        for previous, text in ((14, " A😀\r\nB "), (2, " A😀\r\nB "), (49353, " A😀\r\nB "), (14, "")):
+            with self.subTest(previous_format=previous, text=text), clipboard_api(previous) as (native, kernel):
+                expected = (text + "\0").encode("utf-16-le")
+                self.assertTrue(self.host.copy_text(text))
+                native.SetClipboardData.assert_called_once()
+                fmt, address = native.SetClipboardData.call_args.args
+                self.assertEqual(fmt, 13)
+                self.assertEqual(ctypes.string_at(address, len(expected)), expected)
+                native.EnumClipboardFormats.assert_not_called()
+                native.GetClipboardData.assert_not_called()
+                native.CloseClipboard.assert_called_once()
+                kernel.GlobalFree.assert_not_called()
+
+    def test_explicit_copy_failures_release_owned_memory_without_retrying_writes(self):
+        for failure in ("allocate", "lock", "owner", "open", "empty", "set"):
+            with self.subTest(failure=failure), clipboard_api() as (native, kernel), \
+                    patch.object(host.clipboard.time, "sleep"):
+                self.host.icon.notify.reset_mock()
+                if failure == "allocate":
+                    kernel.GlobalAlloc.side_effect = None
+                    kernel.GlobalAlloc.return_value = 0
+                elif failure == "lock":
+                    kernel.GlobalLock.side_effect = None
+                    kernel.GlobalLock.return_value = 0
+                elif failure == "owner":
+                    native.CreateWindowExW.return_value = 0
+                elif failure == "open":
+                    native.OpenClipboard.return_value = 0
+                elif failure == "empty":
+                    native.EmptyClipboard.return_value = 0
+                else:
+                    native.SetClipboardData.side_effect = None
+                    native.SetClipboardData.return_value = 0
+                self.assertFalse(self.host.copy_text("private result"))
+                self.host.icon.notify.assert_called_once_with("Could not copy the result.", "Harness Discussion")
+                native.EnumClipboardFormats.assert_not_called()
+                native.GetClipboardData.assert_not_called()
+                self.assertEqual(kernel.GlobalFree.call_count, int(failure != "allocate"))
+                if failure in ("allocate", "lock"):
+                    native.OpenClipboard.assert_not_called()
+                if failure in ("empty", "set"):
+                    native.EmptyClipboard.assert_called_once()
+                    native.CloseClipboard.assert_called_once()
+                else:
+                    native.EmptyClipboard.assert_not_called()
+                    native.CloseClipboard.assert_not_called()
+                self.assertEqual(native.SetClipboardData.call_count, int(failure == "set"))
+
+    def test_explicit_write_rejects_invalid_text_before_native_operations(self):
+        for text in (None, 1, "first\0second", "\ud800"):
+            with self.subTest(text=repr(text)), clipboard_api() as (native, kernel):
+                with self.assertRaises(ValueError):
+                    host.clipboard.write_text(text)
+                kernel.GlobalAlloc.assert_not_called()
+                native.OpenClipboard.assert_not_called()
+                native.EmptyClipboard.assert_not_called()
 
     def test_copy_refuses_embedded_nul_before_touching_clipboard(self):
         with patch.object(host, "clipboard", create=True) as clipboard:
             self.assertFalse(self.host.copy_text("first\0second"))
-            clipboard.restore.assert_not_called()
+            clipboard.write_text.assert_not_called()
 
     def test_mode_menu_callbacks_keep_their_own_names_and_current_selection(self):
         chosen = []

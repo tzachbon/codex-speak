@@ -75,7 +75,7 @@ class TkHost:
         try:
             if not isinstance(text, str) or "\0" in text:
                 raise ValueError("Invalid clipboard text")
-            clipboard.restore([(13, (text + "\0").encode("utf-16-le"))])
+            clipboard.write_text(text)
             return True
         except (OSError, ValueError):
             self.notify("Could not copy the result.")

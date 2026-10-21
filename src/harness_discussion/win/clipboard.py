@@ -1,4 +1,4 @@
-"""Snapshot and restore the whole clipboard, so a borrowed Ctrl+C leaves no trace."""
+"""Explicit clipboard writes and conditional restoration after temporary pastes."""
 import ctypes
 import threading
 import time
@@ -198,6 +198,18 @@ def restore(saved: list[tuple[int, bytes]], expected_sequence=None):
         finally:
             _free(incoming)
             _free(backup)
+
+
+def write_text(text: str) -> None:
+    """Explicit Copy replaces old contents, including formats we cannot snapshot."""
+    if not isinstance(text, str) or "\0" in text:
+        raise ValueError("Invalid clipboard text")
+    incoming = _allocate([(13, (text + "\0").encode("utf-16-le"))])
+    try:
+        with _Open():
+            _install_locked(incoming)
+    finally:
+        _free(incoming)
 
 
 def html() -> str:
