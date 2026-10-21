@@ -201,6 +201,7 @@ class Popup:
     def destroy(self):
         if self._is_destroyed:
             return
+        self.set_loading(False)
         self.hide()
         self.win.destroy()
 
@@ -355,7 +356,7 @@ class Popup:
         menu.add_command(label="Summarize", command=self._summarize)
         self._mode_choices()
         menu.add_cascade(label="Rewrite", menu=self.mode_menu,
-                         state="normal" if self.writer_enabled and self.editable else "disabled")
+                         state="normal" if self.writer_enabled and not self.rewriting else "disabled")
         menu.add_separator()
         menu.add_command(label="Settings…", command=self._open_settings)
         self._post_menu(self.more_btn, menu)
@@ -405,7 +406,7 @@ class Popup:
         return names[0] if names else "Fix errors"
 
     def _rewrite(self, name=None):
-        if not self.writer_enabled or not self.editable or self.rewriting or self.on_rewrite is None:
+        if not self.writer_enabled or self.rewriting or self.on_rewrite is None:
             return
         name = name or self._current_mode()
         self.set_last_mode(name)

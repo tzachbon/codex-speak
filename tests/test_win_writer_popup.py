@@ -91,7 +91,17 @@ class WriterBar(unittest.TestCase):
         self.bar.destroy()
         self.assertFalse(escape.active)
 
-    def test_selection_editability_gates_rewrite_and_rewriting_keeps_speech_loading_separate(self):
+    def test_destroy_cancels_speech_animation_before_destroying_its_widgets(self):
+        self.root.tk.eval('set writer_bg_errors {}; proc bgerror {msg} {lappend ::writer_bg_errors $msg}')
+        self.bar.show("Selected text", 140, 140)
+        self.root.update()
+        self.bar.set_loading(True)
+        self.bar.destroy()
+        self.root.after(100, self.root.quit)
+        self.root.mainloop()
+        self.assertFalse(self.root.tk.call("set", "writer_bg_errors"))
+
+    def test_writing_layout_needs_editability_and_rewriting_keeps_speech_loading_separate(self):
         callback = lambda text, name: self.calls.append((text, name))
         bar = win_popup.Popup(self.root, 1, on_play=lambda: None, on_stop=lambda: None,
                               on_pause=lambda: None, on_resume=lambda: None, on_lang=lambda tag: None,
@@ -103,7 +113,7 @@ class WriterBar(unittest.TestCase):
         bar.show("Read only", 140, 140)
         with patch.object(bar.overflow, "post"):
             bar.more_btn.command()
-        self.assertEqual(bar.overflow.entrycget(bar.overflow.index("Rewrite"), "state"), "disabled")
+        self.assertEqual(bar.overflow.entrycget(bar.overflow.index("Rewrite"), "state"), "normal")
         bar.show("Editable", 140, 140, editable=True)
         with patch.object(bar.overflow, "post"):
             bar.more_btn.command()
@@ -126,7 +136,7 @@ class WriterBar(unittest.TestCase):
         self.assertEqual(bar.btn.parts[1]["text"], win_popup.PLAY)
         bar.set_editable(False)
         bar.mode_menu.invoke("Email")
-        self.assertEqual(self.calls, [("Editable", "Email")])
+        self.assertEqual(self.calls, [("Editable", "Email"), ("Editable", "Email")])
         bar.set_writer(False)
         bar.show("Writer off", 140, 140, editable=True)
         with patch.object(bar.overflow, "post"):
@@ -151,6 +161,23 @@ class WriterBar(unittest.TestCase):
         self.assertEqual(bar.rewrite_btn.parts[1]["text"], "✎ Email")
         bar.set_last_mode("Message")
         self.assertEqual(bar.rewrite_btn.parts[1]["text"], "✎ Message")
+
+    def test_unknown_editability_keeps_explicit_overflow_rewrite_available(self):
+        self.bar.configure_writer(self.calls.append, lambda: BUILTIN_MODES, lambda: "Fix errors")
+        self.bar.show("Unknown editability", 140, 140, editable=False)
+        self.assertNotIn(self.bar.rewrite_btn, self.bar.win.pack_slaves())
+        with patch.object(self.bar.overflow, "post"):
+            self.bar.more_btn.command()
+        self.assertEqual(self.bar.overflow.entrycget(self.bar.overflow.index("Rewrite"), "state"), "normal")
+        self.bar.mode_menu.invoke("Email")
+        self.assertEqual(self.calls, ["Email"])
+        self.bar.set_rewriting(True)
+        self.bar.mode_menu.invoke("Email")
+        self.assertEqual(self.calls, ["Email"])
+        self.bar.set_rewriting(False)
+        self.bar.set_writer(False)
+        self.bar.mode_menu.invoke("Email")
+        self.assertEqual(self.calls, ["Email"])
 
     def test_reading_layout_keeps_only_play_summary_and_overflow(self):
         self.bar.show("Selected text", 140, 140)

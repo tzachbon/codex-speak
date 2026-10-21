@@ -185,10 +185,15 @@ class AppWriterTk(unittest.TestCase):
         self.app = self.host = None
         gc.collect()
 
-    def rewrite_from_bar(self):
-        self.app.popup.show("an original", 140, 140, editable=True)
+    def rewrite_from_bar(self, editable=True):
+        self.app.popup.show("an original", 140, 140, editable=editable)
         self.host.root.update()
-        self.app.popup.rewrite_btn.command()
+        if editable:
+            self.app.popup.rewrite_btn.command()
+        else:
+            with patch.object(self.app.popup.overflow, "post"):
+                self.app.popup.more_btn.command()
+            self.app.popup.mode_menu.invoke("Fix errors")
         self.assertTrue(self.app.rewriting)
         self.assertTrue(self.app.toast.visible)
         self.app._handle(*self.app.events.get(timeout=5))
@@ -209,8 +214,9 @@ class AppWriterTk(unittest.TestCase):
     def test_changed_target_offers_copy_without_pasting(self):
         from tests.test_win_writer_ui import click
         self.editor.same_context.return_value = False
-        self.rewrite_from_bar()
-        self.editor.replace.assert_not_called()
-        click(self.host.root, self.app.toast.win, "Copy")
-        self.copied.assert_called_once_with("A rewrite.")
-
+        for editable in (True, False):
+            with self.subTest(editable=editable):
+                self.rewrite_from_bar(editable)
+                self.editor.replace.assert_not_called()
+                click(self.host.root, self.app.toast.win, "Copy")
+        self.assertEqual(self.copied.call_args_list, [call("A rewrite."), call("A rewrite.")])

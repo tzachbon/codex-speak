@@ -42,6 +42,33 @@ class Base(unittest.TestCase):
         self.addCleanup(self.root.destroy)
 
 class ToastTest(Base):
+    def test_leaving_an_open_mode_menu_resumes_toast_auto_hide(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            toast.win.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+            self.assertFalse(any(w.winfo_viewable() for w in self.root.winfo_children()))
+
+    def test_entering_the_submenu_cancels_its_pending_close(self):
+        toast = win_toast.Toast(self.root)
+        self.addCleanup(toast.destroy)
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("Choose mode", 200, 200, [("Mode", [("Email", lambda: None, True)])])
+            click(self.root, toast.win, "Mode ▾")
+            menu = next(lbl for lbl in labels(self.root) if lbl["text"] == "✓ Email").winfo_toplevel()
+            toast.win.event_generate("<Leave>")
+            menu.event_generate("<Enter>")
+            pump(self.root, 0.4)
+            self.assertTrue(toast.visible)
+            self.assertTrue(menu.winfo_viewable())
+            menu.event_generate("<Leave>")
+            pump(self.root, 0.4)
+            self.assertFalse(toast.visible)
+
     def test_reopening_a_submenu_does_not_leave_an_orphan_window(self):
         toast = win_toast.Toast(self.root)
         self.addCleanup(toast.destroy)

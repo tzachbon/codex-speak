@@ -221,7 +221,9 @@ class Toast:
 
     def _leave(self, _event):
         self._hovered = False
-        if not self._menu_open:
+        if self._menu_open:
+            self._schedule_menu_close()
+        else:
             self._schedule_hide()
 
     def _cancel_hide(self):
