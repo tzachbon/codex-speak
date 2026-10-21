@@ -53,6 +53,10 @@ class Range:
     def Clone(self):
         return Range(self.document, self.start, self.end)
 
+    @property
+    def textRange(self):
+        return self
+
     def GetChildren(self):
         return []
 
@@ -259,6 +263,68 @@ class InputSafety(unittest.TestCase):
 
 
 class CaptureSafety(unittest.TestCase):
+    def test_refused_copy_does_not_adopt_or_restore_a_same_app_user_copy(self):
+        from harness_discussion.win import selection
+        current = [10]
+        def refused(vk):
+            current[0] = 11  # user copies from the same app after the refused chord
+            return False
+        with patch.object(selection, "_via_uia", return_value=""), \
+                patch.object(selection, "_focus_identity", return_value=(9, 42, (1, 2))), \
+                patch.object(clipboard, "snapshot_with_sequence", return_value=([], 10)), \
+                patch.object(clipboard, "sequence", side_effect=lambda: current[0]), \
+                patch.object(clipboard, "owner_pid", return_value=9), \
+                patch.object(clipboard, "PreparedRestore") as prepared, \
+                patch.object(selection.keys, "chord", side_effect=refused):
+            self.assertEqual(selection.read(), "")
+        prepared.return_value.__enter__.return_value.apply.assert_not_called()
+
+    def test_undo_refuses_identity_change_during_selection(self):
+        from harness_discussion.win import edit
+        document = Document()
+        with target(document) as (_, key, _, _):
+            context = edit.capture(False)
+            def paste(vk):
+                document.text = "Left new right"
+                document.start = document.end = 8
+                return True
+            key.side_effect = paste
+            self.assertTrue(edit.replace("new", context))
+            def switched(span, waitTime=0):
+                document.start, document.end = span.start, span.end
+                document.identity = [99, 100]
+                return True
+            with patch.object(Range, "Select", switched):
+                self.assertFalse(edit.select_back(3, context))
+
+    def test_installed_text_range_wrapper_receives_native_compare_target(self):
+        from harness_discussion.win import edit
+        class NativeRange(Range):
+            def Clone(self):
+                return NativeRange(self.document, self.start, self.end)
+
+            def MoveEndpointByRange(self, endpoint, other, other_endpoint):
+                super().MoveEndpointByRange(endpoint, other, other_endpoint)
+                return 0  # S_OK, the real wrapper converts this to bool
+
+            def CompareEndpoints(self, endpoint, other, other_endpoint):
+                if not isinstance(other, NativeRange):
+                    raise TypeError("COM requires a native range")
+                return super().CompareEndpoints(endpoint, other, other_endpoint)
+
+        class NativeDocument(Document):
+            @property
+            def DocumentRange(self):
+                return edit.uia.TextRange(NativeRange(self, 0, len(self.text)))
+
+            def GetSelection(self):
+                return [edit.uia.TextRange(NativeRange(self, self.start, self.end))]
+
+        with target(NativeDocument()):
+            context = edit.capture(False)
+            self.assertIsNotNone(context)
+            self.assertEqual(context.text, "old")
+
     def test_clipboard_changed_during_revalidation_never_gets_pasted(self):
         from harness_discussion.win import edit
         document = Document()
@@ -301,16 +367,17 @@ from harness_discussion.win import edit, selection, uia_thread
 with patch.object(edit.u32, 'GetForegroundWindow', return_value=0), \\
      patch.object(uia_thread.comtypes, 'CoInitializeEx') as initialize, \\
      patch.object(uia_thread.comtypes, 'CoUninitialize') as uninitialize, \\
+     patch.object(uia_thread.ctypes.windll.user32, 'PeekMessageW', return_value=0) as pump, \\
      patch.object(selection.uia, 'GetFocusedControl', return_value=None):
     edit.capture(False)
     selection.read(False)
     edit.capture(False)
     uia_thread.close()
-    print(initialize.call_count, uninitialize.call_count)
+    print(initialize.call_count, uninitialize.call_count, pump.called)
 '''
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "1 1")
+        self.assertEqual(result.stdout.strip(), "1 1 True")
 
     def test_read_selection_checks_password_ancestors_before_patterns(self):
         from harness_discussion.win import selection

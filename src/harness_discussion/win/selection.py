@@ -14,6 +14,8 @@ TERMINALS = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "PseudoConso
              "mintty", "PuTTY", "VirtualConsoleClass"}  # Ctrl+C means "interrupt" there
 WEB = {"Chrome_WidgetWin_1", "MozillaWindowClass"}  # Chrome, Edge, Electron apps, Firefox
 PASSWORD = object()
+ctypes.windll.user32.GetForegroundWindow.restype = ctypes.c_void_p
+ctypes.windll.user32.GetClassNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
 os.makedirs(settings.TEMP_DIR, exist_ok=True)
 uia.Logger.SetLogFile(os.path.join(settings.TEMP_DIR, "uia.log"))  # default: cwd
 
@@ -81,9 +83,10 @@ def _copy_on_worker(html):
             return ""
         saved, seq = clipboard.snapshot_with_sequence()
         with clipboard.PreparedRestore(saved) as cleanup:
-            if _focus_identity() != origin:
+            if _focus_identity() != origin or clipboard.sequence() != seq:
                 return ""
-            sent = keys.chord(ord("C"))
+            if not keys.chord(ord("C")):
+                return ""  # refused/partial input cannot establish ownership of a subsequent copy
             deadline = time.monotonic() + 0.3
             while clipboard.sequence() == seq and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -94,7 +97,7 @@ def _copy_on_worker(html):
             if clipboard.owner_pid() != origin[0]:
                 return ""  # a concurrent copy is not our selection and must not be overwritten
             try:
-                if not sent or _focus_identity() != origin:
+                if _focus_identity() != origin:
                     return ""
                 result = clipboard.read_owned_selection(copied, origin[0], html)
                 if result is None:

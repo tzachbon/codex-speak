@@ -1,8 +1,10 @@
 """One apartment owns UIA's process-global cached client and every provider call."""
 import gc
+import ctypes
 import queue
 import threading
 from concurrent.futures import Future
+from ctypes import wintypes
 
 import comtypes
 import uiautomation.uiautomation as automation
@@ -11,6 +13,13 @@ _jobs = queue.Queue()
 _lock = threading.Lock()
 _thread = None
 _closed = False
+
+u32 = ctypes.windll.user32
+u32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
+                            wintypes.UINT, wintypes.UINT, wintypes.UINT]
+u32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+u32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+u32.DispatchMessageW.restype = ctypes.c_ssize_t
 
 
 def _serve():
@@ -21,7 +30,18 @@ def _serve():
             initialized = True
         except OSError:
             pass
-        while (job := _jobs.get()) is not None:
+        while True:
+            # A persistent clipboard owner must service messages even between UIA jobs.
+            message = wintypes.MSG()
+            while u32.PeekMessageW(ctypes.byref(message), None, 0, 0, 1):
+                u32.TranslateMessage(ctypes.byref(message))
+                u32.DispatchMessageW(ctypes.byref(message))
+            try:
+                job = _jobs.get(timeout=0.02)
+            except queue.Empty:
+                continue
+            if job is None:
+                break
             future, fn, args = job
             try:
                 future.set_result(fn(*args) if initialized else None)

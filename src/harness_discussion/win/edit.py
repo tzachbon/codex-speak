@@ -101,8 +101,9 @@ def _inspect():
         if len(document) > MAX_DOCUMENT:
             return None
         text = span.GetText(MAX_DOCUMENT + 1)
-        collapsed = span.CompareEndpoints(uia.TextPatternRangeEndpoint.Start, span,
-                                          uia.TextPatternRangeEndpoint.End) == 0
+        # uiautomation 2.0.29 CompareEndpoints forgets to unwrap its second argument.
+        collapsed = span.textRange.CompareEndpoints(uia.TextPatternRangeEndpoint.Start, span.textRange,
+                                                   uia.TextPatternRangeEndpoint.End) == 0
         if collapsed != (text == ""):
             return None
         prefix = whole.Clone()
@@ -231,7 +232,9 @@ def select_back(n, ctx=None):
         if not check or not _matches(post, check[0]) or not candidate.Select(waitTime=0):
             return False
         result = _inspect()
-        return bool(result and result[0]._digest == post._digest
+        return bool(result and (result[0].app, result[0].window, result[0]._element)
+                    == (post.app, post.window, post._element)
+                    and not result[0].secure and result[0].editable and result[0]._digest == post._digest
                     and result[0]._start == post._start - len(_encoded(inserted)) // 2
                     and result[0]._end == post._end and _canonical(result[0].text) == _canonical(inserted))
     return bool(_run(select))
