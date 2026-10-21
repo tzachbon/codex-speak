@@ -31,6 +31,7 @@ class Toast:
     def __init__(self, root, on_action):
         """on_action(name) gets one of ACTIONS. The caller decides whether the toast stays."""
         self._hide_job = None
+        self._hovered = False
         icons, text = self.fonts = fonts(root)
         w = self.win = floating(root)
         self.label = tk.Label(w, bg=BG, fg=FG, font=(text, 10), padx=0, pady=0)
@@ -41,8 +42,8 @@ class Toast:
         for name in ACTIONS:
             parts = [(name.title(), (text, 10), FG)] + ([(CHEVRON, (icons, 7), FG)] if name == "mode" else [])
             self.buttons[name] = _FlatButton(w, lambda name=name: on_action(name), *parts)
-        w.bind("<Enter>", lambda _e: self._cancel_hide())
-        w.bind("<Leave>", lambda _e: self._schedule_hide())
+        w.bind("<Enter>", self._enter)
+        w.bind("<Leave>", self._leave)
 
     def show(self, message, actions=("undo", "review", "mode"), x=None, y=None):
         """Near (x, y), or the mouse pointer when not given. Replaces whatever the toast showed before."""
@@ -63,6 +64,7 @@ class Toast:
 
     def hide(self):
         self._cancel_hide()
+        self._hovered = False
         self.win.withdraw()
 
     def destroy(self):
@@ -80,7 +82,16 @@ class Toast:
 
     def _schedule_hide(self):
         self._cancel_hide()
-        self._hide_job = self.win.after(HIDE_MS, self.hide)
+        if not self._hovered:
+            self._hide_job = self.win.after(HIDE_MS, self.hide)
+
+    def _enter(self, _event):
+        self._hovered = True
+        self._cancel_hide()
+
+    def _leave(self, _event):
+        self._hovered = False
+        self._schedule_hide()
 
     def _cancel_hide(self):
         if self._hide_job:

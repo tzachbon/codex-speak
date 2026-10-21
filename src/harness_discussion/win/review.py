@@ -44,7 +44,7 @@ class Review:
         footer.grid(row=3, column=0, columnspan=2, sticky="e", padx="6p", pady="6p")
         hint = tk.Label(footer, text="Click a change to undo it", bg=BG, fg=SUBTLE, font=(text, 9))
         hint.pack(side="left", padx=(0, "8p"))
-        self.rewrite_btn = _FlatButton(footer, lambda: self.on_rewrite(self.result()), ("Rewrite again", (text, 10), FG))
+        self.rewrite_btn = _FlatButton(footer, self._rewrite, ("Rewrite again", (text, 10), FG))
         self.copy_btn = _FlatButton(footer, lambda: self.on_copy(self.result()), ("Copy", (text, 10), FG))
         self.replace_btn = _FlatButton(footer, self._replace, ("Replace", (text, 10, "bold"), ACCENT))
         for button in (self.rewrite_btn, self.copy_btn, self.replace_btn):
@@ -81,8 +81,10 @@ class Review:
         """False when the original selection is gone, so only Copy is left."""
         self.can_replace = can_replace
         self.replace_btn.parts[1]["fg"] = ACCENT if can_replace else DISABLED
-        for part in self.replace_btn.parts:
-            part["cursor"] = "hand2" if can_replace else "arrow"
+        self.rewrite_btn.parts[1]["fg"] = FG if can_replace else DISABLED
+        for button in (self.replace_btn, self.rewrite_btn):
+            for part in button.parts:
+                part["cursor"] = "hand2" if can_replace else "arrow"
 
     def result(self):
         return "".join(p if isinstance(p, str) else p[0] if p[2] else p[1] for p in self.parts)
@@ -100,6 +102,10 @@ class Review:
     def _replace(self):
         if self.can_replace:
             self.on_replace(self.result())
+
+    def _rewrite(self):
+        if self.can_replace:
+            self.on_rewrite(self.result())
 
     def _render(self):
         changes = sum(1 for p in self.parts if not isinstance(p, str) and not p[2])

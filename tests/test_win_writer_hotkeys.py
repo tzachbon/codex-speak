@@ -52,6 +52,17 @@ class ReadShortcut(unittest.TestCase):
 class HoldToDictate(unittest.TestCase):
     """With on_release, the down fires on the exact chord and the up fires once the chord is all released."""
 
+    def test_waits_for_both_physical_control_keys_to_release(self):
+        hotkey, downs, ups, press, release, _ = make("<ctrl>+<alt>+r", hold=True)
+        for key in (Key.ctrl_l, Key.ctrl_r, Key.alt_l, KeyCode(vk=0x52)):
+            press(key)
+        self.assertEqual(downs, [1])
+        for key in (Key.ctrl_l, Key.alt_l, KeyCode(vk=0x52)):
+            release(key)
+        self.assertEqual(ups, [])
+        release(Key.ctrl_r)
+        self.assertEqual(ups, [1])
+
     def test_down_fires_on_the_exact_chord_and_up_fires_after_the_full_release(self):
         hotkey, downs, ups, press, release, _ = make("<ctrl>+<alt>+r", hold=True)
         press(Key.ctrl_l)

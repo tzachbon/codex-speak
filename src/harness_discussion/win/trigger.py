@@ -51,6 +51,10 @@ def _name(key):
     return getattr(key, "vk", None) or getattr(getattr(key, "value", None), "vk", None)
 
 
+def _physical(key):
+    return getattr(key, "vk", None) or getattr(getattr(key, "value", None), "vk", None) or key
+
+
 class HotKey:
     """Fires once every key of the shortcut is up, so a borrowed Ctrl+C isn't sent as Ctrl+Alt+C.
     With on_release, fires at key-down instead and calls on_release once the chord is all up,
@@ -58,14 +62,14 @@ class HotKey:
 
     def __init__(self, spec, on_hotkey, on_release=None):
         mods, key = hotkeys.parse(spec)
-        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, VK[key]}, set()
+        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, VK[key]}, {}
         self._pending, self._armed = False, True  # armed blocks auto-repeat and a re-press during a partial release
         self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
         self._listener.start()
 
     def _press(self, key):
-        self._held.add(_name(key))
-        if not self._armed or self._held != self._keys:  # exactly the shortcut: Ctrl+Alt+Shift+R isn't Ctrl+Alt+R
+        self._held[_physical(key)] = _name(key)
+        if not self._armed or set(self._held.values()) != self._keys:
             return
         if self.on_release is None:
             self._pending = True
@@ -74,7 +78,7 @@ class HotKey:
         self.on_hotkey()
 
     def _release(self, key):
-        self._held.discard(_name(key))
+        self._held.pop(_physical(key), None)
         if self._held:
             return
         if self._pending:

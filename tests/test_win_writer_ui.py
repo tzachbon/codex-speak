@@ -99,6 +99,16 @@ class ToastTest(Base):
             pump(self.root, 0.15)  # a pending hide on a destroyed window would raise TclError here
         self.assertFalse(toast.visible)
 
+    def test_updating_a_hovered_toast_keeps_auto_hide_paused(self):
+        toast = self.make()
+        with patch.object(win_toast, "HIDE_MS", 50):
+            toast.show("one", x=200, y=200)
+            self.root.update()
+            toast.win.event_generate("<Enter>")
+            toast.show("two", x=200, y=200)
+            pump(self.root, 0.15)
+            self.assertTrue(toast.visible)
+
 OLD = "hey team, the deploy broke cause the env var wasnt set"
 NEW = "Hi team, the deploy failed because the env var wasn't set"
 
@@ -145,6 +155,7 @@ class ReviewTest(Base):
         review = self.make()
         review.show(OLD, NEW, can_replace=False)
         click(self.root, review.win, "Replace")
+        click(self.root, review.win, "Rewrite again")
         self.assertEqual(self.calls, [])
         review.set_can_replace(True)
         click(self.root, review.win, "Replace")
