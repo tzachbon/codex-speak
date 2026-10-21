@@ -30,6 +30,13 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(self.typed(Context("", 1, 2, True, True, FIELD, (5, 0))), (False, []))  # now secure
         self.assertEqual(self.typed(None), (False, []))
 
+    def test_rewrite_refuses_the_same_text_selected_elsewhere(self):
+        ctx = Context("word", 1, 2, True, False, FIELD, (5, 4))
+        with mock.patch.object(edit, "capture", return_value=Context("word", 1, 2, True, False, FIELD, (20, 4))), \
+                mock.patch.object(edit, "_paste") as paste:
+            self.assertFalse(edit.replace("Word", ctx))
+        paste.assert_not_called()
+
     def test_select_back_accepts_the_moved_caret_after_a_paste(self):
         with mock.patch.object(edit, "capture", return_value=Context("", 1, 2, True, False, FIELD, (9, 0))), \
                 mock.patch.object(edit, "_focused", return_value=None), mock.patch.object(edit, "_key"):

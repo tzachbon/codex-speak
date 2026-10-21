@@ -141,8 +141,8 @@ def _same_target(ctx, same_caret=False):
 
 
 def replace(text, ctx=None):
-    """Replaces the selection. False if the target moved or the app ignored the paste (same text still selected)."""
-    if not _same_target(ctx):
+    """Replaces the selection. False if the target or selection moved, or the app ignored the paste."""
+    if not _same_target(ctx, same_caret=True):
         return False
     pid = _frontmost_pid()
     before = _attr(_focused(pid), "AXSelectedText") if pid else None
