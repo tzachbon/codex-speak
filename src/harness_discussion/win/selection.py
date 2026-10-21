@@ -88,17 +88,15 @@ def _copy_on_worker(html):
             if not keys.chord(ord("C")):
                 return ""  # refused/partial input cannot establish ownership of a subsequent copy
             deadline = time.monotonic() + 0.3
-            while clipboard.sequence() == seq and time.monotonic() < deadline:
+            while (copied := clipboard.sequence()) == seq and time.monotonic() < deadline:
                 time.sleep(0.01)
-            if clipboard.sequence() == seq:
+            if copied == seq or _focus_identity() != origin or clipboard.owner_pid() != origin[0]:
                 return ""
             time.sleep(0.03)
-            copied = clipboard.sequence()
-            if clipboard.owner_pid() != origin[0]:
-                return ""  # a concurrent copy is not our selection and must not be overwritten
+            # Never adopt a later generation, even from the same application or field.
+            if clipboard.sequence() != copied or _focus_identity() != origin:
+                return ""
             try:
-                if _focus_identity() != origin:
-                    return ""
                 result = clipboard.read_owned_selection(copied, origin[0], html)
                 if result is None:
                     return ""

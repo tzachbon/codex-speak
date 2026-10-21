@@ -263,6 +263,34 @@ class InputSafety(unittest.TestCase):
 
 
 class CaptureSafety(unittest.TestCase):
+    def test_successful_copy_does_not_adopt_a_later_same_process_copy(self):
+        from harness_discussion.win import selection
+        for changed_focus in (False, True):
+            with self.subTest(changed_focus=changed_focus):
+                current, switched = [10], [False]
+                origin = (9, 42, (1, 2))
+                def copied(vk):
+                    current[0] = 11
+                    return True
+                def settle(seconds):
+                    if seconds == 0.03:
+                        current[0] = 12  # newer user copy, same owning application
+                        switched[0] = changed_focus
+                def identity():
+                    return (9, 42, (3, 4)) if switched[0] else origin
+                with patch.object(selection, "_via_uia", return_value=""), \
+                        patch.object(selection, "_focus_identity", side_effect=identity), \
+                        patch.object(clipboard, "snapshot_with_sequence", return_value=([], 10)), \
+                        patch.object(clipboard, "sequence", side_effect=lambda: current[0]), \
+                        patch.object(clipboard, "owner_pid", return_value=9), \
+                        patch.object(clipboard, "read_owned_selection", return_value=("newer user copy", 12)) as read, \
+                        patch.object(clipboard, "PreparedRestore") as prepared, \
+                        patch.object(selection.keys, "chord", side_effect=copied), \
+                        patch.object(selection.time, "sleep", side_effect=settle):
+                    self.assertEqual(selection.read(), "")
+                read.assert_not_called()
+                prepared.return_value.__enter__.return_value.apply.assert_not_called()
+
     def test_refused_copy_does_not_adopt_or_restore_a_same_app_user_copy(self):
         from harness_discussion.win import selection
         current = [10]
