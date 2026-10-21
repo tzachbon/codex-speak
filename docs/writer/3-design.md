@@ -74,7 +74,8 @@ class CodexWriter:
                                #   approvalPolicy:"never", sandboxPolicy:{type:"readOnly"}, outputSchema:{"type":"object",
                                #   "properties":{"text":{"type":"string"}},"required":["text"]}}; wait for turn/completed;
                                #   read the final agent message JSON .text
-# src/harness_discussion/llm_cursor.py  spike-gated, same Source protocol, protobuf like cursor_tts.encode/decode
+# src/harness_discussion/llm_cursor.py  CursorWriter over a warm `cursor-agent acp` process (S1 result),
+#   CursorStt over AiService/TranscribeAudio with the desktop sign-in, protobuf like cursor_tts
 # summarize.py: Server.complete(system, user, max_tokens) extracted from summarize(); summarize() calls it. A LocalWriter wraps it.
 ```
 

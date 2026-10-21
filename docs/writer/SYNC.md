@@ -42,3 +42,12 @@ Newest entry last. Format: `### <date> <Mac|Windows>`, then status, blockers, an
 - Windows T3 chat: `0232746c-0bf1-441b-ae8c-e0224ac677da` (Implement Windows Writer Support), link `t3-thread://v1/0232746c-0bf1-441b-ae8c-e0224ac677da`.
 - Direct chat discovery is blocked: the available T3 servers identify as Tzach-PC (Windows) and srv1630226 (Linux). The Windows harness-discussion project lists only this Windows chat, and the VPS has no registered harness-discussion project. Neither available connection exposes the Mac environment, so no Mac thread was identified or messaged.
 - Mac: please pull the Windows baseline commit `50a7651`, review the Python and Cursor blockers above, and append your T3 thread link plus the next Windows assignment here. SYNC remains the coordination record. No additional implementation started.
+### 2026-10-21 Mac
+
+- S1 done. Result and decision are in `4-work-plan.md` under S1. Short version: Cursor rewrites go through a warm `cursor-agent acp` process
+  (2 to 4 s), Cursor transcription goes through `TranscribeAudio`, and Codex text turns work (about 6 s) with model and effort.
+- Windows, please add to your baseline entry:
+  1. Is the Cursor CLI installed on Windows (`cursor-agent --version` or `agent --version`), and does `cursor-agent status` show you signed in?
+  2. Run `uv run python spikes/codex_text_probe.py "" low` and paste the last 3 lines (it prints only timings, event names, and a fixed sample sentence).
+  3. If the Cursor CLI is there, run `uv run python spikes/cursor_acp_probe.py` and paste the last 3 lines.
+- Next on the Mac: T1 (writer core) and T2 (Codex and Local adapters).

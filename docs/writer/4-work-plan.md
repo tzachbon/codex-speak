@@ -4,6 +4,19 @@ Suggested PR stack, each on top of the previous one: PR1 = S1 + T1 + T2, PR2 = T
 
 ### S1. Cursor RPC spike (time-boxed to 1 working day)
 
+**Result (2026-10-21, Mac): passed, with a change of transport for chat.** Probes are in `spikes/`.
+- `AiService/TranscribeAudio` (desktop sign-in, unary protobuf: 1 `audio` bytes, 2 `mime_type`, 3 `language` optional, reply 1 `text`) returned an exact transcript.
+- `AiService/AvailableModels` listed 24 models with a `supports_thinking` flag.
+- `AiService/StreamChat` and `ChatService/StreamUnifiedChat` reply `ERROR_DEPRECATED`. Not usable.
+- `cursor-agent -p` works but takes 33 to 43 s per call. Too slow.
+- A warm `cursor-agent acp` process (Agent Client Protocol, JSON-RPC over stdio) rewrites in 1.8 to 3.5 s after a 4 s start. `session/new` returns
+  `models.availableModels` with bracket parameters for effort (for example `claude-opus-5-5[context=300k,effort=medium,fast=false]`) and `modes` agent, plan, ask.
+- Codex for comparison (`spikes/codex_text_probe.py`): 0.7 s start, 5.7 s turn, 7 visible models with their effort lists.
+
+**Decision:** `CursorWriter` drives a warm `cursor-agent acp` process in `ask` mode, refuses every permission request, and uses an empty temp `cwd`.
+`CursorStt` uses `TranscribeAudio` with the desktop sign-in. The Cursor writer needs the Cursor CLI installed and signed in (`cursor-agent status`),
+so Settings shows Install and Sign in fixes for it like the other sources.
+
 **Purpose:** decide R13. **Starting context:** `cursor_tts.py` shows how to encode, call, and decode. Field numbers come from the Cursor bundle
 `/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js` (search `AvailableModels`, `StreamChat`,
 `TranscribeAudio`, then the generated `fields` arrays next to each message class).
@@ -42,7 +55,9 @@ mark that Cursor capability hidden (R13), note it in the plan's open items, and 
 
 ### T3. Cursor adapter (only if S1 passed)
 
-- [ ] `llm_cursor.CursorWriter` and `CursorStt` using the S1 field maps. The same `_NoRedirect` opener and error policy as `cursor_tts`.
+- [ ] `llm_cursor.CursorWriter`: one warm `cursor-agent acp` process started on first use and stopped after 300 s idle. A new session per rewrite, in `ask` mode,
+      `session/set_model` from the saved model id. It refuses every client request and collects `agent_message_chunk` text. Status comes from `cursor-agent status`.
+- [ ] `llm_cursor.CursorStt`: `TranscribeAudio` with the same `_NoRedirect` opener and error policy as `cursor_tts`.
 - [ ] Unit tests on encode and decode with recorded byte fixtures (no network).
 
 **Gate:** a manual rewrite and transcript through Cursor. **Failure:** keep the module out of the chain (R13).
