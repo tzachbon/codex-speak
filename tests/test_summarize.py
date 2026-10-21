@@ -125,7 +125,9 @@ class ServerTest(unittest.TestCase):
         body = sent[0]
         self.assertEqual(body["chat_template_kwargs"], {"enable_thinking": False})
         self.assertIn("in Hebrew", body["messages"][0]["content"])
-        self.assertEqual(len(body["messages"][1]["content"]), summarize.MAX_CHARS)
+        user = body["messages"][1]["content"]
+        self.assertTrue(user.startswith("<text>\n") and user.endswith("\n</text>"))
+        self.assertEqual(len(user), summarize.MAX_CHARS + len("<text>\n\n</text>"))
 
     def test_an_empty_reply_is_an_error(self):
         server = summarize.Server()

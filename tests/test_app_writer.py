@@ -132,7 +132,7 @@ class DictationTest(unittest.TestCase):
         self.app.drain()
         self.assertEqual(self.app.host.edit.pasted, ["Hi there."])
         self.assertEqual(self.app.host.edit.ctxs, [CTX])  # typed only into the field captured at key down
-        self.assertEqual(self.app.writer_sources[0].texts, ["i thinks so"])
+        self.assertEqual(self.app.writer_sources[0].texts, [writer.wrap("i thinks so")])
         self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Fix errors · Cursor")
 
     def test_a_tap_cancels(self):
@@ -215,7 +215,7 @@ class FlowTest(unittest.TestCase):
         mode_menu = app.toast_.action("Mode")
         dict((t, fn) for t, fn, _ in mode_menu)["Email"]()
         app.drain()
-        self.assertEqual(app.writer_sources[0].texts, ["hi there ", "hi there "])
+        self.assertEqual(app.writer_sources[0].texts, [writer.wrap("hi there ")] * 2)
         self.assertEqual(app.host.edit.pasted, ["Hi there. ", "Hello there! "])
         self.assertEqual(app.toast_.shown[-1][0], "Email · Cursor")
 

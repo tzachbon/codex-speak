@@ -1,0 +1,7 @@
+The new release changes how the app reads long selections. Before, the voice sometimes stopped after the first few sentences, or it skipped a paragraph in the middle. Now the app sends the text in pieces, and it waits for each piece to finish before it sends the next one.
+
+The settings page has two new options. The first option sets the reading speed, from slow to fast. The second option chooses whether links are read as their site name or skipped. Both options apply to the next selection, not to one that is already playing.
+
+We tested the change on Windows and on macOS with English and Hebrew text. On Windows, every test read was complete. On macOS, two reads lost the connection, and the app tried again on its own. If a read still fails, the app shows a short message and you can press the shortcut again.
+
+Please report any read that stops early. Include the length of the text and the language, but do not send the text itself.
