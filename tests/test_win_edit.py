@@ -249,6 +249,27 @@ class InputSafety(unittest.TestCase):
 
 
 class CaptureSafety(unittest.TestCase):
+    def test_worker_shutdown_does_not_finalize_unreachable_tk_objects(self):
+        code = '''
+import gc
+import tkinter as tk
+from harness_discussion.win import uia_thread
+gc.disable()
+uia_thread.run(lambda: None)
+root = tk.Tk()
+root.withdraw()
+variable = tk.StringVar(root, value="synthetic")
+variable.cycle = variable
+root.destroy()
+del root, variable
+uia_thread.close()
+gc.collect()  # Tk objects must be finalized on their owning main thread.
+print("clean shutdown")
+'''
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "clean shutdown")
+
     def test_blind_reader_never_copies_when_user_copy_can_precede_first_sample(self):
         from harness_discussion.win import selection
         document = Document()

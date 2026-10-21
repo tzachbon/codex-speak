@@ -1,5 +1,4 @@
 """One apartment owns UIA's process-global cached client and every provider call."""
-import gc
 import ctypes
 import queue
 import threading
@@ -50,8 +49,11 @@ def _serve():
     finally:
         # uiautomation 2.0.29 caches interfaces globally, beyond individual Control wrappers.
         if initialized:
+            client = automation._AutomationClient._instance
             automation._AutomationClient._instance = None
-            gc.collect()
+            if client is not None:
+                client.ViewWalker = None
+                client.IUIAutomation = None
             comtypes.CoUninitialize()
 
 
