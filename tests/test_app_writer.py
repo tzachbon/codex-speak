@@ -157,6 +157,14 @@ class DictationTest(unittest.TestCase):
         self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Codex")
         self.assertIn("rewrite -)", "\n".join(logs.output))
 
+    def test_the_timings_are_logged_even_when_the_window_changed(self):
+        with self.assertLogs("harness_discussion", level="INFO") as logs:
+            self.hold(2)
+            self.app.host.edit.ctx = None
+            self.app.drain()
+        self.assertEqual(self.app.host.edit.pasted, [])
+        self.assertRegex("\n".join(logs.output), r"dictated 9 chars with Codex then Cursor in \d+\.\ds")
+
     def test_key_down_prewarms_the_first_writer_only_when_polish_is_on(self):
         calls = []
         self.app.writer_sources[0].prewarm = calls.append

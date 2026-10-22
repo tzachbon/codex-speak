@@ -23,6 +23,7 @@ IDLE_S = 300
 TIMEOUT_S = 60
 READY_TTL_S = 60  # a confirmed sign-in is trusted this long; other answers are never cached
 SPARE_TTL_S = 60  # a pre-warmed session older than this is not used
+PREWARM_WAIT_S = 3  # how long a rewrite waits for an unfinished prewarm before setting up its own session
 log = logging.getLogger("harness_discussion")
 _ready_at = float("-inf")
 STT_URL = "https://api2.cursor.sh/aiserver.v1.AiService/TranscribeAudio"
@@ -132,6 +133,8 @@ class CursorWriter:
         self._acp, self._models, self._used, self._lock = None, None, 0.0, threading.Lock()
         self._timer, self._one = None, threading.Lock()  # one rewrite reads the shared update queue at a time
         self._spare = None  # (acp, session id, model, created): a fresh session for the next rewrite
+        self._prewarmed = threading.Event()  # cleared while a prewarm sets up the spare
+        self._prewarmed.set()
 
     def status(self):
         return login_status()
@@ -185,6 +188,7 @@ class CursorWriter:
         return self._models or []
 
     def rewrite(self, system, text, model, effort, cancelled):
+        self._prewarmed.wait(PREWARM_WAIT_S)
         with self._one:
             return self._rewrite(system, text, model, cancelled)
 
@@ -193,20 +197,23 @@ class CursorWriter:
 
     def prewarm(self, model):
         """Start the agent and one session with `model` set, so the next rewrite only sends its prompt. Never raises."""
-        try:
+        if not self._prewarmed.is_set():
+            return
+        self._prewarmed.clear()
+        try:  # outside _one: setup reads no updates, and a hung session/new must not hold up the rewrite
             if self.status() != "ready":
                 return
-            with self._one:
-                acp = self._warm()
-                if self._fresh(self._spare, acp, model):
-                    return
-                sid = self._session(acp)
-                if model:
-                    acp.call("session/set_model", {"sessionId": sid, "modelId": model})
-                self._spare = (acp, sid, model, time.monotonic())
+            acp = self._warm()
+            if self._fresh(self._spare, acp, model):
+                return
+            sid = self._session(acp)
+            if model:
+                acp.call("session/set_model", {"sessionId": sid, "modelId": model})
+            self._spare = (acp, sid, model, time.monotonic())
         except Exception as e:
             log.info("Cursor prewarm failed: %s", type(e).__name__)
         finally:
+            self._prewarmed.set()
             self._arm_idle_stop()
 
     def _rewrite(self, system, text, model, cancelled):

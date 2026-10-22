@@ -14,11 +14,14 @@ class FakeAcp:
 
     def __init__(self, chunks=("Fixed", " text."), stop="end_turn"):
         self.calls, self.notes, self.updates, self._chunks, self.closed = [], [], queue.Queue(), chunks, False
-        self.stop, self.sessions, self.fail_new = stop, 0, 0
+        self.stop, self.sessions, self.fail_new, self.gate = stop, 0, 0, None
 
     def call(self, method, params, timeout=20):
         self.calls.append((method, params))
         if method == "session/new":
+            gate, self.gate = self.gate, None
+            if gate:
+                gate.wait(2)
             if self.fail_new:
                 self.fail_new -= 1
                 raise RuntimeError("session/new failed")
@@ -132,6 +135,16 @@ class CursorWriterTest(unittest.TestCase):
         self.acp.fail_new = 1
         self.prewarmed()
         self.assertEqual(self.source.rewrite("S", "a", "m", None, lambda: False), "Fixed text.")
+
+    def test_a_hung_prewarm_holds_up_the_rewrite_only_briefly(self):
+        self.acp.gate = gate = threading.Event()
+        warming = threading.Thread(target=self.prewarmed)
+        warming.start()
+        with mock.patch.object(llm_cursor, "PREWARM_WAIT_S", 0.1):
+            self.assertEqual(self.source.rewrite("S", "a", "m", None, lambda: False), "Fixed text.")
+        self.assertFalse(gate.is_set())  # the rewrite finished while the prewarm was still stuck
+        gate.set()
+        warming.join(2)
 
     def test_a_signed_out_prewarm_does_nothing(self):
         with mock.patch.object(llm_cursor, "login_status", return_value="signed_out"):

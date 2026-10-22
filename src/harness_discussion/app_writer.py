@@ -332,11 +332,15 @@ class Writer:
             self.toast.hide()
             return
         if isinstance(result, Exception):
-            log.info("dictation failed: %s after %.1fs", type(result).__name__, time.monotonic() - released)
+            log.info("dictation failed: %s after %.1fs (transcribe %s)", type(result).__name__,
+                     time.monotonic() - released, f"{stt_s:.1f}s" if stt_s is not None else "-")
             safe = isinstance(result, (writer.Error, dictation.Error))
             self._toast(str(result) if safe else "Could not finish the dictation.", at=at)
             return
         text, stt_name, source = result
+        log.info("dictated %d chars with %s%s in %.1fs (transcribe %.1fs, rewrite %s)", len(text), stt_name,
+                 f" then {source}" if source else "", time.monotonic() - released, stt_s,
+                 f"{rewrite_s:.1f}s" if rewrite_s is not None else "-")
         ctx, now = self._dictate_ctx, self.edit.capture(False)
         copy = lambda: self.host.copy_text(text)
         if ctx is None or now is None or (now.app, now.window) != (ctx.app, ctx.window) or now.secure:
@@ -345,9 +349,6 @@ class Writer:
         if not self.edit.type_at_caret(text, ctx):
             self._toast("Couldn't type here.", [("Copy", copy)], at=at)
             return
-        log.info("dictated %d chars with %s%s in %.1fs (transcribe %.1fs, rewrite %s)", len(text), stt_name,
-                 f" then {source}" if source else "", time.monotonic() - released, stt_s,
-                 f"{rewrite_s:.1f}s" if rewrite_s is not None else "-")
         self._toast(f"Dictated · {mode} · {source}" if mode else f"Dictated · {stt_name}", [("Copy", copy)], at=at)
 
     def _escape(self):
