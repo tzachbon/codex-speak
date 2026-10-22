@@ -3,9 +3,10 @@ import ctypes
 import os
 
 import AppKit
-from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
-                                 AXUIElementCreateSystemWide, AXUIElementSetAttributeValue,
-                                 AXUIElementSetMessagingTimeout, kAXErrorSuccess)
+from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCopyParameterizedAttributeValue,
+                                 AXUIElementCreateApplication, AXUIElementCreateSystemWide,
+                                 AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, AXValueGetValue,
+                                 kAXErrorSuccess, kAXValueCGRectType)
 
 from .. import richtext
 from . import pasteboard, permission
@@ -63,6 +64,23 @@ def _in_web(element):
             return False
         element = _attr(element, "AXParent")
     return False
+
+
+def bounds():
+    """Top-left of the selected text in the frontmost app, top-left based like the pointer, or None."""
+    pid = _frontmost_pid()
+    element = _attr(AXUIElementCreateApplication(pid), "AXFocusedUIElement") if pid else None
+    for _ in range(6):
+        if element is None:
+            return None
+        span = _attr(element, "AXSelectedTextRange")
+        if span is not None:
+            err, value = AXUIElementCopyParameterizedAttributeValue(element, "AXBoundsForRange", span, None)
+            ok, rect = AXValueGetValue(value, kAXValueCGRectType, None) if err == kAXErrorSuccess else (False, None)
+            # some apps answer an empty rect, so the caller falls back to the pointer
+            return (rect.origin.x, rect.origin.y) if ok and rect.size.width and rect.size.height else None
+        element = _attr(element, "AXParent")
+    return None
 
 
 def _frontmost_pid():

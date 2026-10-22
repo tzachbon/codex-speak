@@ -72,7 +72,7 @@ After an update, macOS can stop trusting the app even though System Settings sti
 
 ## Use
 
-1. Select text with the mouse (drag or double-click).
+1. Select text with the mouse (drag or double-click). On a Mac, ⇧+arrows and ⌘A work too.
 2. Press ▶ on the bar. The language menu defaults to Auto.
 3. Pick a speed from the bar's speed menu, and a source from its source menu.
 4. ⏸ pauses and ▶ continues. ■ stops. ⏮ and ⏭ move by a sentence. Selecting new text while paused replaces the paused read.
@@ -164,7 +164,7 @@ Use *Settings > Apps > Harness Discussion*. This removes the app, its sign-in ta
 - In testing, 5 of 16 long Codex reads had a fault: 2 lost the connection, 1 stopped early, and 2 said "Read it." aloud between pieces. Silence falls back automatically. An early stop does not.
 - When Codex reads first, each popup shown pre-starts a short Codex voice session.
 - Choosing a language from the menu moves keyboard focus away from the source app. The text is already captured.
-- Only mouse selections trigger the bar. Keyboard selections (Shift+arrows) don't.
+- On a Mac, keyboard selections also show the bar: ⇧ with an arrow, Home, End, or a page key, and ⌘A. It appears once you let go of the modifiers, above the selected text, or at the pointer when the app doesn't report where the selection is. On Windows, only mouse selections trigger the bar.
 - Kokoro's first sentence after the app starts takes about 2 seconds while the model loads.
 - Pausing the Windows voice takes effect after about a second, because SAPI keeps playing audio it has already buffered. Codex and Edge pause at once.
 
