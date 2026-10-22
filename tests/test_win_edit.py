@@ -452,8 +452,14 @@ print("clean shutdown")
                 with target(focused), native_host(window):
                     self.assertEqual(selection.read(False), "")
                     captured = edit.capture(False)
-                    self.assertTrue(captured is None or captured.secure)
+                    if value is True:
+                        self.assertIsInstance(captured, edit.Context)
+                        self.assertTrue(captured.secure)
+                        self.assertEqual(captured.text, "")
+                    else:
+                        self.assertIsNone(captured)
                 document.GetPattern.assert_not_called()
+                window.GetPattern.assert_not_called()
 
     def test_host_boundary_requires_exact_native_identity(self):
         from harness_discussion.win import edit, selection
