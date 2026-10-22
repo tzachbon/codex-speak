@@ -25,11 +25,15 @@ def floating(root, **options):
     return w
 
 
-def place(w, x, y):
-    """Below the point, kept inside the work area of its monitor."""
+def place(w, x, y, above=None):
+    """Below the point, kept inside the work area of its monitor. With `above`, the top of the bar the point is
+    under: at the point itself, or above the bar when there is no room under it."""
     w.update_idletasks()
     area, width, height = work_area(x, y), w.winfo_reqwidth(), w.winfo_reqheight()
-    top = y + 16 if y + 16 + height <= area.bottom else y - height - 14
+    if above is None:
+        top = y + 16 if y + 16 + height <= area.bottom else y - height - 14
+    else:
+        top = y if y + height <= area.bottom else above - height - 6
     w.geometry(f"+{max(area.left, min(x - width // 2, area.right - width))}+{max(area.top, top)}")
 
 
@@ -56,7 +60,7 @@ class Toast:
         w.bind("<Enter>", self._enter)
         w.bind("<Leave>", self._leave)
 
-    def show(self, message, x=None, y=None, actions=None, busy=False):
+    def show(self, message, x=None, y=None, actions=None, busy=False, above=None):
         """Show at (x, y), or the pointer. Shared actions are (title, fn) or (title, [(title, fn, checked)])."""
         self._close_menu()
         self._clear_shared_actions()
@@ -90,7 +94,7 @@ class Toast:
 
         if x is None or y is None:
             x, y = self.win.winfo_pointerxy()
-        place(self.win, x, y)
+        place(self.win, x, y, above)
         self.win.deiconify()
         self._busy = bool(busy)
         if self._busy:

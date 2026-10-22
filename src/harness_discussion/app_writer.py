@@ -105,15 +105,17 @@ class Writer:
         return writer.find_mode(name or self.cfg["default_mode"], modes)
 
     def _anchor(self):
+        """Where a toast goes: under a visible bar, which stays up showing "Rewriting…", or by the pointer.
+        The third value is the bar's top, for the toast to sit above the bar when there is no room under it."""
         if self.popup.visible:
             x, y, h = self.popup.anchor()
-            return x, y
+            return x, y + h + 6, y
         x, y = self.host.pointer()
-        return x + 12, y + 16
+        return x + 12, y + 16, None
 
     def _toast(self, message, actions=(), busy=False, at=None):
-        x, y = at or self._anchor()
-        self.toast.show(message, x, y, actions, busy)
+        x, y, above = at or self._anchor()
+        self.toast.show(message, x, y, actions, busy, above=above)
         self._watch_escape()
 
     def _watch_escape(self):

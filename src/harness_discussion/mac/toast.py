@@ -33,11 +33,10 @@ class Toast:
         self.spinner.setControlSize_(AppKit.NSControlSizeSmall)
         self.row = ui.stack([self.spinner, self.label], vertical=False, spacing=8)
         self.row.setEdgeInsets_((8, 14, 8, 10))
-        effect = AppKit.NSVisualEffectView.alloc().init()
+        effect = self.effect = AppKit.NSVisualEffectView.alloc().init()
         effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
         effect.setState_(AppKit.NSVisualEffectStateActive)
         effect.setWantsLayer_(True)
-        effect.layer().setCornerRadius_(21)
         effect.layer().setMasksToBounds_(True)
         effect.layer().setBorderWidth_(0.5)
         effect.layer().setBorderColor_(ui.cg(AppKit.NSColor.colorWithWhite_alpha_(1, 0.15)))
@@ -70,9 +69,10 @@ class Toast:
     def message(self):
         return str(self.label.stringValue())
 
-    def show(self, message, x, y, actions=(), busy=False):
+    def show(self, message, x, y, actions=(), busy=False, above=None):
         """actions: (title, fn) for a button, or (title, [(title, fn, checked)]) for a menu button.
-        x, y: the top-left point to show it at. A busy toast spins and stays until replaced."""
+        x, y: the top-left point to show it at. A busy toast spins and stays until replaced.
+        above: the top of the bar it sits under, to go above the bar instead when there is no room under it."""
         for view in self.actions:
             self.row.removeArrangedSubview_(view)
             view.removeFromSuperview()
@@ -91,9 +91,13 @@ class Toast:
         p = self.win
         p.setContentSize_(p.contentView().fittingSize())
         w, h = p.frame().size.width, p.frame().size.height
-        area = _screen_at(x, y).visibleFrame()
+        self.effect.layer().setCornerRadius_(h / 2)  # a full pill at any height, as the bar is
+        area = _screen_at(x, y if above is None else above).visibleFrame()  # the bar's screen, not past its edge
         area_top = _cocoa_y(area.origin.y + area.size.height)
-        top = max(area_top, min(y, area_top + area.size.height - h))
+        area_bottom = area_top + area.size.height
+        if above is not None and y + h > area_bottom:
+            y = above - h - 6
+        top = max(area_top, min(y, area_bottom - h))
         left = max(area.origin.x, min(x, area.origin.x + area.size.width - w))
         p.setFrameOrigin_((left, _cocoa_y(top + h)))
         p.orderFrontRegardless()

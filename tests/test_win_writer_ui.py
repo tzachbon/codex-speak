@@ -223,6 +223,18 @@ class ToastTest(Base):
 OLD = "hey team, the deploy broke cause the env var wasnt set"
 NEW = "Hi team, the deploy failed because the env var wasn't set"
 
+class PlaceTest(unittest.TestCase):
+    def test_under_the_bar_or_above_it_when_there_is_no_room(self):
+        geometry = []
+        w = type("W", (), {"update_idletasks": lambda s: None, "winfo_reqwidth": lambda s: 200,
+                           "winfo_reqheight": lambda s: 32, "geometry": lambda s, g: geometry.append(g)})()
+        area = type("Area", (), {"left": 0, "top": 0, "right": 1000, "bottom": 300})()
+        with patch.object(win_toast, "work_area", lambda x, y: area):
+            win_toast.place(w, 300, 248, above=200)  # fits under the bar
+            win_toast.place(w, 300, 290, above=242)  # no room: above the bar
+            win_toast.place(w, 300, 100)  # no bar: by the pointer, as before
+        self.assertEqual(geometry, ["+200+248", "+200+204", "+200+116"])
+
 class ReviewTest(Base):
     def make(self):
         self.calls = []
