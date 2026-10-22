@@ -12,6 +12,7 @@ from unittest.mock import patch
 from PIL import Image
 from harness_discussion import settings
 from harness_discussion.win import settings_ui
+from harness_discussion.win.trigger import key_name
 
 CATALOGS = {"Codex": [{"id": "gpt-5.5", "label": "GPT-5.5", "efforts": ["low", "medium", "high"],
                        "default_effort": "medium"},
@@ -198,6 +199,27 @@ class WritingSettingsUi(unittest.TestCase):
         self.assertEqual(self.changes[-1], ("hotkey", "<ctrl>+<alt>+t"))
         self.assertEqual(w.hotkey_lbl["text"], "Ctrl+Alt+T")
         self.assertEqual(recording, [True, False])
+
+    def test_any_key_records_alone_or_with_modifiers(self):
+        recording = []
+        w = self.make_window(on_record=recording.append)
+        w._record_hotkey()
+        self.press(w, 0x11, 0)  # Ctrl alone waits for the key
+        self.assertEqual(w.hotkey_lbl["text"], "Press keys…")
+        self.press(w, 0xC0, 0x4)  # Ctrl+`
+        self.assertEqual(self.changes[-1], ("hotkey", "<ctrl>+<key_192>"))
+        self.assertEqual(w.hotkey_lbl["text"], "Ctrl+" + key_name(0xC0))
+        for keycode, state, spec in ((0x7C, 0, "<key_124>"), (ord("C"), 0x4, "<ctrl>+c"), (0x20, 0, "<key_32>")):
+            w._record_hotkey()
+            self.press(w, keycode, state)  # F13, Ctrl+C, and Space alone
+            self.assertEqual(self.changes[-1], ("hotkey", spec))
+        self.assertIsNone(w._recording)
+        self.assertEqual(recording[-1], False)
+        with patch("harness_discussion.win.shortcut_row.win_down", return_value=True):
+            w._record_hotkey()
+            self.press(w, 0x74, 0)  # Win+F5: Tk's state has no Win bit
+        self.assertEqual(self.changes[-1], ("hotkey", "<cmd>+<f5>"))
+        self.assertEqual(w.hotkey_lbl["text"], "Win+F5")
 
     def test_legacy_setter_still_targets_read_after_rewrite_recording_is_cancelled(self):
         w = self.make_window()

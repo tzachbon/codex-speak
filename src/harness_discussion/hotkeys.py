@@ -1,9 +1,10 @@
 """The read-selection shortcut, stored as a pynput hotkey string such as "<ctrl>+<alt>+r"."""
+import re
 import sys
 
 MODS = ("ctrl", "alt", "shift", "cmd")  # display order
 KEYS = {*"abcdefghijklmnopqrstuvwxyz0123456789", *(f"f{n}" for n in range(1, 13))}
-COPY = {(frozenset({"ctrl"}), "c"), (frozenset({"cmd"}), "c")}  # the clipboard fallback sends these
+CODE = re.compile(r"key_[0-9]{1,3}")  # any other key by its code: macOS keyCode or Windows virtual key, both < 256
 DEFAULT = "<cmd>+<alt>+r" if sys.platform == "darwin" else "<ctrl>+<alt>+r"
 # Windows avoids Ctrl+Alt: AltGr sends it, so AltGr+E (€ on many layouts) would also start a rewrite
 REWRITE = "<cmd>+<alt>+e" if sys.platform == "darwin" else "<ctrl>+<shift>+e"
@@ -18,7 +19,7 @@ def conflict(cfg, key, spec):
 
 
 def parse(spec):
-    """(modifiers, key) for a valid shortcut with at least one modifier, else None."""
+    """(modifiers, key) for a valid shortcut, with or without modifiers, else None."""
     if not isinstance(spec, str) or not spec:
         return None
     mods, keys = set(), []
@@ -26,12 +27,11 @@ def parse(spec):
         name = part[1:-1] if part.startswith("<") and part.endswith(">") else part
         if part == f"<{name}>" and name in MODS:
             mods.add(name)
-        elif name in KEYS and (part == name) == (len(name) == 1):  # letters bare, function keys in <>
+        elif (name in KEYS or CODE.fullmatch(name)) and (part == name) == (len(name) == 1):  # a letter bare, others in <>
             keys.append(name)
         else:
             return None
-    parsed = (frozenset(mods), keys[0]) if mods and len(keys) == 1 else None
-    return None if parsed in COPY else parsed
+    return (frozenset(mods), keys[0]) if len(keys) == 1 else None
 
 
 def spec(mods, key):
@@ -45,12 +45,23 @@ def mac_mods(mods):
     return "".join({"ctrl": "⌃", "alt": "⌥", "shift": "⇧", "cmd": "⌘"}[m] for m in MODS if m in mods)
 
 
+def key_label(key):
+    """How a key reads in Settings; a key stored by code is named by the current keyboard layout."""
+    if not key.startswith("key_"):
+        return key.upper()
+    if sys.platform == "darwin":
+        from .mac.trigger import key_name
+    else:
+        from .win.trigger import key_name
+    return key_name(int(key[4:]))
+
+
 def label(text):
     parsed = parse(text)
     if not parsed:
         return "Off"
     mods, key = parsed
     if sys.platform == "darwin":
-        return mac_mods(mods) + key.upper()
+        return mac_mods(mods) + key_label(key)
     return "+".join([{"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Win"}[m] for m in MODS if m in mods]
-                    + [key.upper()])
+                    + [key_label(key)])

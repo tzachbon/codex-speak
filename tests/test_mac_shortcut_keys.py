@@ -1,0 +1,56 @@
+"""Shortcut keys on macOS: what a key press records, how Settings names it, and how it fires."""
+import sys
+import unittest
+from unittest import mock
+
+if sys.platform != "darwin":
+    raise unittest.SkipTest("macOS only")
+
+import AppKit  # noqa: E402
+
+from harness_discussion import hotkeys  # noqa: E402
+from harness_discussion.mac import trigger  # noqa: E402
+
+
+def key_event(code, flags=0, kind=AppKit.NSEventTypeKeyDown):
+    return mock.Mock(type=lambda: kind, keyCode=lambda: code, modifierFlags=lambda: flags, isARepeat=lambda: False)
+
+
+class ShortcutKeyTest(unittest.TestCase):
+    def test_any_key_makes_a_shortcut_with_or_without_modifiers(self):
+        cmd, shift = AppKit.NSEventModifierFlagCommand, AppKit.NSEventModifierFlagShift
+        self.assertEqual(trigger.event_spec(key_event(50, cmd)), "<cmd>+<key_50>")  # ⌘`
+        self.assertEqual(trigger.event_spec(key_event(50, cmd | shift)), "<shift>+<cmd>+<key_50>")
+        self.assertEqual(trigger.event_spec(key_event(0)), "a")
+        self.assertEqual(trigger.event_spec(key_event(8, cmd)), "<cmd>+c")
+        self.assertEqual(trigger.event_spec(key_event(10)), "<key_10>")  # the ISO key above Tab
+        self.assertEqual(trigger.event_spec(key_event(122)), "<f1>")
+
+    def test_keys_that_type_nothing_have_fixed_names(self):
+        self.assertEqual([trigger.key_name(c) for c in (49, 123, 105)], ["Space", "←", "F13"])
+
+    def test_other_keys_show_what_the_layout_types(self):
+        for typed, code, name in (("ü", 33, "Ü"), ("", 93, "Key 93"), ("\x10", 94, "Key 94"), ("1", 83, "Keypad 1")):
+            with mock.patch.object(trigger, "_typed", return_value=typed):
+                self.assertEqual(trigger.key_name(code), name)
+        self.assertTrue(trigger.key_name(50))  # the real layout lookup answers
+        self.assertEqual(hotkeys.label("<cmd>+<key_50>"), "⌘" + trigger.key_name(50))
+
+    def hotkey(self, spec, on_release=None):
+        hk = object.__new__(trigger.HotKey)  # skips installing the system monitors
+        hk.keys, hk.on_hotkey, hk.on_release, hk._held = hotkeys.parse(spec), mock.Mock(), on_release, None
+        return hk
+
+    def test_a_key_alone_fires_and_a_held_one_reports_release(self):
+        hk = self.hotkey("a")
+        hk._event(key_event(0))
+        hk.on_hotkey.assert_called_once()
+        hold = self.hotkey("<key_50>", on_release=mock.Mock())
+        hold._event(key_event(50))
+        hold._event(key_event(50, kind=AppKit.NSEventTypeKeyUp))
+        hold.on_hotkey.assert_called_once()
+        hold.on_release.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

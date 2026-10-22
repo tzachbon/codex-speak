@@ -6,6 +6,9 @@ from . import trigger, ui
 
 SHORTCUT_TITLES = {"hotkey": "Read shortcut", "rewrite_hotkey": "Rewrite shortcut",
                    "dictate_hotkey": "Dictation shortcut (hold)"}
+WINDOW_KEYS = {hotkeys.parse("<cmd>+<key_50>"), hotkeys.parse("<shift>+<cmd>+<key_50>")}  # ⌘` and ⇧⌘`
+WINDOW_HINT = ("macOS also switches windows with this shortcut. To stop that, turn off “Move focus to next "
+               "window” in System Settings → Keyboard → Keyboard Shortcuts → Keyboard.")
 
 
 class ReadingPage:
@@ -25,20 +28,26 @@ class ReadingPage:
     def _shortcut_row(self, key="hotkey"):
         from .settings_ui import WIDTH, _spacer
         if not hasattr(self, "shortcut_labels"):
-            self.shortcut_labels = {}
-        label = self.shortcut_labels[key] = ui.label(hotkeys.label(self.cfg[key]), 13, bold=True)
+            self.shortcut_labels, self.shortcut_hints = {}, {}
+        label = self.shortcut_labels[key] = ui.label("", 13, bold=True)
         row = ui.stack([ui.label(SHORTCUT_TITLES[key], 13), _spacer(), label,
                         ui.button("Change…", lambda: self._record_hotkey(key)),
                         ui.button("Off", lambda: self._set_hotkey("", key))], vertical=False, spacing=8)
         row.widthAnchor().constraintEqualToConstant_(WIDTH).setActive_(True)
-        return row
+        self.shortcut_hints[key] = ui.label(WINDOW_HINT, 11, secondary=True, width=WIDTH)
+        self._show_shortcut(key)
+        return ui.stack([row, self.shortcut_hints[key]], spacing=4)  # the stack drops the hint while it's hidden
+
+    def _show_shortcut(self, key, text=None):
+        self.shortcut_labels[key].setStringValue_(text or hotkeys.label(self.cfg[key]))
+        self.shortcut_hints[key].setHidden_(hotkeys.parse(self.cfg[key]) not in WINDOW_KEYS)
 
     @property
     def hotkey_label(self):
         return self.shortcut_labels["hotkey"]
 
     def _record_hotkey(self, key="hotkey"):
-        """Change…: the next key combination with a modifier becomes the shortcut; Esc keeps the old one."""
+        """Change…: the next key, alone or with modifiers, becomes the shortcut; Esc keeps the old one."""
         if self._recorder:
             return
         self._recording_key = key
@@ -56,10 +65,8 @@ class ReadingPage:
                 return event
             if event.keyCode() == 53:  # Esc
                 self._stop_recording()
-            elif spec := trigger.event_spec(event):
-                self._set_hotkey(spec, key)
             else:
-                label.setStringValue_("Add ⌘, ⌥, ⌃ or ⇧ to a letter, digit or F-key")
+                self._set_hotkey(trigger.event_spec(event), key)
             return None  # keys pressed while recording don't reach the window
         self._recorder = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
             AppKit.NSEventMaskKeyDown | AppKit.NSEventMaskFlagsChanged, on_key)
@@ -74,7 +81,7 @@ class ReadingPage:
             self._recorder = None
             AppKit.NSNotificationCenter.defaultCenter().removeObserver_(self._closed)
             self.app.apply(key, self.cfg[key])
-            self.shortcut_labels[key].setStringValue_(hotkeys.label(self.cfg[key]))
+            self._show_shortcut(key)
 
     def _set_hotkey(self, spec, key="hotkey"):
         """Saves the shortcut unless another row uses it, in which case the row names that one."""
@@ -82,5 +89,4 @@ class ReadingPage:
         if spec != self.cfg[key] and not taken:
             self._set(key, spec)
         self._stop_recording()
-        self.shortcut_labels[key].setStringValue_(f"Used by {SHORTCUT_TITLES[taken]}" if taken
-                                                  else hotkeys.label(self.cfg[key]))
+        self._show_shortcut(key, taken and f"Used by {SHORTCUT_TITLES[taken]}")
