@@ -36,6 +36,33 @@ class ShortcutKeyTest(unittest.TestCase):
         self.assertTrue(trigger.key_name(50))  # the real layout lookup answers
         self.assertEqual(hotkeys.label("<cmd>+<key_50>"), "⌘" + trigger.key_name(50))
 
+    def test_a_keyboard_selection_fires_once_the_modifiers_come_up(self):
+        shift, cmd, flags = AppKit.NSEventModifierFlagShift, AppKit.NSEventModifierFlagCommand, AppKit.NSEventTypeFlagsChanged
+        t = object.__new__(trigger.SelectionTrigger)  # skips installing the system monitors
+        t.on_selection, t._keyed = mock.Mock(), False
+        with mock.patch.object(trigger.threading, "Thread") as thread:
+            for event in (key_event(0, shift, flags), key_event(124, shift), key_event(124, shift),
+                          key_event(0, 0, flags)):
+                t._key(event)  # ⇧→ twice, then ⇧ up
+            self.assertEqual(thread.call_count, 1)
+            for event in (key_event(0, shift, flags), key_event(0, shift), key_event(0, 0, flags),  # typing "A"
+                          key_event(124, shift), key_event(0, shift), key_event(0, 0, flags)):  # ⇧→ then typing
+                t._key(event)
+            self.assertEqual(thread.call_count, 1)
+            for event in (key_event(0, cmd), key_event(0, 0, flags)):  # ⌘A
+                t._key(event)
+            self.assertEqual(thread.call_count, 2)
+
+    def test_a_keyboard_selection_shows_the_bar_at_the_text_or_else_the_pointer(self):
+        t = object.__new__(trigger.SelectionTrigger)
+        t.on_selection = mock.Mock()
+        with mock.patch.object(trigger.time, "sleep"), mock.patch.object(trigger, "callAfter", lambda fn: fn()), \
+                mock.patch.object(trigger, "top_left", return_value=(5, 6)):
+            for bounds, point in (((30, 40), (30, 40)), (None, (5, 6))):
+                with mock.patch.object(trigger.selection, "bounds", return_value=bounds):
+                    t._at_selection()
+                t.on_selection.assert_called_with(*point)
+
     def hotkey(self, spec, on_release=None):
         hk = object.__new__(trigger.HotKey)  # skips installing the system monitors
         hk.keys, hk.on_hotkey, hk.on_release, hk._held = hotkeys.parse(spec), mock.Mock(), on_release, None
