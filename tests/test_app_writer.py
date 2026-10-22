@@ -173,6 +173,15 @@ class DictationTest(unittest.TestCase):
         self.assertEqual(self.app.writer_sources[0].prompts,
                          [writer.system_prompt(writer.find_mode("Email", writer.BUILTIN_MODES))])
 
+    def test_cancel_on_the_transcribing_toast_types_nothing(self):
+        self.hold(2)
+        self.assertEqual(self.app.toast_.shown[-1][0], "Transcribing · Clean dictation")
+        self.app.toast_.action("Cancel")()
+        self.assertFalse(self.app.rewriting)
+        self.app.drain()
+        self.assertEqual(self.app.host.edit.pasted, [])
+        self.assertFalse(self.app.toast_.visible)
+
     def test_each_dictation_logs_its_timings_but_never_its_text(self):
         with self.assertLogs("harness_discussion", level="INFO") as logs:
             self.hold(2)
@@ -331,6 +340,16 @@ class FlowTest(unittest.TestCase):
         app.drain()
         self.assertEqual(app.host.edit.pasted, [])
         self.assertFalse(app.toast_.visible)
+
+    def test_cancel_on_the_rewriting_toast_drops_the_late_result(self):
+        app = _App()
+        app.rewrite_selection()
+        app.toast_.action("Cancel")()
+        self.assertFalse(app.rewriting or app.popup.rewriting)
+        app.drain()
+        self.assertEqual(app.host.edit.pasted, [])
+        self.assertFalse(app.toast_.visible)
+        app.toast_.action("Cancel")()  # a stale click does nothing
 
     def test_a_double_press_opens_the_mode_menu_and_a_single_press_rewrites(self):
         app = _App()
