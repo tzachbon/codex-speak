@@ -157,6 +157,14 @@ class DictationTest(unittest.TestCase):
         self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Codex")
         self.assertIn("rewrite -)", "\n".join(logs.output))
 
+    def test_a_failed_rewrite_logs_both_timings_and_the_transcript_source(self):
+        self.app.writer_sources[0].reply = writer.Error("Cursor failed.")
+        with self.assertLogs("harness_discussion", level="INFO") as logs:
+            self.hold(2)
+            self.app.drain()
+        self.assertRegex("\n".join(logs.output),
+                         r"dictation failed: \w+ after \d+\.\ds \(transcribe \d+\.\ds with Codex, rewrite \d+\.\ds\)")
+
     def test_the_timings_are_logged_even_when_the_window_changed(self):
         with self.assertLogs("harness_discussion", level="INFO") as logs:
             self.hold(2)

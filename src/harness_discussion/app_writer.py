@@ -304,7 +304,7 @@ class Writer:
         self._toast(f"Transcribing · {mode.name}" if mode else "Transcribing", busy=True, at=at)
 
         def work():
-            stt_s = rewrite_s = None
+            stt_s = rewrite_s = stt_name = None
             try:
                 text, stt_name = dictation.transcribe(audio, chain, order)
                 stt_s = time.monotonic() - released
@@ -312,35 +312,38 @@ class Writer:
                     raise writer.Cancelled("The dictation was cancelled.")
                 if mode:
                     started = time.monotonic()
-                    text, source = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
-                    rewrite_s = time.monotonic() - started
+                    try:
+                        text, source = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
+                    finally:
+                        rewrite_s = time.monotonic() - started
                     result = (text, stt_name, source)
                 else:
                     result = (text, stt_name, None)
             except Exception as e:
                 result = e
-            self.events.put(("dictated", rid, mode.name if mode else None, result, at, (released, stt_s, rewrite_s)))
+            timing = (released, stt_s, rewrite_s, stt_name)
+            self.events.put(("dictated", rid, mode.name if mode else None, result, at, timing))
         threading.Thread(target=work, daemon=True).start()
 
     def _dictated(self, rid, mode, result, at, timing):
         if rid != self._rewrite_id:
             return
-        released, stt_s, rewrite_s = timing
+        released, stt_s, rewrite_s, stt_name = timing
+        secs = lambda s: f"{s:.1f}s" if s is not None else "-"
         self._set_rewriting(False)
         self._arm_summary_stop()
         if isinstance(result, writer.Cancelled):
             self.toast.hide()
             return
         if isinstance(result, Exception):
-            log.info("dictation failed: %s after %.1fs (transcribe %s)", type(result).__name__,
-                     time.monotonic() - released, f"{stt_s:.1f}s" if stt_s is not None else "-")
+            log.info("dictation failed: %s after %.1fs (transcribe %s with %s, rewrite %s)", type(result).__name__,
+                     time.monotonic() - released, secs(stt_s), stt_name or "-", secs(rewrite_s))
             safe = isinstance(result, (writer.Error, dictation.Error))
             self._toast(str(result) if safe else "Could not finish the dictation.", at=at)
             return
         text, stt_name, source = result
         log.info("dictated %d chars with %s%s in %.1fs (transcribe %.1fs, rewrite %s)", len(text), stt_name,
-                 f" then {source}" if source else "", time.monotonic() - released, stt_s,
-                 f"{rewrite_s:.1f}s" if rewrite_s is not None else "-")
+                 f" then {source}" if source else "", time.monotonic() - released, stt_s, secs(rewrite_s))
         ctx, now = self._dictate_ctx, self.edit.capture(False)
         copy = lambda: self.host.copy_text(text)
         if ctx is None or now is None or (now.app, now.window) != (ctx.app, ctx.window) or now.secure:
