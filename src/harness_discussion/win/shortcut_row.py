@@ -1,14 +1,20 @@
-"""Settings shortcut rows (read, rewrite, dictate), with Change… recording the next key combination."""
+"""Settings shortcut rows (read, rewrite, dictate), with Change… recording the next key, alone or with modifiers."""
+import ctypes
 import tkinter as tk
 from tkinter import ttk
 
 from .. import hotkeys
 from .sources_ui import CARD
-from .trigger import VK
+from .trigger import MOD_VKS, VK
 
 TK_MODS = {"shift": 0x1, "ctrl": 0x4, "alt": 0x20000}  # Tk's event.state bits on Windows
 KEYS = {vk: name for name, vk in VK.items()}  # Tk's keycode is the virtual key, the same under any layout
 TITLES = {"hotkey": "Read shortcut", "rewrite_hotkey": "Rewrite shortcut", "dictate_hotkey": "Hold to dictate"}
+
+
+def win_down():  # Tk's event.state has no bit for the Windows key
+    return any(ctypes.windll.user32.GetKeyState(vk) & 0x8000 for vk in (0x5B, 0x5C))
+
 
 class ShortcutRow:
     """Mixed into SettingsWindow, which owns win, cfg, on_record and _set."""
@@ -34,7 +40,7 @@ class ShortcutRow:
         ttk.Label(card, text=note, style="Sub.Card.TLabel", wraplength=440).pack(anchor="w", pady=(4, 0))
 
     def _record_hotkey(self, key="hotkey"):
-        """Change…: the next key combination with a modifier becomes the shortcut; Esc keeps the old one."""
+        """Change…: the next key, alone or with modifiers, becomes the shortcut; Esc keeps the old one."""
         self._recording = key
         self.shortcuts[key]["label"]["text"] = "Press keys…"
         self.shortcuts[key]["error"]["text"] = ""
@@ -45,9 +51,10 @@ class ShortcutRow:
     def _hotkey_key(self, event):
         if event.keysym == "Escape":
             self._set_hotkey(self.cfg[self._recording], self._recording)
-        elif (key := KEYS.get(event.keycode)) and (
-                spec := hotkeys.spec({m for m, bit in TK_MODS.items() if event.state & bit}, key)):
-            self._set_hotkey(spec, self._recording)
+        elif event.keycode not in MOD_VKS:  # a held modifier waits for the key
+            key = KEYS.get(event.keycode) or f"key_{event.keycode}"
+            mods = {m for m, bit in TK_MODS.items() if event.state & bit} | ({"cmd"} if win_down() else set())
+            self._set_hotkey(hotkeys.spec(mods, key), self._recording)
         return "break"
 
     def _set_hotkey(self, spec, key="hotkey"):
