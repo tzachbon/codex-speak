@@ -5,6 +5,7 @@ import os
 import queue
 import tempfile
 import threading
+import time
 import types
 import unittest
 from unittest import mock
@@ -51,7 +52,8 @@ def _writer(**kw):
 class CodexWriterTest(unittest.TestCase):
     def setUp(self):
         self.spawned = mock.Mock()  # the prewarm after a rewrite runs only when a test calls it
-        fake = types.SimpleNamespace(Thread=self.spawned, RLock=threading.RLock, Timer=threading.Timer)
+        fake = types.SimpleNamespace(Thread=self.spawned, Lock=threading.Lock, RLock=threading.RLock,
+                                     Timer=threading.Timer)
         patch = mock.patch.object(llm_codex, "threading", fake)
         patch.start()
         self.addCleanup(patch.stop)
@@ -154,6 +156,40 @@ class CodexWriterTest(unittest.TestCase):
         broken = llm_codex.CodexWriter(mock.Mock(side_effect=OSError))
         self.addCleanup(broken.close)
         broken.prewarm("m")
+
+    def test_a_new_rewrite_waits_until_a_cancelled_one_stops_reading_events(self):
+        source = _writer()
+        self.addCleanup(source.close)
+        cancel, results = threading.Event(), {}
+
+        def first():
+            try:
+                source.rewrite("S", "a", None, None, cancel.is_set)
+            except writer.Cancelled:
+                results["first"] = "cancelled"
+        a = threading.Thread(target=first)
+        a.start()
+        while not FakeServer.made or not self.turns(FakeServer.made[0]):
+            time.sleep(0.01)
+        srv = FakeServer.made[0]
+        srv._script = _reply("Second.")
+        b = threading.Thread(target=lambda: results.update(second=source.rewrite("S", "b", None, None, lambda: False)))
+        b.start()
+        time.sleep(0.3)
+        self.assertEqual(len(self.turns(srv)), 1)  # the second rewrite has not started its turn
+        cancel.set()
+        a.join(5)
+        b.join(5)
+        self.assertEqual(results, {"first": "cancelled", "second": "Second."})
+
+    def test_a_prewarm_queued_before_close_starts_nothing(self):
+        source = _writer(script=_reply("Ok."))
+        source.rewrite("S", "a", None, None, lambda: False)
+        source.close()
+        source.prewarm()
+        self.assertEqual(len(FakeServer.made), 1)
+        self.assertIsNone(source._srv)
+        self.assertIsNone(source._cwd)
 
     def test_close_stops_the_server_and_removes_the_folder(self):
         source = _writer(script=_reply("Ok."))

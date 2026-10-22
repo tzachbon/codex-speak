@@ -44,7 +44,8 @@ class CodexWriter:
         self._server = server
         self._models, self._models_at = None, 0.0
         self._srv, self._spare, self._system, self._cwd = None, None, None, None  # spare: (server, thread id, system)
-        self._used, self._timer, self._lock = 0.0, None, threading.RLock()
+        self._used, self._timer, self._lock, self._closed = 0.0, None, threading.RLock(), False
+        self._one = threading.Lock()  # one rewrite reads the server's event queue at a time, a cancelled one included
 
     def status(self):
         return codex_rt.login_status()
@@ -84,6 +85,8 @@ class CodexWriter:
         text. Never raises."""
         try:
             with self._lock:
+                if self._closed:
+                    return
                 if self._system is None:
                     if self._srv is None or not self._srv.alive:
                         self._srv = self._server({"ephemeral": True, "config": lean_config()})
@@ -91,22 +94,22 @@ class CodexWriter:
                     self._spare = (*self._take(self._system), self._system)
         except Exception as e:
             log.info("Codex prewarm failed: %s", type(e).__name__)
-        finally:
-            self._arm_idle_stop()
+        self._arm_idle_stop()
 
     def rewrite(self, system, text, model, effort, cancelled):
-        srv, thread_id = self._take(system)
-        self._system = system
-        try:
-            while not srv.events.empty():
-                srv.events.get_nowait()
-            params = {"threadId": thread_id, "input": [{"type": "text", "text": text}],
-                      "approvalPolicy": "never", "sandboxPolicy": {"type": "readOnly"}, "outputSchema": SCHEMA}
-            params.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
-            turn_id = srv.call("turn/start", params)["turn"]["id"]
-            return _final_text(srv, thread_id, turn_id, cancelled)
-        finally:
-            threading.Thread(target=self.prewarm, daemon=True).start()
+        with self._one:
+            srv, thread_id = self._take(system)
+            self._system = system
+            try:
+                while not srv.events.empty():
+                    srv.events.get_nowait()
+                params = {"threadId": thread_id, "input": [{"type": "text", "text": text}],
+                          "approvalPolicy": "never", "sandboxPolicy": {"type": "readOnly"}, "outputSchema": SCHEMA}
+                params.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
+                turn_id = srv.call("turn/start", params)["turn"]["id"]
+                return _final_text(srv, thread_id, turn_id, cancelled)
+            finally:
+                threading.Thread(target=self.prewarm, daemon=True).start()
 
     def _arm_idle_stop(self):
         if self._timer:
@@ -132,6 +135,7 @@ class CodexWriter:
         if self._timer:
             self._timer.cancel()
         with self._lock:
+            self._closed = True  # a prewarm queued by a finishing rewrite must not start it again
             self._stop()
 
 
