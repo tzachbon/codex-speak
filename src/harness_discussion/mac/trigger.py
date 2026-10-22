@@ -98,7 +98,7 @@ class HotKey:
 
     def __init__(self, spec, on_hotkey, on_release=None):
         self.keys, self.on_hotkey = hotkeys.parse(spec), on_hotkey  # parsed, so modifier order doesn't matter
-        self.on_release, self._held, self._tap = on_release, None, False
+        self.on_release, self._held, self._tap, self._spoiled = on_release, None, False, False
         mask = AppKit.NSEventMaskKeyDown
         if on_release or self.keys[1] is None:
             mask |= AppKit.NSEventMaskKeyUp | AppKit.NSEventMaskFlagsChanged
@@ -127,24 +127,26 @@ class HotKey:
     def _modifiers_only(self, event, kind):
         """A tap fires once the chord is let go with no other key pressed, so ⌃⌥R doesn't also fire ⌃⌥."""
         if kind == AppKit.NSEventTypeKeyDown:
-            self._tap = False
+            self._tap, self._spoiled = False, True
             return
         if kind != AppKit.NSEventTypeFlagsChanged:
             return
         mods, chord = frozenset(event_mods(event)), self.keys[0]
-        if self._held is not None and not mods >= chord:
-            self._held = None
-            self.on_release()
-        if mods == chord:
-            if self.on_release is None:
-                self._tap = True
-            elif self._held is None:
+        if not mods >= chord:  # the chord ended
+            if self._held is not None:
+                self._held = None
+                self.on_release()
+            elif self._tap:
+                self.on_hotkey()
+            self._tap = self._spoiled = False
+        elif self.on_release is not None:
+            if self._held is None:
                 self._held = True
                 self.on_hotkey()
-            return
-        if self._tap and mods < chord:
-            self.on_hotkey()
-        self._tap = False
+        elif mods == chord and not self._spoiled:
+            self._tap = True
+        else:  # an extra modifier joined, so this hold is no longer a tap of the chord
+            self._tap, self._spoiled = False, True
 
     def stop(self):
         for monitor in self._monitors:

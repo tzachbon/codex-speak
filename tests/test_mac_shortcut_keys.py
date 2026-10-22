@@ -39,11 +39,12 @@ class ShortcutKeyTest(unittest.TestCase):
     def hotkey(self, spec, on_release=None):
         hk = object.__new__(trigger.HotKey)  # skips installing the system monitors
         hk.keys, hk.on_hotkey, hk.on_release, hk._held = hotkeys.parse(spec), mock.Mock(), on_release, None
-        hk._tap = False
+        hk._tap = hk._spoiled = False
         return hk
 
     def test_modifiers_alone_fire_on_release_unless_a_key_joined(self):
-        ctrl, alt = AppKit.NSEventModifierFlagControl, AppKit.NSEventModifierFlagOption
+        ctrl, alt, shift = (AppKit.NSEventModifierFlagControl, AppKit.NSEventModifierFlagOption,
+                            AppKit.NSEventModifierFlagShift)
         flags = AppKit.NSEventTypeFlagsChanged
         hk = self.hotkey("<ctrl>+<alt>")
         for f in (ctrl, ctrl | alt, alt, 0):
@@ -53,9 +54,12 @@ class ShortcutKeyTest(unittest.TestCase):
         hk._event(key_event(0, ctrl | alt, flags))
         hk._event(key_event(15, ctrl | alt))  # ⌃⌥R
         hk._event(key_event(0, 0, flags))
+        for f in (ctrl | alt, ctrl | alt | shift, ctrl | alt, ctrl, 0):  # Shift joined, so no tap
+            hk._event(key_event(0, f, flags))
         hk.on_hotkey.assert_not_called()
         hold = self.hotkey("<ctrl>+<alt>", on_release=mock.Mock())
-        hold._event(key_event(0, ctrl | alt, flags))
+        for f in (shift, shift | ctrl, shift | ctrl | alt):  # an extra modifier still starts a hold
+            hold._event(key_event(0, f, flags))
         hold.on_hotkey.assert_called_once()
         hold._event(key_event(0, ctrl, flags))
         hold.on_release.assert_called_once()
