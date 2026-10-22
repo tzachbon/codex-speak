@@ -5,6 +5,7 @@ Coordinates are top-left based on the main screen, in points, the way the core a
 import time
 
 import AppKit
+import Quartz
 
 from .. import hotkeys
 from ..clicks import Clicks
@@ -57,6 +58,11 @@ KEY_CODES = {0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: 
              25: "9", 26: "7", 28: "8", 29: "0", 31: "o", 32: "u", 34: "i", 35: "p", 37: "l", 38: "j", 40: "k",
              45: "n", 46: "m", 122: "f1", 120: "f2", 99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7",
              100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12"}
+# keys that type no character, so the layout can't name them
+SPECIAL = {36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "⎋", 71: "⌧", 76: "⌤", 114: "Help", 115: "↖",
+           116: "⇞", 117: "⌦", 119: "↘", 121: "⇟", 123: "←", 124: "→", 125: "↓", 126: "↑",
+           105: "F13", 107: "F14", 113: "F15", 106: "F16", 64: "F17", 79: "F18", 80: "F19", 90: "F20"}
+KEYPAD = {65, 67, 69, 75, 78, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92}  # type the same as the main keys
 
 
 def event_mods(event):
@@ -65,9 +71,25 @@ def event_mods(event):
 
 
 def event_spec(event):
-    """The hotkeys string for a key-down event, or None for a key or combination a shortcut can't use."""
-    key = KEY_CODES.get(event.keyCode())
-    return key and hotkeys.spec(event_mods(event), key)
+    """The hotkeys string for a key-down event: letters, digits and F1-F12 by name, any other key by its code."""
+    code = event.keyCode()
+    return hotkeys.spec(event_mods(event), KEY_CODES.get(code) or f"key_{code}")
+
+
+def _typed(code):
+    """What the current keyboard layout types for a key, unmodified; "" when macOS can't say."""
+    event = AppKit.NSEvent.eventWithCGEvent_(Quartz.CGEventCreateKeyboardEvent(None, code, True))
+    return event.charactersIgnoringModifiers() if event else ""
+
+
+def key_name(code):
+    """A fixed name for keys that type no character, else what the current layout types."""
+    if code in SPECIAL:
+        return SPECIAL[code]
+    text = _typed(code)
+    if not text or not text.isprintable():
+        return f"Key {code}"
+    return ("Keypad " if code in KEYPAD else "") + text.upper()
 
 
 class HotKey:

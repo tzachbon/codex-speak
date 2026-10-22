@@ -94,14 +94,15 @@ class WritingSettingsTest(unittest.TestCase):
         w.refresh_writing()
         self.assertEqual(w.mode_text.stringValue(), "Draft")
 
-    def test_recording_shows_held_modifiers_and_refuses_unusable_keys(self):
+    def test_recording_shows_held_modifiers_and_takes_any_key(self):
         import AppKit
         from harness_discussion.mac import reading_page
         handlers = []
 
         class Fake:  # AppKit, with the key monitor handed to the test instead of the system
-            NSEvent = SimpleNamespace(addLocalMonitorForEventsMatchingMask_handler_=lambda m, h: handlers.append(h),
-                                      removeMonitor_=lambda m: None)
+            NSEvent = SimpleNamespace(  # a real token, so Esc's _stop_recording sees a recorder to remove
+                addLocalMonitorForEventsMatchingMask_handler_=lambda m, h: (handlers.append(h), object())[1],
+                removeMonitor_=lambda m: None)
             NSNotificationCenter = SimpleNamespace(defaultCenter=mock.Mock)
 
             def __getattr__(self, name):
@@ -121,13 +122,20 @@ class WritingSettingsTest(unittest.TestCase):
                 ctrl, alt = AppKit.NSEventModifierFlagControl, AppKit.NSEventModifierFlagOption
                 handlers[0](event(AppKit.NSEventTypeFlagsChanged, ctrl | alt))
                 self.assertEqual(label.stringValue(), "⌃⌥…")
-                handlers[0](event(AppKit.NSEventTypeKeyDown, 0, 14))
-                self.assertIn("letter", label.stringValue())
                 handlers[0](event(AppKit.NSEventTypeKeyDown, ctrl | alt, 14))
+                self.assertEqual(self.changes[-1], ("rewrite_hotkey", "<ctrl>+<alt>+e"))
+                self.assertEqual(label.stringValue(), "⌃⌥E")
+                w._record_hotkey("rewrite_hotkey")
+                handlers[1](event(AppKit.NSEventTypeKeyDown, 0, 14))  # a key alone is a shortcut too
+                self.assertEqual(self.changes[-1], ("rewrite_hotkey", "e"))
+                self.assertEqual(label.stringValue(), "E")
+                w._record_hotkey("rewrite_hotkey")
+                saved = len(self.changes)
+                handlers[2](event(AppKit.NSEventTypeKeyDown, AppKit.NSEventModifierFlagCommand, 53))  # Esc cancels
         finally:
             w.win = real
-        self.assertEqual(self.changes[-1], ("rewrite_hotkey", "<ctrl>+<alt>+e"))
-        self.assertEqual(label.stringValue(), "⌃⌥E")
+        self.assertEqual(len(self.changes), saved)
+        self.assertEqual(label.stringValue(), "E")
 
     def test_a_shortcut_another_row_uses_is_refused(self):
         self.win._set_hotkey(self.win.cfg["hotkey"], "rewrite_hotkey")
@@ -135,6 +143,18 @@ class WritingSettingsTest(unittest.TestCase):
         self.assertNotIn("rewrite_hotkey", [k for k, _ in self.changes])
         self.win._set_hotkey("<cmd>+<shift>+r", "rewrite_hotkey")
         self.assertEqual(self.changes[-1], ("rewrite_hotkey", "<cmd>+<shift>+r"))
+
+    def test_command_backtick_warns_that_macos_also_switches_windows(self):
+        hints = self.win.shortcut_hints
+        self.assertTrue(hints["hotkey"].isHidden())
+        self.win._set_hotkey("<cmd>+<key_50>")
+        self.assertFalse(hints["hotkey"].isHidden())
+        self.assertIn("Move focus to next window", hints["hotkey"].stringValue())
+        self.win._set_hotkey("<cmd>+<alt>+r")
+        self.assertTrue(hints["hotkey"].isHidden())
+        self.win._set_hotkey("<shift>+<cmd>+<key_50>", "rewrite_hotkey")
+        self.assertFalse(hints["rewrite_hotkey"].isHidden())
+        self.assertTrue(hints["hotkey"].isHidden())
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from unittest import mock
 from harness_discussion.win import clipboard, selection
 from harness_discussion.win import input as keys
 from harness_discussion.win.shortcut_row import KEYS
-from harness_discussion.win.trigger import HotKey, SelectionTrigger
+from harness_discussion.win.trigger import HotKey, SelectionTrigger, key_name, vk
 from harness_discussion.win.voice import sapi_rate
 
 
@@ -244,3 +244,19 @@ class ReadShortcut(unittest.TestCase):
 
     def test_settings_record_the_virtual_key(self):
         self.assertEqual((KEYS[0x52], KEYS[0x30], KEYS[0x74]), ("r", "0", "f5"))
+
+    def test_any_key_fires_alone_or_by_its_code(self):
+        for spec, keys in (("r", [KeyCode(vk=0x52)]), ("<key_32>", [Key.space]),
+                           ("<ctrl>+<key_192>", [Key.ctrl_l, KeyCode(vk=0xC0, char="`")])):
+            hotkey, hits = self.make(spec)
+            for key in keys:
+                hotkey._press(key)
+            for key in reversed(keys):
+                hotkey._release(key)
+            self.assertEqual(hits, [1], spec)
+
+    def test_keys_stored_by_code_are_named_by_the_layout(self):
+        self.assertEqual((vk("r"), vk("key_192")), (0x52, 192))
+        self.assertNotIn(key_name(0x20), ("", "Key 32"))
+        self.assertNotEqual(key_name(0x25), key_name(0x64))  # Left arrow and Num 4 share a scan code
+        self.assertEqual(key_name(0x13), "Pause")

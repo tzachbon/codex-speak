@@ -12,15 +12,21 @@ class Parse(unittest.TestCase):
     def test_valid_shortcuts(self):
         self.assertEqual(hotkeys.parse("<ctrl>+<alt>+r"), (frozenset({"ctrl", "alt"}), "r"))
         self.assertEqual(hotkeys.parse("<cmd>+<f5>"), (frozenset({"cmd"}), "f5"))
+        self.assertEqual(hotkeys.parse("r"), (frozenset(), "r"))  # no modifier needed
+        self.assertEqual(hotkeys.parse("<key_50>"), (frozenset(), "key_50"))  # any other key, by its code
+        self.assertEqual(hotkeys.parse("<cmd>+<key_50>"), (frozenset({"cmd"}), "key_50"))
+        self.assertEqual(hotkeys.parse("<ctrl>+c"), (frozenset({"ctrl"}), "c"))
 
     def test_invalid_shortcuts(self):
-        for spec in ("", "r", "<ctrl>", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", "<ctrl>+c", "<cmd>+c", None, 3):
+        for spec in ("", "<ctrl>", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", "key_50",
+                     "<key_x>", "<key_>", "<key_99999>", None, 3):
             self.assertIsNone(hotkeys.parse(spec), spec)
 
-    def test_spec_orders_modifiers_and_needs_one(self):
+    def test_spec_orders_modifiers(self):
         self.assertEqual(hotkeys.spec({"alt", "ctrl"}, "R"), "<ctrl>+<alt>+r")
         self.assertEqual(hotkeys.spec({"shift"}, "F12"), "<shift>+<f12>")
-        self.assertIsNone(hotkeys.spec(set(), "r"))
+        self.assertEqual(hotkeys.spec(set(), "r"), "r")
+        self.assertEqual(hotkeys.spec({"cmd"}, "key_50"), "<cmd>+<key_50>")
         self.assertIsNone(hotkeys.spec({"ctrl"}, "Control_L"))
 
     def test_label(self):
@@ -41,7 +47,8 @@ class Saved(unittest.TestCase):
     def test_off_and_valid_values_are_kept_and_invalid_ones_reset(self):
         self.assertEqual(self.load(""), "")
         self.assertEqual(self.load("<shift>+<alt>+x"), "<shift>+<alt>+x")
-        self.assertEqual(self.load("r"), hotkeys.DEFAULT)
+        self.assertEqual(self.load("r"), "r")
+        self.assertEqual(self.load("<hyper>+x"), hotkeys.DEFAULT)
         self.assertEqual(self.load(5), hotkeys.DEFAULT)
 
     def test_a_shortcut_already_used_by_another_setting_is_a_conflict(self):
