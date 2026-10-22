@@ -53,6 +53,7 @@ class ReadingPage:
         self._recording_key = key
         self.shortcut_labels[key].setStringValue_("Press keys…")
         self.app.apply(key, "")  # so pressing the current shortcut records it instead of running it
+        peak = set()  # modifiers held so far; letting them all go with no key records them alone
 
         def on_key(event):
             if not self.win.isVisible():  # Settings closed while recording: let keys through again
@@ -60,7 +61,12 @@ class ReadingPage:
                 return event
             label = self.shortcut_labels[key]
             if event.type() == AppKit.NSEventTypeFlagsChanged:  # held modifiers show while the key is chosen
-                held = hotkeys.mac_mods(trigger.event_mods(event))
+                mods = trigger.event_mods(event)
+                if not mods and peak:
+                    self._set_hotkey(hotkeys.spec(peak), key)
+                    return event
+                peak.update(mods)
+                held = hotkeys.mac_mods(mods)
                 label.setStringValue_(held + "…" if held else "Press keys…")
                 return event
             if event.keyCode() == 53:  # Esc
