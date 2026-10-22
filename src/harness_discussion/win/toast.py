@@ -29,7 +29,8 @@ def place(w, x, y, above=None):
     """Below the point, kept inside the work area of its monitor. With `above`, the top of the bar the point is
     under: at the point itself, or above the bar when there is no room under it."""
     w.update_idletasks()
-    area, width, height = work_area(x, y), w.winfo_reqwidth(), w.winfo_reqheight()
+    area = work_area(x, y if above is None else above)  # the bar's monitor, not the one past its edge
+    width, height = w.winfo_reqwidth(), w.winfo_reqheight()
     if above is None:
         top = y + 16 if y + 16 + height <= area.bottom else y - height - 14
     else:

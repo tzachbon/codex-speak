@@ -229,11 +229,13 @@ class PlaceTest(unittest.TestCase):
         w = type("W", (), {"update_idletasks": lambda s: None, "winfo_reqwidth": lambda s: 200,
                            "winfo_reqheight": lambda s: 32, "geometry": lambda s, g: geometry.append(g)})()
         area = type("Area", (), {"left": 0, "top": 0, "right": 1000, "bottom": 300})()
-        with patch.object(win_toast, "work_area", lambda x, y: area):
+        lower = type("Area", (), {"left": 0, "top": 300, "right": 1000, "bottom": 600})()
+        with patch.object(win_toast, "work_area", lambda x, y: area if y < 300 else lower):
             win_toast.place(w, 300, 248, above=200)  # fits under the bar
             win_toast.place(w, 300, 290, above=242)  # no room: above the bar
+            win_toast.place(w, 300, 306, above=258)  # past the monitor's edge: still above the bar
             win_toast.place(w, 300, 100)  # no bar: by the pointer, as before
-        self.assertEqual(geometry, ["+200+248", "+200+204", "+200+116"])
+        self.assertEqual(geometry, ["+200+248", "+200+204", "+200+220", "+200+116"])
 
 class ReviewTest(Base):
     def make(self):
