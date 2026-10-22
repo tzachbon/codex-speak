@@ -140,7 +140,7 @@ class Writer:
         self._summary_gen += 1  # a summary's idle stop must not stop the local model under this rewrite
         sources = writer.chain(self.writer_sources, self.cfg["writer_sources"])
         models, clipboard = self.cfg["writer_models"], self.cfg["clipboard_fallback"]
-        self._toast(f"Rewriting · {mode.name}", busy=True, at=at)
+        self._toast(f"Rewriting · {mode.name}", [("Cancel", self.cancel_rewrite)], busy=True, at=at)
 
         def work():
             ctx = prev[0] if prev else None
@@ -301,7 +301,8 @@ class Writer:
         at = self._anchor()
         sources = writer.chain(self.writer_sources, self.cfg["writer_sources"])
         models, order, chain = self.cfg["writer_models"], self.cfg["stt_sources"], self.stt_sources
-        self._toast(f"Transcribing · {mode.name}" if mode else "Transcribing", busy=True, at=at)
+        self._toast(f"Transcribing · {mode.name}" if mode else "Transcribing", [("Cancel", self.cancel_rewrite)],
+                    busy=True, at=at)
 
         def work():
             stt_s = rewrite_s = stt_name = None
@@ -366,15 +367,21 @@ class Writer:
             self._recorder = None
             self.toast.hide()
         elif self.rewriting:
-            self._rewrite_cancel.set()
-            self._rewrite_id += 1
-            self._set_rewriting(False)
-            self._arm_summary_stop()
-            self.toast.hide()
+            self.cancel_rewrite()
         elif self.toast and self.toast.visible:
             self.toast.hide()
         elif self.popup.visible:
             self.popup.close()
+
+    def cancel_rewrite(self):
+        """Esc or the busy toast's Cancel: stop the rewrite or dictation and drop its late result."""
+        if not self.rewriting:
+            return
+        self._rewrite_cancel.set()
+        self._rewrite_id += 1
+        self._set_rewriting(False)
+        self._arm_summary_stop()
+        self.toast.hide()
 
     def _close_writer(self):
         if not hasattr(self, "_rewrite_cancel"):  # quit before _init_writer ran
