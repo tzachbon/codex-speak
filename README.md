@@ -31,7 +31,7 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **You set the order.** Settings → Voices lists the sources in reading order. Turn each one on or off, move it up or down, pick its voice, and test it. A source that needs installing or a sign-in shows a button that opens the download page or starts the sign-in. The bar's source menu moves a source to the top. Picked during a read, it takes over from the sentence being read. Picked during a read, it takes over from the sentence being read.
 - **Summarize.** ✦ next to Play summarizes the selection on your computer with Qwen3-4B through [llama.cpp](https://github.com/ggml-org/llama.cpp), then reads the summary. The first click asks to download the model once (2.5 GB, verified by SHA-256). Settings → Summarize shows its status and removes it.
 - **Rewrite in place (Mac).** Over text you can edit, ✎ on the bar or ⌥⌘E rewrites the selection with the default mode and pastes it back. Modes are Fix errors, Message, Email, Improve writing, and your own. A toast offers Undo, Review (keep or revert each change), and another mode. Press ⌥⌘E twice quickly to pick a mode first. Esc cancels. Cursor, Codex, then the local Qwen3-4B model rewrite, in the order you set. Off by default. Turn it on in Settings → Writing.
-- **Dictation (Mac).** Hold ⌥⌘D and speak. On release, Codex or Cursor transcribes the audio, the default mode tidies it, and the text is typed at the cursor. A short tap does nothing. It follows the Writing switch.
+- **Dictation (Mac).** Hold ⌥⌘D and speak. On release, Cursor (then Codex, by default) transcribes the audio, the default mode tidies it, and the text is typed at the cursor. Turn off *Tidy dictation with the default mode* to type exactly what was heard, sooner. A short tap does nothing. It follows the Writing switch.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Skip by sentence.** ⏮ and ⏭ on the bar read again from the previous or next sentence.
 - **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading. Any key works, alone or with modifiers.
@@ -102,7 +102,7 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 
 - Turn off every source except Kokoro and Windows or macOS in Settings to keep text on your computer.
 - Password fields are never read or rewritten.
-- Turn off Cursor and Codex in Settings → Writing to keep rewrites on your computer. Dictation audio goes to the first ready source and is not saved.
+- Turn off Cursor and Codex in Settings → Writing to keep rewrites on your computer. Dictation audio goes to the first ready source, Cursor by default, and is not saved.
 - A rewrite is pasted only if the same app, window, and selection are still there. Your clipboard is put back afterwards.
 - The Ctrl+C fallback is skipped in terminal windows, where it would interrupt a running command.
 - The log records the engine, timing, and errors, never the text itself.
@@ -122,7 +122,7 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 - **Prepare speech as soon as I select text**: off by default. When Cursor or Edge reads first, the app requests the opening's audio as soon as the bar appears. This sends those sentences to Cursor or Microsoft before you press play.
 - **Speech-to-text server**: see [STT.md](STT.md).
 - **Writing** (Mac): turns rewriting on or off, and sets the default mode, the rewrite shortcut, and the sources in order with each one's model and effort. The modes editor adds, renames, and deletes your own modes. Built-in modes keep their name, and Reset puts back their instructions.
-- **Dictation** (Mac): the transcript sources in order, the hold shortcut, and the microphone permission.
+- **Dictation** (Mac): the transcript sources in order (Cursor, then Codex, by default), whether the default mode tidies the transcript, the hold shortcut, and the microphone permission.
 - **Shortcuts**: Change… records the next key you press, alone or with modifiers. Esc keeps the current shortcut. On a Mac, ⌘` also switches windows unless you turn off “Move focus to next window” in System Settings → Keyboard → Keyboard Shortcuts → Keyboard.
 
 Settings are saved in `%APPDATA%\harness-discussion\settings.json`, next to a small `harness-discussion.log`.
