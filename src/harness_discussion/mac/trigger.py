@@ -127,7 +127,8 @@ class HotKey:
     def _modifiers_only(self, event, kind):
         """A tap fires once the chord is let go with no other key pressed, so ⌃⌥R doesn't also fire ⌃⌥."""
         if kind == AppKit.NSEventTypeKeyDown:
-            self._tap, self._spoiled = False, True
+            if event_mods(event) & self.keys[0]:  # typing before the chord starts doesn't cancel it
+                self._tap, self._spoiled = False, True
             return
         if kind != AppKit.NSEventTypeFlagsChanged:
             return

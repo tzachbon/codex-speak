@@ -57,6 +57,11 @@ class ShortcutKeyTest(unittest.TestCase):
         for f in (ctrl | alt, ctrl | alt | shift, ctrl | alt, ctrl, 0):  # Shift joined, so no tap
             hk._event(key_event(0, f, flags))
         hk.on_hotkey.assert_not_called()
+        one = self.hotkey("<ctrl>")
+        one._event(key_event(0))  # typing "a" first
+        for f in (ctrl, 0):
+            one._event(key_event(0, f, flags))
+        one.on_hotkey.assert_called_once()
         hold = self.hotkey("<ctrl>+<alt>", on_release=mock.Mock())
         for f in (shift, shift | ctrl, shift | ctrl | alt):  # an extra modifier still starts a hold
             hold._event(key_event(0, f, flags))
