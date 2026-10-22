@@ -2,6 +2,7 @@
 stdio) and transcripts through AiService/TranscribeAudio with the Cursor desktop sign-in."""
 import http.client
 import json
+import logging
 import os
 import queue
 import shutil
@@ -20,6 +21,10 @@ from .writer import Cancelled
 
 IDLE_S = 300
 TIMEOUT_S = 60
+READY_TTL_S = 60  # a confirmed sign-in is trusted this long; other answers are never cached
+SPARE_TTL_S = 60  # a pre-warmed session older than this is not used
+log = logging.getLogger("harness_discussion")
+_ready_at = float("-inf")
 STT_URL = "https://api2.cursor.sh/aiserver.v1.AiService/TranscribeAudio"
 
 
@@ -33,6 +38,9 @@ def agent_exe():
 
 def login_status():
     """"ready", "missing", or "signed_out", from `cursor-agent status`."""
+    global _ready_at
+    if time.monotonic() - _ready_at < READY_TTL_S:
+        return "ready"
     exe = agent_exe()
     if not exe:
         return "missing"
@@ -42,7 +50,10 @@ def login_status():
     except (OSError, subprocess.SubprocessError):
         return "ready"  # unknown: the rewrite tries it, and the next source runs if it fails
     out = done.stdout.lower()
-    return "ready" if done.returncode == 0 and "logged in" in out and "not logged in" not in out else "signed_out"
+    if done.returncode == 0 and "logged in" in out and "not logged in" not in out:
+        _ready_at = time.monotonic()
+        return "ready"
+    return "signed_out"
 
 
 def _env():
@@ -120,6 +131,7 @@ class CursorWriter:
         self._start = start or (lambda: Acp(agent_exe()))
         self._acp, self._models, self._used, self._lock = None, None, 0.0, threading.Lock()
         self._timer, self._one = None, threading.Lock()  # one rewrite reads the shared update queue at a time
+        self._spare = None  # (acp, session id, model, created): a fresh session for the next rewrite
 
     def status(self):
         return login_status()
@@ -142,7 +154,7 @@ class CursorWriter:
         with self._lock:
             if self._acp and time.monotonic() - self._used >= IDLE_S - 1:
                 self._acp.close()
-                self._acp = None
+                self._acp, self._spare = None, None
 
     def close(self):
         if self._timer:
@@ -150,7 +162,7 @@ class CursorWriter:
         with self._lock:
             if self._acp:
                 self._acp.close()
-                self._acp = None
+                self._acp, self._spare = None, None
 
     def _session(self, acp):
         session = acp.call("session/new", {"cwd": acp.cwd, "mcpServers": []}, 30)
@@ -176,12 +188,37 @@ class CursorWriter:
         with self._one:
             return self._rewrite(system, text, model, cancelled)
 
+    def _fresh(self, spare, acp, model):
+        return spare is not None and spare[0] is acp and spare[2] == model and time.monotonic() - spare[3] < SPARE_TTL_S
+
+    def prewarm(self, model):
+        """Start the agent and one session with `model` set, so the next rewrite only sends its prompt. Never raises."""
+        try:
+            if self.status() != "ready":
+                return
+            with self._one:
+                acp = self._warm()
+                if self._fresh(self._spare, acp, model):
+                    return
+                sid = self._session(acp)
+                if model:
+                    acp.call("session/set_model", {"sessionId": sid, "modelId": model})
+                self._spare = (acp, sid, model, time.monotonic())
+        except Exception as e:
+            log.info("Cursor prewarm failed: %s", type(e).__name__)
+        finally:
+            self._arm_idle_stop()
+
     def _rewrite(self, system, text, model, cancelled):
         acp = self._warm()
+        spare, self._spare = self._spare, None  # a session serves one rewrite, so no earlier text leaks into it
         try:
-            sid = self._session(acp)
-            if model:
-                acp.call("session/set_model", {"sessionId": sid, "modelId": model})
+            if self._fresh(spare, acp, model):
+                sid = spare[1]
+            else:
+                sid = self._session(acp)
+                if model:
+                    acp.call("session/set_model", {"sessionId": sid, "modelId": model})
             while not acp.updates.empty():
                 acp.updates.get_nowait()
             result, done = {}, threading.Event()

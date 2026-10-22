@@ -7,7 +7,8 @@ from .. import settings, writer
 from .sources_ui import CARD
 
 PLAN_DEFAULTS = {k: settings.DEFAULTS[k] for k in ("writer", "writer_sources", "writer_models", "modes",
-                                                   "default_mode", "rewrite_hotkey", "dictate_hotkey", "stt_sources")}
+                                                   "default_mode", "rewrite_hotkey", "dictate_hotkey", "stt_sources",
+                                                   "dictate_polish")}
 LOCAL_MODEL = "Qwen3-4B"  # fixed: Local has no model or effort choice
 FIXES = {"missing": "Install…", "signed_out": "Sign in…", "expired": "Sign in…", "not_downloaded": "Download…"}
 
@@ -41,9 +42,14 @@ class WritingPage:
         frame.pack(fill="x")
         self.dictation_rows = {name: self._writer_row(frame, name, "stt_sources")
                                for name, _ in self.cfg["stt_sources"]}
+        self.polish_on = tk.BooleanVar(self.win, self.cfg["dictate_polish"])
+        self.polish_check = ttk.Checkbutton(card, text="Tidy dictation with the default mode",
+                                            style="Card.TCheckbutton", variable=self.polish_on,
+                                            command=lambda: self._set("dictate_polish", self.polish_on.get()))
+        self.polish_check.pack(anchor="w", pady=(8, 0))
         self.mic_status = ttk.Label(card, style="Sub.Card.TLabel")
         self.mic_status.pack(anchor="w", pady=(8, 0))
-        self._shortcut_row(card, "dictate_hotkey", "Hold to record, release to type the rewritten text at the caret.")
+        self._shortcut_row(card, "dictate_hotkey", "Hold to record, release to type the text at the caret.")
         self.refresh_writing()
 
     def _modes_section(self, card, font):

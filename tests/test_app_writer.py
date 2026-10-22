@@ -86,7 +86,8 @@ class _App(app_summarize.Summaries, app_writer.Writer):
             pick_mode=lambda names, current, pick: self.picks.append((names, current, pick)))
         self.cfg = {"writer": True, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
                     "stt_sources": [["Codex", True], ["Cursor", True]],
-                    "writer_models": {}, "modes": [], "default_mode": "Fix errors", "clipboard_fallback": True}
+                    "writer_models": {}, "modes": [], "default_mode": "Fix errors", "clipboard_fallback": True,
+                    "dictate_polish": True}
         self.popup = SimpleNamespace(visible=False, hidden=0, rewriting=False, mode=None,
                                      set_rewriting=lambda on: setattr(self.popup, "rewriting", on),
                                      set_last_mode=lambda m: setattr(self.popup, "mode", m),
@@ -135,6 +136,38 @@ class DictationTest(unittest.TestCase):
         self.assertEqual(self.app.host.edit.ctxs, [CTX])  # typed only into the field captured at key down
         self.assertEqual(self.app.writer_sources[0].texts, [writer.wrap("i thinks so")])
         self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Fix errors · Cursor")
+
+    def test_each_dictation_logs_its_timings_but_never_its_text(self):
+        with self.assertLogs("harness_discussion", level="INFO") as logs:
+            self.hold(2)
+            self.app.drain()
+        out = "\n".join(logs.output)
+        self.assertRegex(out, r"dictated 9 chars with Codex then Cursor in \d+\.\ds "
+                              r"\(transcribe \d+\.\ds, rewrite \d+\.\ds\)")
+        self.assertNotIn("thinks", out)
+        self.assertNotIn("Hi there", out)
+
+    def test_with_polish_off_the_raw_transcript_is_typed_without_a_rewrite(self):
+        self.app.cfg["dictate_polish"] = False
+        with self.assertLogs("harness_discussion", level="INFO") as logs:
+            self.hold(2)
+            self.app.drain()
+        self.assertEqual(self.app.host.edit.pasted, ["i thinks so"])
+        self.assertEqual(self.app.writer_sources[0].texts, [])
+        self.assertEqual(self.app.toast_.shown[-1][0], "Dictated · Codex")
+        self.assertIn("rewrite -)", "\n".join(logs.output))
+
+    def test_key_down_prewarms_the_first_writer_only_when_polish_is_on(self):
+        calls = []
+        self.app.writer_sources[0].prewarm = calls.append
+        self.app.cfg["writer_models"] = {"Cursor": {"model": "fast"}}
+        with unittest.mock.patch.object(app_writer.threading, "Thread",
+                                        lambda target, args, daemon: SimpleNamespace(start=lambda: target(*args))):
+            self.app._dictate_down()
+            self.app._dictate_up()
+            self.app.cfg["dictate_polish"] = False
+            self.app._dictate_down()
+        self.assertEqual(calls, ["fast"])
 
     def test_a_tap_cancels(self):
         self.hold(0.1)

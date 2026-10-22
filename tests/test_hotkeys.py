@@ -62,8 +62,13 @@ class WriterSettings(unittest.TestCase):
     def test_a_fresh_file_follows_the_default_voice_order(self):
         s = self.load(None)
         self.assertEqual(s["writer_sources"], [["Cursor", True], ["Codex", True], ["Local", True]])
-        self.assertEqual(s["stt_sources"], [["Codex", True], ["Cursor", True]])
+        self.assertEqual(s["stt_sources"], [["Cursor", True], ["Codex", True]])
+        self.assertIs(s["dictate_polish"], True)
         self.assertEqual((s["rewrite_hotkey"], s["dictate_hotkey"]), (hotkeys.REWRITE, hotkeys.DICTATE))
+
+    def test_polish_must_be_a_bool(self):
+        self.assertIs(self.load({"dictate_polish": False})["dictate_polish"], False)
+        self.assertIs(self.load({"dictate_polish": "no"})["dictate_polish"], True)
 
     def test_an_existing_file_copies_the_voice_order_once(self):
         voices = [["Codex", True], ["Kokoro", True], ["Cursor", False]]

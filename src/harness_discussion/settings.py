@@ -33,8 +33,8 @@ DEFAULTS = {"sources": [[n, True] for n in DEFAULT_SOURCES], "voices": {}, "spee
             "writer": False, "writer_sources": [["Cursor", True], ["Codex", True], ["Local", True]],
             "writer_models": {}, "modes": [], "default_mode": "Fix errors",
             "rewrite_hotkey": hotkeys.REWRITE, "dictate_hotkey": hotkeys.DICTATE,
-            "stt_sources": [["Codex", True], ["Cursor", True]]}
-WRITER_SOURCES, STT_SOURCES = ("Cursor", "Codex", "Local"), ("Codex", "Cursor")
+            "stt_sources": [["Cursor", True], ["Codex", True]], "dictate_polish": True}
+WRITER_SOURCES, STT_SOURCES = ("Cursor", "Codex", "Local"), ("Cursor", "Codex")
 SPEEDS = (0.5, 2.0)
 SPEED_PRESETS = (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)  # the popup's speed menu
 TASK = "Harness Discussion"  # the installer creates and removes it with `--startup on|off`
@@ -94,7 +94,7 @@ def load(path=PATH) -> dict:
         ok = False
     s["caption_background_opacity"] = (min(max(float(opacity), 0.0), 1.0)
                                         if ok else DEFAULTS["caption_background_opacity"])
-    for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background", "auto_update"):
+    for key in ("clipboard_fallback", "stt_server", "prefetch", "caption_background", "auto_update", "dictate_polish"):
         if not isinstance(s[key], bool):
             s[key] = DEFAULTS[key]
     if not isinstance(s["ax_granted_build"], (str, type(None))):

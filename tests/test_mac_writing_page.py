@@ -56,6 +56,11 @@ class WritingSettingsTest(unittest.TestCase):
         self.assertEqual(self.win.writer_list.arrangedSubviews()[1], rows["Local"][7])
         self.assertEqual(self.win.mic_status.stringValue(), "Asks the first time you dictate")
 
+    def test_dictation_has_the_polish_switch(self):
+        self.assertEqual(self.win.polish_switch.accessibilityLabel(), "Tidy dictation with the default mode")
+        self.click(self.win.polish_switch)
+        self.assertEqual(self.changes[-1][0], "dictate_polish")
+
     def test_models_and_efforts_save_per_source(self):
         _, _, _, _, model, effort, _, _ = self.win.writer_rows["Codex"]
         self.assertTrue(effort.isHidden())

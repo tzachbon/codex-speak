@@ -14,16 +14,20 @@ class FakeAcp:
 
     def __init__(self, chunks=("Fixed", " text."), stop="end_turn"):
         self.calls, self.notes, self.updates, self._chunks, self.closed = [], [], queue.Queue(), chunks, False
-        self.stop = stop
+        self.stop, self.sessions, self.fail_new = stop, 0, 0
 
     def call(self, method, params, timeout=20):
         self.calls.append((method, params))
         if method == "session/new":
-            return {"sessionId": "s1", "models": {"availableModels": [{"modelId": "gpt[effort=low]", "name": "GPT"}]},
+            if self.fail_new:
+                self.fail_new -= 1
+                raise RuntimeError("session/new failed")
+            self.sessions += 1
+            return {"sessionId": f"s{self.sessions}", "models": {"availableModels": [{"modelId": "gpt[effort=low]", "name": "GPT"}]},
                     "modes": {"availableModes": [{"id": "agent"}, {"id": "ask"}]}}
         if method == "session/prompt":
             for chunk in self._chunks:
-                self.updates.put({"method": "session/update", "params": {"sessionId": "s1", "update": {
+                self.updates.put({"method": "session/update", "params": {"sessionId": params["sessionId"], "update": {
                     "sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": chunk}}}})
             return {"stopReason": self.stop}
         return {}
@@ -40,6 +44,8 @@ class CursorWriterTest(unittest.TestCase):
         self.acp = FakeAcp()
         self.source = llm_cursor.CursorWriter(lambda: self.acp)
         self.addCleanup(self.source.close)
+        llm_cursor._ready_at = float("-inf")
+        self.addCleanup(setattr, llm_cursor, "_ready_at", float("-inf"))
 
     def test_a_rewrite_uses_ask_mode_the_saved_model_and_joins_the_chunks(self):
         self.assertEqual(self.source.rewrite("SYSTEM", "fixd txt", "gpt[effort=low]", None, lambda: False), "Fixed text.")
@@ -77,6 +83,67 @@ class CursorWriterTest(unittest.TestCase):
         worker.join(2)
         self.assertEqual(out, ["Fixed text."])
 
+    def test_a_confirmed_sign_in_is_cached_for_a_minute_and_nothing_else_is(self):
+        done = mock.Mock(returncode=0, stdout="✓ Logged in as someone\n")
+        now = [1000.0]
+        with mock.patch.object(llm_cursor, "agent_exe", return_value="/x/cursor-agent"), \
+                mock.patch.object(llm_cursor.subprocess, "run", return_value=done) as run, \
+                mock.patch.object(llm_cursor.time, "monotonic", lambda: now[0]):
+            self.assertEqual([llm_cursor.login_status(), llm_cursor.login_status()], ["ready", "ready"])
+            self.assertEqual(run.call_count, 1)
+            now[0] += 61
+            done.stdout = "Not logged in\n"
+            self.assertEqual([llm_cursor.login_status(), llm_cursor.login_status()], ["signed_out", "signed_out"])
+            self.assertEqual(run.call_count, 3)
+            run.side_effect = OSError
+            self.assertEqual([llm_cursor.login_status(), llm_cursor.login_status()], ["ready", "ready"])
+            self.assertEqual(run.call_count, 5)  # an unknown answer is tried, never cached
+
+    def prewarmed(self, model="m"):
+        with mock.patch.object(llm_cursor, "login_status", return_value="ready"):
+            self.source.prewarm(model)
+
+    def counts(self):
+        methods = [m for m, _ in self.acp.calls]
+        return methods.count("session/new"), methods.count("session/set_model")
+
+    def test_a_prewarmed_session_skips_setup_and_serves_one_rewrite(self):
+        self.prewarmed()
+        self.assertEqual(self.counts(), (1, 1))
+        self.assertEqual(self.source.rewrite("S", "a", "m", None, lambda: False), "Fixed text.")
+        self.assertEqual(self.counts(), (1, 1))
+        self.assertEqual(self.acp.calls[-1][1]["sessionId"], "s1")
+        self.source.rewrite("S", "b", "m", None, lambda: False)
+        self.assertEqual(self.counts(), (2, 2))
+        self.assertEqual(self.acp.calls[-1][1]["sessionId"], "s2")
+
+    def test_a_spare_for_another_model_or_too_old_is_not_used(self):
+        self.prewarmed("m")
+        self.source.rewrite("S", "a", "other", None, lambda: False)
+        self.assertEqual(self.acp.calls[-1][1]["sessionId"], "s2")
+        now = [1000.0]
+        with mock.patch.object(llm_cursor.time, "monotonic", lambda: now[0]):
+            self.prewarmed("m")
+            now[0] += llm_cursor.SPARE_TTL_S + 1
+            self.source.rewrite("S", "b", "m", None, lambda: False)
+        self.assertEqual(self.acp.calls[-1][1]["sessionId"], "s4")
+
+    def test_a_failed_prewarm_never_raises_and_the_rewrite_still_works(self):
+        self.acp.fail_new = 1
+        self.prewarmed()
+        self.assertEqual(self.source.rewrite("S", "a", "m", None, lambda: False), "Fixed text.")
+
+    def test_a_signed_out_prewarm_does_nothing(self):
+        with mock.patch.object(llm_cursor, "login_status", return_value="signed_out"):
+            self.source.prewarm("m")
+        self.assertEqual(self.acp.calls, [])
+
+    def test_close_drops_the_spare(self):
+        self.prewarmed()
+        self.source.close()
+        self.source.rewrite("S", "a", "m", None, lambda: False)
+        self.assertEqual(self.acp.calls[-1][1]["sessionId"], "s2")
+
     def test_models_come_from_the_session(self):
         self.assertEqual(self.source.models(), [{"id": "gpt[effort=low]", "label": "GPT", "efforts": []}])
 
@@ -85,6 +152,7 @@ class CursorWriterTest(unittest.TestCase):
         with mock.patch.object(llm_cursor, "agent_exe", return_value="/x/cursor-agent"), \
                 mock.patch.object(llm_cursor.subprocess, "run", return_value=done):
             self.assertEqual(llm_cursor.login_status(), "ready")
+            llm_cursor._ready_at = float("-inf")
             done.stdout = "Not logged in\n"
             self.assertEqual(llm_cursor.login_status(), "signed_out")
         with mock.patch.object(llm_cursor, "agent_exe", return_value=None):

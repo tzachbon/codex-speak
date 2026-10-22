@@ -1,4 +1,4 @@
-"""The transcript chain for dictation: Codex, then Cursor, in the saved order, skipping sources that aren't ready."""
+"""The transcript chain for dictation: Cursor then Codex by default, in the saved order, skipping unready sources."""
 import logging
 
 from . import codex_rt, stt

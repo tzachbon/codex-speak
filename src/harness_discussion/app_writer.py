@@ -273,8 +273,13 @@ class Writer:
             self._toast("The microphone could not start.")
             return
         self._recorder, self._recorded_at = recorder, time.monotonic()
-        first = next((n for n, on in self.cfg["stt_sources"] if on), "Codex")
+        first = next((n for n, on in self.cfg["stt_sources"] if on), "Cursor")
         self._toast(f"Listening · {first}", busy=True)
+        if self.cfg["dictate_polish"]:  # get the rewrite ready while the user speaks
+            writer_first = next(iter(writer.chain(self.writer_sources, self.cfg["writer_sources"])), None)
+            if writer_first is not None and hasattr(writer_first, "prewarm"):
+                model = (self.cfg["writer_models"].get(writer_first.name) or {}).get("model")
+                threading.Thread(target=writer_first.prewarm, args=(model,), daemon=True).start()
 
     def _dictate_up(self):
         self._holding = False
@@ -283,10 +288,11 @@ class Writer:
             return
         held = time.monotonic() - self._recorded_at
         audio = recorder.stop()
+        released = time.monotonic()
         if mic.is_tap(held) or not audio:
             self.toast.hide()
             return
-        mode = self._find_mode(None)
+        mode = self._find_mode(None) if self.cfg["dictate_polish"] else None
         self._rewrite_id += 1
         rid, cancel = self._rewrite_id, threading.Event()
         self._rewrite_cancel = cancel
@@ -295,33 +301,42 @@ class Writer:
         at = self._anchor()
         sources = writer.chain(self.writer_sources, self.cfg["writer_sources"])
         models, order, chain = self.cfg["writer_models"], self.cfg["stt_sources"], self.stt_sources
-        self._toast(f"Transcribing · {mode.name}", busy=True, at=at)
+        self._toast(f"Transcribing · {mode.name}" if mode else "Transcribing", busy=True, at=at)
 
         def work():
+            stt_s = rewrite_s = None
             try:
-                text, _ = dictation.transcribe(audio, chain, order)
+                text, stt_name = dictation.transcribe(audio, chain, order)
+                stt_s = time.monotonic() - released
                 if cancel.is_set():
                     raise writer.Cancelled("The dictation was cancelled.")
-                result = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
+                if mode:
+                    started = time.monotonic()
+                    text, source = writer.rewrite(text, mode, sources, models=models, cancelled=cancel.is_set)
+                    rewrite_s = time.monotonic() - started
+                    result = (text, stt_name, source)
+                else:
+                    result = (text, stt_name, None)
             except Exception as e:
                 result = e
-            self.events.put(("dictated", rid, mode.name, result, at))
+            self.events.put(("dictated", rid, mode.name if mode else None, result, at, (released, stt_s, rewrite_s)))
         threading.Thread(target=work, daemon=True).start()
 
-    def _dictated(self, rid, mode, result, at):
+    def _dictated(self, rid, mode, result, at, timing):
         if rid != self._rewrite_id:
             return
+        released, stt_s, rewrite_s = timing
         self._set_rewriting(False)
         self._arm_summary_stop()
         if isinstance(result, writer.Cancelled):
             self.toast.hide()
             return
         if isinstance(result, Exception):
-            log.info("dictation failed: %s", type(result).__name__)
+            log.info("dictation failed: %s after %.1fs", type(result).__name__, time.monotonic() - released)
             safe = isinstance(result, (writer.Error, dictation.Error))
             self._toast(str(result) if safe else "Could not finish the dictation.", at=at)
             return
-        text, source = result
+        text, stt_name, source = result
         ctx, now = self._dictate_ctx, self.edit.capture(False)
         copy = lambda: self.host.copy_text(text)
         if ctx is None or now is None or (now.app, now.window) != (ctx.app, ctx.window) or now.secure:
@@ -330,7 +345,10 @@ class Writer:
         if not self.edit.type_at_caret(text, ctx):
             self._toast("Couldn't type here.", [("Copy", copy)], at=at)
             return
-        self._toast(f"Dictated · {mode} · {source}", [("Copy", copy)], at=at)
+        log.info("dictated %d chars with %s%s in %.1fs (transcribe %.1fs, rewrite %s)", len(text), stt_name,
+                 f" then {source}" if source else "", time.monotonic() - released, stt_s,
+                 f"{rewrite_s:.1f}s" if rewrite_s is not None else "-")
+        self._toast(f"Dictated · {mode} · {source}" if mode else f"Dictated · {stt_name}", [("Copy", copy)], at=at)
 
     def _escape(self):
         """Esc cancels a rewrite, else hides the toast, else dismisses the bar. Both watchers can see one Esc."""

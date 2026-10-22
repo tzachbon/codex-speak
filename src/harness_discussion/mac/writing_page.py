@@ -68,11 +68,13 @@ class WritingPage:
         mic = ui.stack([ui.stack([ui.label("Microphone", 13), self.mic_status], spacing=1), _spacer(),
                         ui.button("Open Settings", self.app.host.open_mic_settings)], vertical=False)
         mic.widthAnchor().constraintEqualToConstant_(WIDTH).setActive_(True)
-        return [_card([self.stt_list]),
+        polish, self.polish_switch = ui.option("Tidy dictation with the default mode", "Off types exactly what was heard, sooner.",
+                              self.cfg["dictate_polish"], lambda v: self._set("dictate_polish", v), WIDTH)
+        return [_card([self.stt_list]), _card([polish]),
                 _card([self._shortcut_row("dictate_hotkey"), _divider(), mic]),
-                _note("Hold the shortcut and speak. Release to transcribe, rewrite with the default mode, and "
-                      "type at the cursor. A short tap does nothing. The audio goes to the first ready source "
-                      "and is not saved.")]
+                _note("Hold the shortcut and speak. Release to transcribe and type at the cursor, tidied with the "
+                      "default mode when that is on. A short tap does nothing. The audio goes to the first ready "
+                      "source and is not saved.")]
 
     def _writer_row(self, name, stt):
         """(switch, dot, status, fix, model, effort, (up, down), row) for one writer or speech-to-text source."""

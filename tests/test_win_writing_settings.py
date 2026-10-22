@@ -236,10 +236,14 @@ class WritingSettingsUi(unittest.TestCase):
         mic = ["Not checked"]
         w = self.make_window(dictate_status=lambda: mic[0])
         self.assertEqual(w.mic_status["text"], "Microphone: Not checked")
-        w.dictation_rows["Cursor"]["up"].invoke()
-        self.assertEqual(self.changes[-1], ("stt_sources", [["Cursor", True], ["Codex", True]]))
-        w.dictation_rows["Codex"]["toggle"].invoke()
-        self.assertEqual(self.changes[-1], ("stt_sources", [["Cursor", True], ["Codex", False]]))
+        self.assertTrue(w.dictation_rows["Cursor"]["up"].instate(["disabled"]))  # Cursor transcribes first
+        w.dictation_rows["Codex"]["up"].invoke()
+        self.assertEqual(self.changes[-1], ("stt_sources", [["Codex", True], ["Cursor", True]]))
+        w.dictation_rows["Cursor"]["toggle"].invoke()
+        self.assertEqual(self.changes[-1], ("stt_sources", [["Codex", True], ["Cursor", False]]))
+        self.assertTrue(w.polish_on.get())
+        w.polish_check.invoke()
+        self.assertEqual(self.changes[-1], ("dictate_polish", False))
         mic[0] = "Allowed"
         w.refresh_writing()
         self.assertEqual(w.mic_status["text"], "Microphone: Allowed")
