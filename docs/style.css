@@ -81,7 +81,7 @@ nav .go { text-decoration: none; font-size: 13px; font-weight: 600; background: 
 .stage { position: relative; height: 520px; margin: 96px auto 0; max-width: 980px; }
 .card { position: absolute; transition: transform 1.2s var(--ease); will-change: transform; }
 .c1 { left: 0; top: 40px; width: 560px; rotate: -2deg; z-index: 1; }
-.c2 { left: 340px; top: -56px; width: 400px; rotate: 3deg; z-index: 3; }
+.c2 { left: 420px; top: -56px; width: 400px; rotate: 3deg; z-index: 3; }
 .c3 { right: 0; top: 190px; width: 330px; rotate: -1.5deg; z-index: 2; }
 .float-a { animation: fa 9s var(--ease) infinite alternate; }
 .float-b { animation: fb 11s var(--ease) infinite alternate; }
@@ -99,14 +99,9 @@ nav .go { text-decoration: none; font-size: 13px; font-weight: 600; background: 
 .src a { color: var(--accent); }
 .shot { display: block; margin-top: 12px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px var(--hair); }
 .shot img { display: block; width: 100%; height: auto; }
-/* ponytail: settings.png crops to Sources and Speed in CSS; the link opens the full capture */
+
 .crop img { aspect-ratio: 946 / 540; object-fit: cover; object-position: top; }
 .sel { background: var(--sel); border-radius: 3px; padding: 1px 2px; }
-.pill { position: absolute; left: 28px; top: 70px; display: inline-flex; gap: 12px; align-items: center; padding: 8px 14px;
-        background: var(--surface); border-radius: 999px; font: 500 12px var(--mono); color: var(--ink);
-        box-shadow: 0 14px 36px -10px rgba(20, 30, 60, .22), 0 0 0 1px var(--hair); }
-.pill .sep { width: 1px; height: 16px; background: var(--hair); }
-.pill .play { color: var(--accent); }
 .cap { padding: 26px 28px; text-align: left; }
 .cap small, .set small { font: 500 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
 .set { padding: 22px 22px 20px; text-align: left; }
