@@ -98,9 +98,9 @@ class HotKey:
 
     def __init__(self, spec, on_hotkey, on_release=None):
         self.keys, self.on_hotkey = hotkeys.parse(spec), on_hotkey  # parsed, so modifier order doesn't matter
-        self.on_release, self._held = on_release, None
+        self.on_release, self._held, self._tap, self._spoiled = on_release, None, False, False
         mask = AppKit.NSEventMaskKeyDown
-        if on_release:
+        if on_release or self.keys[1] is None:
             mask |= AppKit.NSEventMaskKeyUp | AppKit.NSEventMaskFlagsChanged
         self._monitors = [AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(mask, self._event)]
 
@@ -111,6 +111,8 @@ class HotKey:
 
     def _event(self, event):
         kind = event.type()
+        if self.keys[1] is None:
+            return self._modifiers_only(event, kind)
         if kind == AppKit.NSEventTypeKeyDown:
             if not event.isARepeat() and hotkeys.parse(event_spec(event)) == self.keys:
                 self._held = event.keyCode() if self.on_release else None
@@ -121,6 +123,31 @@ class HotKey:
             if (kind == AppKit.NSEventTypeKeyUp and event.keyCode() == self._held) or not mods_down:
                 self._held = None
                 self.on_release()
+
+    def _modifiers_only(self, event, kind):
+        """A tap fires once the chord is let go with no other key pressed, so ⌃⌥R doesn't also fire ⌃⌥."""
+        if kind == AppKit.NSEventTypeKeyDown:
+            if event_mods(event) & self.keys[0]:  # typing before the chord starts doesn't cancel it
+                self._tap, self._spoiled = False, True
+            return
+        if kind != AppKit.NSEventTypeFlagsChanged:
+            return
+        mods, chord = frozenset(event_mods(event)), self.keys[0]
+        if not mods >= chord:  # the chord ended
+            if self._held is not None:
+                self._held = None
+                self.on_release()
+            elif self._tap:
+                self.on_hotkey()
+            self._tap = self._spoiled = False
+        elif self.on_release is not None:
+            if self._held is None:
+                self._held = True
+                self.on_hotkey()
+        elif mods == chord and not self._spoiled:
+            self._tap = True
+        else:  # an extra modifier joined, so this hold is no longer a tap of the chord
+            self._tap, self._spoiled = False, True
 
     def stop(self):
         for monitor in self._monitors:

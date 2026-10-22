@@ -83,7 +83,7 @@ class HotKey:
 
     def __init__(self, spec, on_hotkey, on_release=None):
         mods, key = hotkeys.parse(spec)
-        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, vk(key)}, {}
+        self.on_hotkey, self.on_release, self._keys, self._held = on_hotkey, on_release, {*mods, *([vk(key)] if key else [])}, {}
         self._pending, self._armed = False, True  # armed blocks auto-repeat and a re-press during a partial release
         self._listener = keyboard.Listener(on_press=self._press, on_release=self._release)
         self._listener.start()

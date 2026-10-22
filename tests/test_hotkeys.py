@@ -16,9 +16,10 @@ class Parse(unittest.TestCase):
         self.assertEqual(hotkeys.parse("<key_50>"), (frozenset(), "key_50"))  # any other key, by its code
         self.assertEqual(hotkeys.parse("<cmd>+<key_50>"), (frozenset({"cmd"}), "key_50"))
         self.assertEqual(hotkeys.parse("<ctrl>+c"), (frozenset({"ctrl"}), "c"))
+        self.assertEqual(hotkeys.parse("<ctrl>+<alt>"), (frozenset({"ctrl", "alt"}), None))  # modifiers alone
 
     def test_invalid_shortcuts(self):
-        for spec in ("", "<ctrl>", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", "key_50",
+        for spec in ("", "<ctrl>+r+s", "<ctrl>+f5", "<ctrl>+<r>", "<hyper>+r", "<ctrl>+!", "key_50",
                      "<key_x>", "<key_>", "<key_99999>", None, 3):
             self.assertIsNone(hotkeys.parse(spec), spec)
 
@@ -28,12 +29,15 @@ class Parse(unittest.TestCase):
         self.assertEqual(hotkeys.spec(set(), "r"), "r")
         self.assertEqual(hotkeys.spec({"cmd"}, "key_50"), "<cmd>+<key_50>")
         self.assertIsNone(hotkeys.spec({"ctrl"}, "Control_L"))
+        self.assertEqual(hotkeys.spec({"alt", "ctrl"}), "<ctrl>+<alt>")
+        self.assertIsNone(hotkeys.spec(set()))
 
     def test_label(self):
         with patch.object(hotkeys.sys, "platform", "win32"):
             self.assertEqual(hotkeys.label("<ctrl>+<alt>+r"), "Ctrl+Alt+R")
         with patch.object(hotkeys.sys, "platform", "darwin"):
             self.assertEqual(hotkeys.label("<cmd>+<alt>+r"), "⌥⌘R")
+            self.assertEqual(hotkeys.label("<ctrl>+<alt>"), "⌃⌥")
         self.assertEqual(hotkeys.label(""), "Off")
 
 

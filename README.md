@@ -34,7 +34,7 @@ Harness Discussion reads with Cursor's voices through your Cursor desktop sign-i
 - **Dictation (Mac).** Hold ⌥⌘D and speak. On release, Cursor (then Codex, by default) transcribes the audio, the default mode tidies it, and the text is typed at the cursor. Turn off *Tidy dictation with the default mode* to type exactly what was heard, sooner. A short tap does nothing. It follows the Writing switch.
 - **Pause, resume, stop.** ⏸ pauses and ▶ continues from the same spot. ■ stops.
 - **Skip by sentence.** ⏮ and ⏭ on the bar read again from the previous or next sentence.
-- **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading. Any key works, alone or with modifiers.
+- **Read shortcut.** Ctrl+Alt+R on Windows, ⌥⌘R on a Mac, reads the selection at once and shows the bar at the pointer. Press it again to stop. Change it or turn it off in Settings → Reading. Any key works, alone or with modifiers. On a Mac, modifiers alone such as ⌃⌥ work too.
 - **Speed on the bar.** 0.5× to 2×, saved and shared with Settings.
 - **Read-along captions.** The current sentence appears above the bar as it plays.
 - **Six languages.** Hebrew, English, Arabic, Russian, Spanish, and French.
@@ -123,7 +123,7 @@ Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the
 - **Speech-to-text server**: see [STT.md](STT.md).
 - **Writing** (Mac): turns rewriting on or off, and sets the default mode, the rewrite shortcut, and the sources in order with each one's model and effort. The modes editor adds, renames, and deletes your own modes. Built-in modes keep their name, and Reset puts back their instructions.
 - **Dictation** (Mac): the transcript sources in order (Cursor, then Codex, by default), whether the default mode tidies the transcript, the hold shortcut, and the microphone permission.
-- **Shortcuts**: Change… records the next key you press, alone or with modifiers. Esc keeps the current shortcut. On a Mac, ⌘` also switches windows unless you turn off “Move focus to next window” in System Settings → Keyboard → Keyboard Shortcuts → Keyboard.
+- **Shortcuts**: Change… records the next key you press, alone or with modifiers. Esc keeps the current shortcut. On a Mac, holding modifiers such as ⌃⌥ and letting go without a key records them alone. That shortcut fires when you let go, unless you pressed another key while holding them. A hold shortcut starts once they are all down. On a Mac, ⌘` also switches windows unless you turn off “Move focus to next window” in System Settings → Keyboard → Keyboard Shortcuts → Keyboard.
 
 Settings are saved in `%APPDATA%\harness-discussion\settings.json`, next to a small `harness-discussion.log`.
 

@@ -19,7 +19,7 @@ def conflict(cfg, key, spec):
 
 
 def parse(spec):
-    """(modifiers, key) for a valid shortcut, with or without modifiers, else None."""
+    """(modifiers, key) for a valid shortcut, with or without modifiers, else None. key is None for modifiers alone."""
     if not isinstance(spec, str) or not spec:
         return None
     mods, keys = set(), []
@@ -31,13 +31,15 @@ def parse(spec):
             keys.append(name)
         else:
             return None
+    if not keys and mods:
+        return frozenset(mods), None
     return (frozenset(mods), keys[0]) if len(keys) == 1 else None
 
 
-def spec(mods, key):
+def spec(mods, key=None):
     """The stored string for modifiers and a key, or None when they don't make a valid shortcut."""
-    key = key.lower()
-    text = "+".join([f"<{m}>" for m in MODS if m in mods] + [key if len(key) == 1 else f"<{key}>"])
+    key = key.lower() if key else None
+    text = "+".join([f"<{m}>" for m in MODS if m in mods] + ([key if len(key) == 1 else f"<{key}>"] if key else []))
     return text if parse(text) else None
 
 
@@ -62,6 +64,6 @@ def label(text):
         return "Off"
     mods, key = parsed
     if sys.platform == "darwin":
-        return mac_mods(mods) + key_label(key)
+        return mac_mods(mods) + (key_label(key) if key else "")
     return "+".join([{"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "cmd": "Win"}[m] for m in MODS if m in mods]
-                    + [key_label(key)])
+                    + ([key_label(key)] if key else []))
