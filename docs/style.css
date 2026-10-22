@@ -1,4 +1,4 @@
-/* Palette from the app: charcoal #262629 capsule, #3b3b40 chips. Buttons use a darker #0a84ff so white text passes 4.5:1. */
+/* Palette from the app: charcoal #262629 capsule, #3b3b40 chips. Buttons darken the app blue to #0066d6 so white text passes 4.5:1. */
 :root {
   --bg: #f4f4f6; --ink: #1d1d1f; --muted: #55555c; --line: #d9d9de; --surface: #fff;
   --link: #0062c4; --btn: #0066d6; --btn-ink: #fff; --tag: #e6f0fc;
