@@ -10,6 +10,7 @@ import threading
 import time
 
 from . import dictation, edit_logic, hotkeys, mic, sources, writer
+from . import writer_settings as ws
 from .llm_codex import CodexWriter
 from .llm_cursor import CursorWriter
 from .summarize import LocalWriter
@@ -292,7 +293,8 @@ class Writer:
         if mic.is_tap(held) or not audio:
             self.toast.hide()
             return
-        mode = self._find_mode(None) if self.cfg["dictate_polish"] else None
+        name = ws.default_mode(self.cfg["dictate_mode"], self.cfg["modes"], "Clean dictation")
+        mode = self._find_mode(name) if self.cfg["dictate_polish"] else None
         self._rewrite_id += 1
         rid, cancel = self._rewrite_id, threading.Event()
         self._rewrite_cancel = cancel
