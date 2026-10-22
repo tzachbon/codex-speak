@@ -151,7 +151,7 @@ class Popup:
         return self.visible and f.origin.x <= x < f.origin.x + f.size.width and top <= y < top + f.size.height
 
     def anchor(self):
-        """Top-left of the bar, then its height, for placing the toast where the bar was."""
+        """Top-left of the bar, then its height, so the toast can sit under or above it."""
         f = self.win.frame()
         return f.origin.x, _cocoa_y(f.origin.y + f.size.height), f.size.height
 

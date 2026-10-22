@@ -43,8 +43,9 @@ class FakeToast:
     def __init__(self):
         self.shown, self.on_hide = [], lambda: None
 
-    def show(self, message, x, y, actions=(), busy=False):
+    def show(self, message, x, y, actions=(), busy=False, above=None):
         self.visible = True
+        self.at = (x, y, above)
         self.shown.append((message, dict(actions), busy))
 
     def hide(self):
@@ -169,6 +170,14 @@ class FlowTest(unittest.TestCase):
         self.assertEqual((message, sorted(actions), busy), ("Fix errors · Cursor", ["Mode", "Review", "Undo"], False))
         self.assertFalse(app.popup.rewriting)
         self.assertEqual(len(app.timers), 1)  # the local model's idle stop is armed again
+
+    def test_the_toasts_sit_under_a_visible_bar_and_know_its_top(self):
+        app = _App()
+        app.popup.visible, app.popup.anchor = True, lambda: (100, 200, 42)
+        app.rewrite_selection()
+        self.assertEqual(app.toast_.at, (100, 248, 200))  # 6 under the bar, which stays up showing "Rewriting…"
+        app.drain()
+        self.assertEqual(app.toast_.at, (100, 248, 200))  # the result takes the busy toast's place
 
     def test_undo_selects_the_paste_and_puts_the_original_back(self):
         app = _App()
