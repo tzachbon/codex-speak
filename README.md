@@ -102,9 +102,9 @@ Choose **Settings…** from the bar's **…** menu, click the tray or menu bar i
 | Codex | Codex CLI signed in with ChatGPT | OpenAI, through your Codex sign-in |
 | Local (rewrite only) | The Summarize model | Stays on your computer |
 
-- Turn off every source except Kokoro and Windows or macOS in Settings to keep text on your computer.
+- For local read-aloud, enable only Kokoro and Windows or macOS in Settings → Voices. Mac Writing and Dictation have separate source settings.
 - Password fields are never read or rewritten.
-- Turn off Cursor and Codex in Settings → Writing to keep rewrites on your computer. Dictation audio goes to the first ready source, Cursor by default, and is not saved.
+- For local rewrites on a Mac, turn off Cursor and Codex in Settings → Writing and use Local. Dictation audio goes to the first ready source, Cursor by default, and is not saved. Turn off Cursor and Codex in Settings → Dictation to disable transcription through those services.
 - A rewrite is pasted only if the same app, window, and selection are still there. Your clipboard is put back afterwards.
 - On Windows, the app reads accessible selections without automatic clipboard copying. Apps that hide their selection cannot be read, and list numbers may be omitted.
 - The log records the engine, timing, and errors, never the text itself.
