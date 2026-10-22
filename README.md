@@ -81,7 +81,7 @@ After an update, macOS can stop trusting the app even though System Settings sti
 
 On a Mac, the menu bar icon's menu shows what is playing and has Pause, Stop, Speed, and Voice Source. *Show Popup on Selection* turns the bar off until you turn it back on or restart the app.
 
-Click ⚙ on the bar, the tray or menu bar icon, or start the app again from the Start menu to open **Settings**.
+Choose **Settings…** from the bar's **…** menu, click the tray or menu bar icon, or start the app again from the Start menu to open **Settings**.
 
 ## Where your text goes
 
