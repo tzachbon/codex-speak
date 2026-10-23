@@ -180,6 +180,18 @@ uv run python -m unittest discover -s tests
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the dev setup, building the installer, releases, and a map of the code.
 
+## Code signing policy
+
+Windows code signing is **pending**. The project is applying for free code signing from SignPath Foundation, and current installers are still unsigned. When signing starts, Windows releases will say:
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Authors and committers: [tzachbon](https://github.com/tzachbon)
+- Reviewers: [tzachbon](https://github.com/tzachbon)
+- Approvers: [tzachbon](https://github.com/tzachbon)
+
+Only the app's own executable and its installer will be signed, from GitHub Actions builds of this repository, and every release needs a manual approval. See the [privacy policy](PRIVACY.md) for where your text goes.
+
 ## Contributing
 
 Bug reports, fixes, and new language voices are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
