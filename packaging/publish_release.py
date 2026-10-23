@@ -12,6 +12,10 @@ from pathlib import Path
 from release_version import parse_tag
 
 
+# ponytail: says unsigned until SignPath signing starts, then update this line.
+POLICY = ("Code signing policy: https://github.com/tzachbon/harness-discussion#code-signing-policy. "
+          "Signing is pending, this installer is unsigned.")
+
 def command(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
@@ -58,7 +62,8 @@ def publish(version, commit, repository, artifacts):
                               encoding="utf-8")
     if existing.returncode:
         command("gh", "release", "create", tag, str(artifacts[0]), "--repo", repository,
-                "--verify-tag", "--draft", "--title", f"Harness Discussion {tag}", "--generate-notes")
+                "--verify-tag", "--draft", "--title", f"Harness Discussion {tag}", "--generate-notes",
+                "--notes", POLICY)  # gh puts it above the generated notes
         release = read_release(repository, tag)
     else:
         release = json.loads(existing.stdout)

@@ -149,6 +149,9 @@ class Publication(unittest.TestCase):
         elif args[:3] == ("gh", "release", "create"):
             self.assertIn("--verify-tag", args)
             self.assertNotIn("--target", args)
+            self.assertIn("--generate-notes", args)
+            self.assertTrue(args[args.index("--notes") + 1].startswith(  # SignPath requires it on release pages
+                "Code signing policy: https://github.com/tzachbon/harness-discussion#code-signing-policy"))
             self.release = {"isDraft": True, "assets": [self.asset(self.upload_state, Path(args[4]))]}
         elif args[:3] == ("gh", "release", "upload"):
             self.assertNotIn("--clobber", args)

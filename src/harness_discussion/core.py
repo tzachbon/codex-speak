@@ -62,7 +62,7 @@ class App(Captions, Sources, Updates, Summaries, Skips, Writer):
         self.chain.on_engine = lambda name: self.events.put(("engine", name))
         self.statuses = {}  # engine name -> status(), filled by refresh_statuses
         self._checking = threading.Lock()  # one status check at a time, so an older slow one can't win
-        first_run = not os.path.exists(settings.PATH)
+        first_run = not os.path.exists(settings.PATH) or settings.first_run(settings.PATH)  # or the installer wrote it
         self.cfg = settings.load()
         if first_run:
             try:

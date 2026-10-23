@@ -173,6 +173,27 @@ def save(s: dict, path=PATH) -> None:
     os.replace(tmp, path)  # never leaves a half-written file behind
 
 
+def first_run(path=PATH) -> bool:
+    """True when only the installer has written the settings, so the app has not welcomed the user yet."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f).get("first_run") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+LOCAL_SOURCES = ("Kokoro", "Windows", "macOS")
+
+def local_only(path=PATH) -> None:
+    """The installer's privacy choice: only sources that run on this computer, other settings kept.
+
+    The local voices are turned on, since with every source off the chain falls back to all of them."""
+    s = load(path)
+    s["sources"] = [[n, n in LOCAL_SOURCES] for n, _ in s["sources"]]
+    s["writer_sources"] = [[n, n == "Local"] for n, _ in s["writer_sources"]]
+    s["stt_sources"] = [[n, False] for n, _ in s["stt_sources"]]
+    s["prefetch"] = s["stt_server"] = False
+    save({**s, "first_run": not os.path.exists(path)}, path)  # the app still welcomes a new install
+
 WELCOME = "Pick the voices Harness Discussion uses."  # Settings header on first run, above Sources
 STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Not signed in",
                "expired": "Sign-in expired", "not_downloaded": "Not downloaded", "downloading": "Downloading…"}
