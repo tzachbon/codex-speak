@@ -396,6 +396,7 @@ class Bar(unittest.TestCase):
         load, save = settings.load, settings.save  # never the real settings file
         with patch.object(settings, "PATH", path), patch.object(settings, "load", lambda p=path: load(p)),                 patch.object(settings, "save", lambda s, p=path: save(s, p)):
             settings.local_only(path)
+            settings.local_only(path)  # setup run again before the app first starts
             first = core.App(FakeHost([Engine("Windows")]))
             first.pump()
             self.assertEqual(first.host.opened, [True])

@@ -192,7 +192,7 @@ def local_only(path=PATH) -> None:
     s["writer_sources"] = [[n, n == "Local"] for n, _ in s["writer_sources"]]
     s["stt_sources"] = [[n, False] for n, _ in s["stt_sources"]]
     s["prefetch"] = s["stt_server"] = False
-    save({**s, "first_run": not os.path.exists(path)}, path)  # the app still welcomes a new install
+    save({**s, "first_run": not os.path.exists(path) or first_run(path)}, path)  # the app still welcomes a new install
 
 WELCOME = "Pick the voices Harness Discussion uses."  # Settings header on first run, above Sources
 STATUS_TEXT = {"ready": "Ready", "missing": "Not installed", "signed_out": "Not signed in",
