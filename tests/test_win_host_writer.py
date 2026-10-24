@@ -51,6 +51,12 @@ class HostWriter(unittest.TestCase):
             self.host.open_mic_settings()
         open_settings.assert_called_once_with("ms-settings:privacy-microphone")
 
+    def test_microphone_settings_launch_failure_notifies_without_raising(self):
+        with patch.object(host.os, "startfile", side_effect=OSError("private policy details")):
+            self.host.open_mic_settings()
+        self.host.icon.notify.assert_called_once_with(
+            "Could not open Windows microphone settings.", "Harness Discussion")
+
     def setUp(self):
         with patch.object(host.tk, "Tk"), patch.object(host.pystray, "Icon"), \
                 patch.object(host, "icon_image"):

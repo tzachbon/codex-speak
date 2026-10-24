@@ -105,7 +105,10 @@ class TkHost:
         then(self.mic_status() == "Available")
 
     def open_mic_settings(self):
-        os.startfile("ms-settings:privacy-microphone")
+        try:
+            os.startfile("ms-settings:privacy-microphone")
+        except OSError:
+            self.notify("Could not open Windows microphone settings.")
 
     def _record_shortcuts(self, recording):
         if recording and self._cancel_writer:
