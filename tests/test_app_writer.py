@@ -130,6 +130,48 @@ class DictationTest(unittest.TestCase):
         self.app._recorded_at -= seconds
         self.app._dictate_up()
 
+    def test_old_permission_answers_cannot_start_a_new_hold_or_change_its_target(self):
+        answers = []
+        self.app.host.mic_permission = answers.append
+        self.app._dictate_down()
+        self.assertTrue(self.app.esc.on)
+        self.app._dictate_up()
+        self.assertFalse(self.app.esc.on)
+        self.app.host.edit.ctx = Context("", 3, 4, True, False)
+        self.app._dictate_down()
+        answers[0](True)
+        self.assertIsNone(self.app._recorder)
+        self.app.host.edit.ctx = Context("", 5, 6, True, False)
+        answers[1](True)
+        self.assertIsNotNone(self.app._recorder)
+        self.assertEqual(self.app._dictate_ctx.app, 3)
+
+    def test_escape_and_shutdown_invalidate_pending_permission(self):
+        for cancel in ("_escape", "_close_writer"):
+            with self.subTest(cancel=cancel):
+                app = _App()
+                answers = []
+                app.host.mic_permission = answers.append
+                app._dictate_down()
+                getattr(app, cancel)()
+                answers[0](True)
+                self.assertIsNone(app._recorder)
+                self.assertFalse(app._holding)
+
+    def test_failed_recording_stop_is_recoverable_on_release_escape_and_shutdown(self):
+        for cancel in ("_dictate_up", "_escape", "_close_writer"):
+            with self.subTest(cancel=cancel):
+                app = _App()
+                app._dictate_down()
+                recorder = app._recorder
+                recorder.stop = unittest.mock.Mock(side_effect=RuntimeError("private device details"))
+                getattr(app, cancel)()
+                recorder.stop.assert_called_once_with()
+                self.assertIsNone(app._recorder)
+                self.assertFalse(app._holding)
+                self.assertTrue(app.events.empty())
+
+
     def test_hold_transcribes_rewrites_and_types_at_the_caret(self):
         self.hold(2)
         self.app.drain()
@@ -252,6 +294,17 @@ class DictationTest(unittest.TestCase):
 
 
 class FlowTest(unittest.TestCase):
+    def test_repeated_review_replacements_use_the_last_inserted_text(self):
+        app = _App()
+        app._last_edit = (CTX, "original", "first", "Fix errors")
+        app.open_review()
+        replace = app.review_.shown[-1][2]
+        with unittest.mock.patch.object(app_writer.edit_logic, "undo", return_value=True) as undo:
+            replace("second")
+            replace("third")
+        self.assertEqual([(c.args[2], c.args[3]) for c in undo.call_args_list],
+                         [("second", "first"), ("third", "second")])
+
     def test_a_rewrite_pastes_keeps_the_trailing_space_and_offers_undo_review_mode(self):
         app = _App()
         app.rewrite_selection()

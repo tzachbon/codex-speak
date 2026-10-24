@@ -1,5 +1,6 @@
 """Dictation pieces with no microphone or network: WAV, the tap threshold, the 60 s cap, and the transcript chain."""
 import unittest
+from unittest.mock import Mock
 
 from harness_discussion import dictation, mic, stt
 
@@ -19,6 +20,30 @@ class FakeStream:
 
 
 class MicTest(unittest.TestCase):
+    def test_start_failure_closes_the_created_stream_and_can_be_retried(self):
+        stream = Mock()
+        stream.start.side_effect = RuntimeError("start failed")
+        rec = mic.Recorder(lambda cb: stream)
+        with self.assertRaisesRegex(RuntimeError, "start failed"):
+            rec.start()
+        stream.close.assert_called_once_with()
+        self.assertIsNone(rec._stream)
+        stream.start.side_effect = None
+        rec.start()
+        rec.stop()
+        self.assertEqual(stream.close.call_count, 2)
+
+    def test_stop_failure_still_closes_and_detaches_stream(self):
+        stream = Mock()
+        rec = mic.Recorder(lambda cb: stream)
+        rec.start()
+        stream.stop.side_effect = RuntimeError("stop failed")
+        with self.assertRaisesRegex(RuntimeError, "stop failed"):
+            rec.stop()
+        stream.close.assert_called_once_with()
+        self.assertIsNone(rec._stream)
+        self.assertEqual(rec.stop(), b"")
+
     def test_the_wav_is_what_stt_decodes(self):
         pcm = (b"\x10\x00\xf0\xff" * 12000)
         self.assertEqual(stt.decode_audio(mic.wav(pcm)), pcm)

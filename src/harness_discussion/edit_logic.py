@@ -39,6 +39,8 @@ def undo(platform, ctx: Context, original: str, inserted: str, newline: str = "\
     """Select the inserted text, check it is still what we pasted in the same window, then put the original back.
     When `ctx.caret` is known, the selection must also be exactly where the paste landed.
     False when any check fails: the caller tells the user to use the app's own undo."""
+    if hasattr(platform, "undo"):
+        return platform.undo(ctx, original, inserted)
     n = utf16_len(inserted, newline)
     if not platform.select_back(n, ctx):
         return False

@@ -4,6 +4,24 @@ The same module serves Python callers and other apps on this Windows PC.
 It uses the existing Codex ChatGPT login, with no OpenAI API key. Audio goes
 to Codex's remote realtime service. The HTTP listener itself is localhost only.
 
+## Built-in dictation
+
+Enable **Settings → Writing → Enable rewriting and dictation**. Hold Ctrl+Shift+D
+on Windows, or ⌥⌘D on Mac, to record; release to transcribe. The built-in flow
+uses the source order under **Settings → Writing → Dictation** on Windows
+(**Settings → Dictation** on Mac), independently of the HTTP server. It can tidy the transcript with the selected dictation mode, or insert
+the raw transcript when tidying is off. Esc cancels recording or transcription.
+
+Typing is guarded by the original field, document and caret or selection. If
+that target changes or cannot be verified, the app offers Copy. Windows exposes
+microphone status and a link to Windows microphone privacy settings.
+
+Windows support is experimental. Native microphone start/Esc cancellation and a
+Codex rewrite/paste were checked on Windows 11; real English, Hebrew and mixed
+microphone transcription, interactive Review/Undo, and the browser/app matrix
+remain pending in [#92](https://github.com/tzachbon/harness-discussion/issues/92).
+Unit tests do not establish those native acceptance results.
+
 ## Run the server from the tray app
 
 Turn on **Settings → Speech-to-text → Run the speech-to-text server**. The app then
@@ -41,8 +59,8 @@ from harness_discussion.stt import transcribe
 text = transcribe(Path("recording.webm").read_bytes())
 ```
 
-There is no microphone capture or new UI in the existing TTS app. The module is
-ready for its callers to supply a recording.
+This API accepts caller-supplied audio. The built-in dictation UI captures its
+own microphone audio through the separate ordered dictation adapters.
 
 ## HTTP contract
 

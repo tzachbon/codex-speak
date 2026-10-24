@@ -99,7 +99,7 @@
       <div class="feat rv"><span class="ix">09</span><div><h3>Six languages</h3><p>Hebrew, English, Arabic, Russian, Spanish, and French. In Auto, Cursor and Codex infer the language, and Edge and Windows tell Hebrew, Arabic, and Russian apart by script. Kokoro reads English, Spanish, and French. Or pick one from More (…) → Language.</p></div></div>
       <div class="feat rv"><span class="ix">10</span><div><h3>Optional automatic updates</h3><p>On Windows, installs new releases when the app is idle, after checking the installer's SHA-256 digest. Off by default. On a Mac, Settings shows new versions and installs one when you click Download.</p></div></div>
       <div class="feat rv"><span class="ix">11</span><div><h3>Speech-to-text server</h3><p>An optional local, OpenAI-compatible endpoint lets apps such as OpenWhispr transcribe with the same Codex sign-in. <a href="https://github.com/tzachbon/harness-discussion/blob/master/STT.md">Details</a>.</p></div></div>
-      <div class="feat rv"><span class="ix">12</span><div><h3>Rewrite and dictate (Mac only)</h3><p>On a Mac, ✎ or ⌥⌘E rewrites text you can edit and pastes it back, and holding ⌥⌘D types what you say. Off by default. These aren't available on Windows.</p></div></div>
+      <div class="feat rv"><span class="ix">12</span><div><h3>Rewrite and dictate</h3><p>Enable Writing to rewrite editable text with ✎ or Ctrl+Shift+E on Windows (⌥⌘E on Mac). Hold Ctrl+Shift+D to dictate (⌥⌘D on Mac). Off by default. Windows support is experimental; live speech acceptance is still pending.</p></div></div>
     </div>
   </div>
 </section>
@@ -108,7 +108,7 @@
   <div class="wrap">
     <div class="head rv"><span class="eyebrow">Privacy</span><h2>Where your text goes.</h2>
       <p>Each voice source sends reading text to a different place. For local read-aloud, enable only Kokoro and Windows or macOS in Settings → Voices.</p></div>
-    <p class="after first rv">Mac Writing and Dictation have separate source settings. For local rewrites, disable Cursor and Codex in Settings → Writing and use Local. Dictation sends microphone audio to Cursor or Codex. Turn off both sources in Settings → Dictation to disable transcription through those services.</p>
+    <p class="after first rv">Writing and Dictation have separate source settings. For local rewrites, disable Cursor and Codex in Settings → Writing and use Local. Dictation sends microphone audio to Cursor or Codex. Turn off both dictation sources under Settings → Writing → Dictation on Windows (Settings → Dictation on Mac) to disable transcription through those services.</p>
     <div class="shell rows rv"><div class="core" role="table" aria-label="Voice sources and where your text goes">
       <div role="row" class="row"><span role="columnheader">Voice</span><span role="columnheader">Needs</span><span role="columnheader">Speed</span><span role="columnheader">Where your text goes</span></div>
       <div role="row" class="row"><b role="rowheader">Cursor</b><span role="cell" data-label="Needs">Cursor desktop app, signed in</span><span role="cell" data-label="Speed">0.5× – 2×</span><span role="cell" data-label="Where your text goes">Cursor, through your Cursor sign-in</span></div>

@@ -12,7 +12,7 @@ import queue
 from unittest.mock import Mock, call, patch
 
 from harness_discussion import settings
-from harness_discussion.win import host
+from harness_discussion.win import edit, host
 
 
 @contextmanager
@@ -38,6 +38,25 @@ def clipboard_api(previous_format=14):
 
 
 class HostWriter(unittest.TestCase):
+    def test_production_host_exposes_the_guarded_editor_and_microphone_actions(self):
+        self.assertIs(host.TkHost.edit, edit)
+        self.assertEqual(edit.NEWLINE, "\r\n")
+        for state, expected in (("Available", True), ("Blocked in Windows privacy settings", False),
+                                ("No microphone available", False)):
+            answers = []
+            with patch.object(host.microphone, "status", return_value=state):
+                self.host.mic_permission(answers.append)
+            self.assertEqual(answers, [expected])
+        with patch.object(host.os, "startfile") as open_settings:
+            self.host.open_mic_settings()
+        open_settings.assert_called_once_with("ms-settings:privacy-microphone")
+
+    def test_microphone_settings_launch_failure_notifies_without_raising(self):
+        with patch.object(host.os, "startfile", side_effect=OSError("private policy details")):
+            self.host.open_mic_settings()
+        self.host.icon.notify.assert_called_once_with(
+            "Could not open Windows microphone settings.", "Harness Discussion")
+
     def setUp(self):
         with patch.object(host.tk, "Tk"), patch.object(host.pystray, "Icon"), \
                 patch.object(host, "icon_image"):
@@ -48,6 +67,7 @@ class HostWriter(unittest.TestCase):
         self.app.rewriting = False
         self.app.writer_models = {"Codex": [{"id": "example", "efforts": []}]}
         self.app.writer_statuses = {"Codex": "ready"}
+        self.app.stt_statuses = {"Codex": "signed_out"}
 
     def test_recording_pauses_and_restores_all_shortcuts_without_saving(self):
         saved = deepcopy(self.app.cfg)
@@ -66,10 +86,13 @@ class HostWriter(unittest.TestCase):
             self.host.open_settings()
             callbacks = window.call_args.kwargs
         self.assertEqual(callbacks["writer_catalogs"](), self.app.writer_models)
+        self.assertEqual(callbacks["stt_statuses"](), self.app.stt_statuses)
         self.app.writer_statuses = {"Codex": "signed_out"}
         self.assertEqual(callbacks["writer_statuses"](), {"Codex": "signed_out"})
         callbacks["on_writer_fix"]("Codex")
         self.app.fix_writer.assert_called_once_with("Codex")
+        callbacks["on_writer_fix"]("Cursor", True)
+        self.app.fix_writer.assert_called_with("Cursor", True)
         self.app.refresh_writer.assert_not_called()
 
     def test_recording_cancels_writer_before_disabling_its_hold_listener(self):

@@ -46,6 +46,7 @@ class Writer:
         self.writer_statuses, self.stt_statuses, self.writer_models = {}, {}, {}
         self._writer_checking = threading.Lock()
         self._recorder, self._recorded_at, self._dictate_ctx, self._holding = None, 0.0, None, False
+        self._dictate_generation = 0
         if self.writer_ready:
             self.toast, self.review = self.host.make_toast(), self.host.make_review()
             self.toast.on_hide = self._watch_escape
@@ -121,7 +122,7 @@ class Writer:
 
     def _watch_escape(self):
         if self._esc:
-            self._esc.start() if self.rewriting or self.toast.visible else self._esc.stop()
+            self._esc.start() if self.rewriting or self._holding or self.toast.visible else self._esc.stop()
 
     def rewrite_from_bar(self, text, mode_name):
         self.rewrite_selection(mode_name)
@@ -222,8 +223,10 @@ class Writer:
         ctx, original, inserted, mode = self._last_edit
 
         def replace(text):
+            nonlocal inserted
             if edit_logic.undo(self.edit, ctx, text, inserted, self.edit.NEWLINE):
                 self._last_edit = (ctx, original, text, mode)
+                inserted = text
             else:
                 self._toast("The text changed. Copy the result?", [("Copy", lambda: self.host.copy_text(text))])
         self.review.show(original, inserted, replace, self.host.copy_text)
@@ -256,22 +259,28 @@ class Writer:
         """Hold: check the microphone, then record until release."""
         if not (self.writer_ready and self.cfg["writer"]) or self.rewriting or self._recorder:
             return
+        self._dictate_generation += 1
+        generation = self._dictate_generation
+        self._dictate_ctx = self.edit.capture(False)
         self._holding = True
-        self.host.mic_permission(self._mic_answer)
+        self._watch_escape()
+        self.host.mic_permission(lambda granted: generation == self._dictate_generation
+                                 and self._holding and self._mic_answer(granted))
 
     def _mic_answer(self, granted):
         if not granted:
+            self._holding = False
             self._toast("Harness Discussion needs the microphone.", [("Open Settings", self.host.open_mic_settings)])
             return
         if not self._holding:
             return  # released while the permission prompt was up
         try:
-            self._dictate_ctx = self.edit.capture(False)
             recorder = mic.Recorder()
             recorder.start()
         except Exception as e:
+            self._holding = False
             log.info("microphone failed: %s", type(e).__name__)
-            self._toast("The microphone could not start.")
+            self._toast("The microphone could not start.", [("Open Settings", self.host.open_mic_settings)])
             return
         self._recorder, self._recorded_at = recorder, time.monotonic()
         first = next((n for n, on in self.cfg["stt_sources"] if on), "Cursor")
@@ -283,12 +292,10 @@ class Writer:
                 threading.Thread(target=writer_first.prewarm, args=(model,), daemon=True).start()
 
     def _dictate_up(self):
-        self._holding = False
-        recorder, self._recorder = self._recorder, None
-        if recorder is None:
-            return
         held = time.monotonic() - self._recorded_at
-        audio = recorder.stop()
+        audio = self._stop_recording()
+        if audio is None:
+            return
         released = time.monotonic()
         if mic.is_tap(held) or not audio:
             self.toast.hide()
@@ -328,6 +335,20 @@ class Writer:
             self.events.put(("dictated", rid, mode.name if mode else None, result, at, timing))
         threading.Thread(target=work, daemon=True).start()
 
+    def _stop_recording(self):
+        self._holding = False
+        self._dictate_generation += 1
+        recorder, self._recorder = self._recorder, None
+        self._watch_escape()
+        if recorder is None:
+            return None
+        try:
+            return recorder.stop()
+        except Exception as e:
+            log.info("microphone stop failed: %s", type(e).__name__)
+            self._toast("The recording could not finish.", [("Open Settings", self.host.open_mic_settings)])
+            return None
+
     def _dictated(self, rid, mode, result, at, timing):
         if rid != self._rewrite_id:
             return
@@ -363,10 +384,9 @@ class Writer:
         if now - self._escaped_at < 0.15:
             return
         self._escaped_at = now
-        if self._recorder:
-            self._holding = False
-            self._recorder.stop()
-            self._recorder = None
+        self._press_gen += 1
+        if self._recorder or self._holding:
+            self._stop_recording()
             self.toast.hide()
         elif self.rewriting:
             self.cancel_rewrite()
@@ -388,6 +408,8 @@ class Writer:
     def _close_writer(self):
         if not hasattr(self, "_rewrite_cancel"):  # quit before _init_writer ran
             return
+        self._press_gen += 1
+        self._stop_recording()
         self._rewrite_cancel.set()
         for source in self.writer_sources:
             close = getattr(source, "close", None)
@@ -397,6 +419,3 @@ class Writer:
             self._esc.stop()
             self.host.set_shortcut("rewrite", "", None)
             self.host.set_shortcut("dictate", "", None)
-        if self._recorder:
-            self._recorder.stop()
-            self._recorder = None

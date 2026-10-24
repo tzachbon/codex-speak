@@ -27,7 +27,7 @@ class WritingPage:
             self.cfg.setdefault(key, value)
         card = self._card(page, "Writer")
         self.writer_on = tk.BooleanVar(self.win, self.cfg["writer"])
-        self.writer_check = ttk.Checkbutton(card, text="Rewrite selected text in place", style="Card.TCheckbutton",
+        self.writer_check = ttk.Checkbutton(card, text="Enable rewriting and dictation", style="Card.TCheckbutton",
                                             variable=self.writer_on,
                                             command=lambda: self._set("writer", self.writer_on.get()))
         self.writer_check.pack(anchor="w")
@@ -58,6 +58,7 @@ class WritingPage:
                   style="Sub.Card.TLabel", wraplength=440).pack(anchor="w", pady=(6, 0))
         self.mic_status = ttk.Label(card, style="Sub.Card.TLabel")
         self.mic_status.pack(anchor="w", pady=(8, 0))
+        ttk.Button(card, text="Microphone settings", command=self.on_mic_settings).pack(anchor="w", pady=(6, 0))
         self._shortcut_row(card, "dictate_hotkey", "Hold to record, release to type the text at the caret.")
         self.refresh_writing()
 
@@ -164,7 +165,8 @@ class WritingPage:
                 "toggle": ttk.Checkbutton(f, text=name, style="Card.TCheckbutton", variable=on, width=7,
                                           command=lambda: self._writer_toggled(name, key)),
                 "status": ttk.Label(f, style="Sub.Card.TLabel", width=10, wraplength=76),
-                "fix": ttk.Button(f, width=8, command=lambda: self.on_writer_fix(name)),
+                "fix": ttk.Button(f, width=8, command=lambda: self.on_writer_fix(name, True)
+                                  if key == "stt_sources" else self.on_writer_fix(name)),
                 "up": ttk.Button(f, text="↑", width=2, command=lambda: self._writer_move(name, -1, key)),
                 "down": ttk.Button(f, text="↓", width=2, command=lambda: self._writer_move(name, 1, key))}
 
@@ -199,7 +201,8 @@ class WritingPage:
         row["effort"].selection_clear()
 
     def _show_rows(self, key, rows, columns):
-        sources, statuses = self.cfg[key], self.writer_statuses()
+        sources = self.cfg[key]
+        statuses = self.stt_statuses() if key == "stt_sources" else self.writer_statuses()
         for i, (name, enabled) in enumerate(sources):
             row = rows[name]
             row["on"].set(enabled)
@@ -217,7 +220,7 @@ class WritingPage:
         for name, row in self.writer_rows.items():
             self._show_writer_models(name, row)
         self._show_rows("writer_sources", self.writer_rows, ("toggle", "status", "model", "effort", "up", "down", "fix"))
-        self._show_rows("stt_sources", self.dictation_rows, ("toggle", "up", "down"))  # no STT status is supplied
+        self._show_rows("stt_sources", self.dictation_rows, ("toggle", "status", "up", "down", "fix"))
         self.mic_status["text"] = f"Microphone: {self.dictate_status()}"
         self._refresh_dictation_mode()
 

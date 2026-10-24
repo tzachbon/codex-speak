@@ -1,5 +1,6 @@
 """Windows host: Tk on the main thread, pystray in the tray, UI Automation for the selection."""
 import ctypes
+import os
 import threading
 from ctypes import wintypes
 import tkinter as tk
@@ -12,7 +13,7 @@ from ..cursor_tts import CursorEngine
 from ..engines import EdgeEngine
 from ..icons import icon_image
 from ..kokoro_tts import KokoroEngine
-from . import clipboard, selection, uia_thread
+from . import clipboard, edit, microphone, selection, uia_thread
 from .popup import Popup
 from .review import Review
 from .settings_ui import SettingsWindow
@@ -22,6 +23,8 @@ from .voice import SapiEngine
 
 
 class TkHost:
+    edit = edit
+
     def __init__(self):
         self.app = None  # set by core.App
         self.root = tk.Tk()
@@ -90,7 +93,22 @@ class TkHost:
                               on_fix=a.fix_source, summarizer=a,
                               writer_catalogs=lambda: a.writer_models, writer_statuses=lambda: a.writer_statuses,
                               on_writer_fix=a.fix_writer,
+                              stt_statuses=lambda: a.stt_statuses,
+                              dictate_status=self.mic_status, on_mic_settings=self.open_mic_settings,
                               on_record=self._record_shortcuts)
+
+    def mic_status(self):
+        return microphone.status()
+
+    def mic_permission(self, then):
+        # Desktop apps use Windows' shared privacy switch, without an app permission prompt.
+        then(self.mic_status() == "Available")
+
+    def open_mic_settings(self):
+        try:
+            os.startfile("ms-settings:privacy-microphone")
+        except OSError:
+            self.notify("Could not open Windows microphone settings.")
 
     def _record_shortcuts(self, recording):
         if recording and self._cancel_writer:
