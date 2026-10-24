@@ -15,6 +15,7 @@ u32.GetForegroundWindow.restype = wintypes.HWND
 u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 u32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 MAX_DOCUMENT = 1_000_000
+NEWLINE = "\r\n"
 
 
 @dataclass
@@ -133,14 +134,14 @@ def same_context(context):
     return bool(_run(check))
 
 
-def _replace(text, context, caret_only):
+def _replace(text, context):
     with clipboard.BORROW_LOCK:
         found = _inspect()
         if not found:
             return False
         current, document, _ = found
         context = context if context is not None else current
-        if not _matches(context, current) or (caret_only and current._start != current._end):
+        if not _matches(context, current):
             return False
         raw, addition = _encoded(document), _encoded(text)
         expected = raw[:current._start * 2] + addition + raw[current._end * 2:]
@@ -184,13 +185,32 @@ def replace(text, ctx=None):
     """True only after exact document/caret verification. False after input must never be retried automatically."""
     if not isinstance(text, str) or "\0" in text or (ctx is not None and ctx.secure):
         return False
-    return bool(_run(_replace, text, ctx, False))
+    return bool(_run(_replace, text, ctx))
 
 
 def type_at_caret(text, ctx=None):
-    if not isinstance(text, str) or "\0" in text or (ctx is not None and ctx.secure):
-        return False
-    return bool(_run(_replace, text, ctx, True))
+    """Insert at the unchanged caret, or replace its unchanged selection, like a normal paste."""
+    return replace(text, ctx)
+
+
+def undo(ctx, original, inserted):
+    """Keep the replacement receipt on the context retained by Writer for later Mode/Review/Undo actions."""
+    def restore():
+        if not select_back(utf16_length(inserted), ctx):
+            return False
+        post = ctx._receipt[0]
+        selected = capture(False)
+        if (selected is None or selected.secure or not selected.editable
+                or (selected.app, selected.window, selected._element) != (ctx.app, ctx.window, ctx._element)
+                or selected._digest != post._digest or selected._end != post._end
+                or selected._start != post._end - len(_encoded(inserted)) // 2
+                or _canonical(selected.text) != _canonical(inserted)):
+            return False
+        if not replace(original, selected):
+            return False
+        ctx._receipt = selected._receipt
+        return True
+    return bool(_run(restore))
 
 
 def select_back(n, ctx=None):

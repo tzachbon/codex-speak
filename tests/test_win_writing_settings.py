@@ -20,6 +20,21 @@ CATALOGS = {"Codex": [{"id": "gpt-5.5", "label": "GPT-5.5", "efforts": ["low", "
 
 
 class WritingSettingsUi(unittest.TestCase):
+    def test_dictation_has_its_own_statuses_fixes_and_microphone_settings(self):
+        fixes, opened = [], []
+        w = self.make_window(writer_statuses=lambda: {"Codex": "ready"},
+                             stt_statuses=lambda: {"Codex": "signed_out"},
+                             on_writer_fix=lambda *args: fixes.append(args),
+                             on_mic_settings=lambda: opened.append(True), dictate_status=lambda: "Available")
+        self.assertEqual(w.writer_rows["Codex"]["status"]["text"], "Ready")
+        self.assertEqual(w.dictation_rows["Codex"]["status"]["text"], "Not signed in")
+        w.dictation_rows["Codex"]["fix"].invoke()
+        self.assertEqual(fixes, [("Codex", True)])
+        self.assertEqual(w.mic_status["text"], "Microphone: Available")
+        next(c for c in w.mic_status.master.winfo_children()
+             if c.winfo_class() == "TButton" and c["text"] == "Microphone settings").invoke()
+        self.assertEqual(opened, [True])
+
     def setUp(self):
         self.root = tk.Tk()
         self.root.withdraw()

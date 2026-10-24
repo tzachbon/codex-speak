@@ -35,7 +35,15 @@ class Recorder:
             samplerate=RATE, channels=1, dtype="int16", callback=cb))
         self._chunks, self._size = [], 0
         self._stream = factory(self._callback)
-        self._stream.start()
+        try:
+            self._stream.start()
+        except BaseException:
+            stream, self._stream = self._stream, None
+            try:
+                stream.close()
+            except Exception:
+                pass  # preserve the startup failure
+            raise
 
     def _callback(self, data, frames, time_info, status):
         with self._lock:
@@ -49,8 +57,10 @@ class Recorder:
         """The recording as WAV, or b"" when nothing was recorded."""
         stream, self._stream = self._stream, None
         if stream is not None:
-            stream.stop()
-            stream.close()
+            try:
+                stream.stop()
+            finally:
+                stream.close()
         with self._lock:
             pcm = b"".join(self._chunks)
         return wav(pcm) if pcm else b""
